@@ -105,6 +105,8 @@ return [
         ),
     ],
 
+    'version_politica_datos' => env('VERSION_POLITICA_DATOS', 'v1.0'),
+
     /*
     |--------------------------------------------------------------------------
     | Maintenance Mode Driver

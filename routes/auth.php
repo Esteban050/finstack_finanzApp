@@ -1,59 +1,43 @@
 <?php
 
-use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\Auth\ConfirmablePasswordController;
-use App\Http\Controllers\Auth\EmailVerificationNotificationController;
-use App\Http\Controllers\Auth\EmailVerificationPromptController;
-use App\Http\Controllers\Auth\NewPasswordController;
-use App\Http\Controllers\Auth\PasswordController;
-use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\Auth\RegisteredUserController;
-use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Auth\ScfpAuthController;
+use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
 
+// Rutas de Visitante / Huésped
 Route::middleware('guest')->group(function () {
-    Route::get('register', [RegisteredUserController::class, 'create'])
-        ->name('register');
+    // RF-001: Registro
+    Route::get('register', [ScfpAuthController::class, 'showRegister'])->name('register');
+    Route::post('register', [ScfpAuthController::class, 'register']);
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    // RF-003 & RF-004: Login
+    Route::get('login', [ScfpAuthController::class, 'showLogin'])->name('login');
+    Route::post('login', [ScfpAuthController::class, 'login']);
 
-    Route::get('login', [AuthenticatedSessionController::class, 'create'])
-        ->name('login');
+    // RF-002: Verificación de correo
+    Route::get('verify-email/{token}', [ScfpAuthController::class, 'verifyEmail'])->name('verification.verify.token');
+    Route::post('verify-email/resend', [ScfpAuthController::class, 'resendVerification'])->name('verification.resend.token');
 
-    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+    // RF-005: Recuperación de contraseña
+    Route::get('forgot-password', fn () => view('auth.forgot-password'))->name('password.request');
+    Route::post('forgot-password', [ScfpAuthController::class, 'forgotPassword'])->name('password.email');
+    Route::get('reset-password/{token}', [ScfpAuthController::class, 'showResetPassword'])->name('password.reset.custom');
+    Route::post('reset-password', [ScfpAuthController::class, 'resetPassword'])->name('password.update.custom');
 
-    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
-        ->name('password.request');
+    // RF-012: MFA
+    Route::get('mfa/verificar', [ScfpAuthController::class, 'showMfa'])->name('mfa.view');
+    Route::post('mfa/verificar', [ScfpAuthController::class, 'verifyMfa'])->name('mfa.verify');
+    Route::post('mfa/reenviar', [ScfpAuthController::class, 'resendMfa'])->name('mfa.resend');
 
-    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
-        ->name('password.email');
-
-    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
-        ->name('password.reset');
-
-    Route::post('reset-password', [NewPasswordController::class, 'store'])
-        ->name('password.store');
+    // RF-010: Cancelar supresión de cuenta
+    Route::get('cuenta/cancelar-supresion/{token}', [UserProfileController::class, 'cancelarSupresion'])->name('cuenta.cancelar.supresion');
 });
 
+// Rutas de Usuario Autenticado
 Route::middleware('auth')->group(function () {
-    Route::get('verify-email', EmailVerificationPromptController::class)
-        ->name('verification.notice');
+    // RF-006: Logout
+    Route::post('logout', [ScfpAuthController::class, 'logout'])->name('logout');
 
-    Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
-
-    Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware('throttle:6,1')
-        ->name('verification.send');
-
-    Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
-        ->name('password.confirm');
-
-    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
-
-    Route::put('password', [PasswordController::class, 'update'])->name('password.update');
-
-    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
+    // RF-007: Cambio de contraseña
+    Route::put('password/cambiar', [ScfpAuthController::class, 'changePassword'])->name('password.custom.change');
 });

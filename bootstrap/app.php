@@ -12,7 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'admin' => \App\Http\Middleware\EnsureAdminMiddleware::class,
+            'politica.check' => \App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class,
+            'inactividad' => \App\Http\Middleware\InactivityTimeoutMiddleware::class,
+        ]);
+
+        $middleware->web(append: [
+            \App\Http\Middleware\InactivityTimeoutMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
