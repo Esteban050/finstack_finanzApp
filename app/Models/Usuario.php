@@ -166,4 +166,14 @@ class Usuario extends Authenticatable
     {
         return $this->hasMany(FuenteIngreso::class, 'usuario_id');
     }
+
+    public function ingresos(): HasMany
+    {
+        return $this->hasMany(Ingreso::class, 'usuario_id');
+    }
+
+    public function plantillasRecurrencia(): HasMany
+    {
+        return $this->hasMany(PlantillaRecurrencia::class, 'usuario_id');
+    }
 }

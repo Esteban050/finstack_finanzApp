@@ -2,6 +2,7 @@
 
 use App\Models\BitacoraAuditoria;
 use App\Models\Usuario;
+use App\Services\RecurrenciaService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -53,6 +54,16 @@ Artisan::command('scfp:purgar-supresiones', function () {
     $this->info("Se eliminaron definitivamente {$total} cuentas solicitadas para supresión (RN-010.3).");
 })->purpose('Eliminación física definitiva de cuentas con supresión cumplida');
 
+// RN-022.2: Generar las ocurrencias vencidas de los ingresos recurrentes (RF-022)
+Artisan::command('scfp:generar-recurrencias', function () {
+    $total = RecurrenciaService::generarIngresosPendientes();
+
+    $this->info("Se generaron {$total} ocurrencias de ingresos recurrentes (RN-022.2).");
+})->purpose('Generar las ocurrencias programadas de los ingresos recurrentes');
+
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();
 Schedule::command('scfp:purgar-supresiones')->daily();
+
+// RN-022.2: "El Sistema genera cada ocurrencia a las 00:05 del día programado."
+Schedule::command('scfp:generar-recurrencias')->dailyAt('00:05');

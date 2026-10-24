@@ -6,6 +6,8 @@ use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
 use App\Http\Controllers\FuenteIngresoController;
+use App\Http\Controllers\IngresoController;
+use App\Http\Controllers\IngresoRecurrenteController;
 use App\Http\Controllers\PoliticaTratamientoController;
 use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +52,24 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     Route::put('/ingresos/fuentes/{id}', [FuenteIngresoController::class, 'update'])->name('ingresos.fuentes.update');
     Route::patch('/ingresos/fuentes/{id}/toggle', [FuenteIngresoController::class, 'toggleActiva'])->name('ingresos.fuentes.toggle');
     Route::delete('/ingresos/fuentes/{id}', [FuenteIngresoController::class, 'destroy'])->name('ingresos.fuentes.destroy');
+
+    // RF-022: Ingresos recurrentes
+    Route::get('/ingresos/recurrentes', [IngresoRecurrenteController::class, 'index'])->name('ingresos.recurrentes.index');
+    Route::post('/ingresos/recurrentes', [IngresoRecurrenteController::class, 'store'])->name('ingresos.recurrentes.store');
+    Route::put('/ingresos/recurrentes/{id}', [IngresoRecurrenteController::class, 'update'])->name('ingresos.recurrentes.update');
+    Route::patch('/ingresos/recurrentes/{id}/toggle', [IngresoRecurrenteController::class, 'toggleActiva'])->name('ingresos.recurrentes.toggle');
+    Route::delete('/ingresos/recurrentes/{id}', [IngresoRecurrenteController::class, 'destroy'])->name('ingresos.recurrentes.destroy');
+
+    // RF-024: Consulta y filtrado · RF-021: Registro · RF-023: Edición y eliminación
+    Route::get('/ingresos', [IngresoController::class, 'index'])->name('ingresos.index');
+    Route::get('/ingresos/crear', [IngresoController::class, 'create'])->name('ingresos.create');
+    Route::post('/ingresos', [IngresoController::class, 'store'])->name('ingresos.store');
+    Route::get('/ingresos/{id}/editar', [IngresoController::class, 'edit'])->name('ingresos.edit');
+    Route::put('/ingresos/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
+    Route::delete('/ingresos/{id}', [IngresoController::class, 'destroy'])->name('ingresos.destroy');
+
+    // RN-022.3: Confirmar una ocurrencia generada en modo "Requiere confirmación"
+    Route::patch('/ingresos/{id}/confirmar', [IngresoController::class, 'confirmar'])->name('ingresos.confirmar');
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

@@ -166,5 +166,5 @@ Las peticiones `10.2` y `10.3` crean y luego comprueban el duplicado de
 fuente sobrevivió, `10.2` devolverá 422 en vez de 201 y `10.3` dejará de probar
 lo que dice probar: la unicidad es por usuario e ignora mayúsculas
 (`uq_fuentes_ingreso_usuario_nombre` es sobre `lower(nombre)`). Ante dudas,
-vuelve a sembrar con `php artisan db:seed --class=Mod03DemoSeeder` y borra las
-fuentes sobrantes.
+vuelve a sembrar con `php artisan db:seed --class="Database\Seeders\Test\Mod03DemoSeeder"`
+y borra las fuentes sobrantes.
