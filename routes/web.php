@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\CalendarioTributarioController;
 use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
+use App\Http\Controllers\FuenteIngresoController;
 use App\Http\Controllers\PoliticaTratamientoController;
 use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,20 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
     // RF-010: Solicitud de supresión de cuenta
     Route::post('/perfil/solicitar-supresion', [UserProfileController::class, 'solicitarSupresion'])->name('profile.delete.account');
+
+    /*
+    | MOD-03 — Gestión de ingresos (característica A)
+    |
+    | Las rutas con segmento fijo van antes de las paramétricas para que
+    | /ingresos/fuentes y /ingresos/recurrentes no se confundan con un id.
+    */
+
+    // RF-020: Fuentes de ingreso
+    Route::get('/ingresos/fuentes', [FuenteIngresoController::class, 'index'])->name('ingresos.fuentes.index');
+    Route::post('/ingresos/fuentes', [FuenteIngresoController::class, 'store'])->name('ingresos.fuentes.store');
+    Route::put('/ingresos/fuentes/{id}', [FuenteIngresoController::class, 'update'])->name('ingresos.fuentes.update');
+    Route::patch('/ingresos/fuentes/{id}/toggle', [FuenteIngresoController::class, 'toggleActiva'])->name('ingresos.fuentes.toggle');
+    Route::delete('/ingresos/fuentes/{id}', [FuenteIngresoController::class, 'destroy'])->name('ingresos.fuentes.destroy');
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

@@ -160,4 +160,10 @@ class Usuario extends Authenticatable
     {
         return $this->hasMany(Categoria::class, 'usuario_id');
     }
+
+    // MOD-03 — Gestión de ingresos
+    public function fuentesIngreso(): HasMany
+    {
+        return $this->hasMany(FuenteIngreso::class, 'usuario_id');
+    }
 }

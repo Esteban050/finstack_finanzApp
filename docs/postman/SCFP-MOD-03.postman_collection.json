@@ -1,0 +1,1153 @@
+{
+  "info": {
+    "name": "SCFP · MOD-03 Gestión de ingresos",
+    "description": "Peticiones de verificación del MOD-03 (RF-020 a RF-024).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan db:seed --class=Mod03DemoSeeder`\n2. `php artisan serve` (o Herd) y ajustar la variable `base_url`.\n3. Ejecutar la carpeta completa con el Collection Runner, en orden: las peticiones encadenan ids mediante variables.\n\n## Autenticación\n\nEl SCFP usa sesión y CSRF (grupo `web`), no tokens de API. La carpeta `00 · Autenticación` inicia sesión con el formulario real y guarda el token CSRF en la variable `csrf`. Laravel regenera la sesión al autenticar (RN-003.3), por eso el token se vuelve a leer del `<meta name=\"csrf-token\">` del dashboard.\n\nLas peticiones de MOD-03 envían `Accept: application/json`, con lo que los controladores responden JSON en lugar de vista Blade.\n\n## Forma de las respuestas\n\nUna respuesta correcta trae `mensaje` y, si hay algo que devolver, `data`. El código de estado va en el HTTP, no en el cuerpo:\n\n```json\n{ \"mensaje\": \"Fuente de ingreso creada exitosamente.\", \"data\": { \"id\": \"…\" } }\n```\n\nEn los listados `data` es la colección, salvo en `GET /ingresos` y `GET /ingresos/recurrentes`, donde agrupa la colección y sus metadatos: `data.ingresos`, `data.meta`, `data.totales`, `data.pendientes` y `data.plantillas`.\n\nLos **errores** conservan la forma de Laravel, `message` y `errors`, porque los arma el manejador de excepciones del framework y no los controladores. Por eso las peticiones que esperan 422 leen `errors.<campo>[0]` y no `data`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "correo", "value": "mod03@scfp.test", "type": "string" },
+    { "key": "password", "value": "Scfp#Demo2026", "type": "string" },
+    { "key": "csrf", "value": "", "type": "string" },
+    { "key": "fuente_id", "value": "", "type": "string" },
+    { "key": "fuente_tmp_id", "value": "", "type": "string" },
+    { "key": "ingreso_id", "value": "", "type": "string" },
+    { "key": "plantilla_id", "value": "", "type": "string" },
+    {
+      "key": "ingreso_ajeno_id",
+      "value": "90000000-0000-0000-0003-000000000003",
+      "type": "string",
+      "description": "Ingreso del segundo usuario creado por Mod03DemoSeeder. RNG-01: debe responder 404."
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Autenticación",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige al dashboard del Usuario', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "_token", "value": "{{csrf}}" },
+                { "key": "correo", "value": "{{correo}}" },
+                { "key": "password", "value": "{{password}}" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/dashboard", "host": ["{{base_url}}"], "path": ["dashboard"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-020 Fuentes de ingreso",
+      "item": [
+        {
+          "name": "10.1 GET /ingresos/fuentes · listado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-020 · listado disponible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "const activa = pm.response.json().data.find(f => f.activa === true);",
+                  "",
+                  "pm.test('Hay al menos una fuente activa', function () {",
+                  "    pm.expect(activa).to.not.be.undefined;",
+                  "});",
+                  "",
+                  "if (activa) {",
+                  "    pm.collectionVariables.set('fuente_id', activa.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes"]
+            }
+          }
+        },
+        {
+          "name": "10.2 POST /ingresos/fuentes · crear",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-020 RN-020.1 · fuente creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-020.1 · nace activa y con su cédula tributaria', function () {",
+                  "    pm.expect(d.activa).to.eql(true);",
+                  "    pm.expect(d.clasificacion_tributaria).to.eql('RENTAS_CAPITAL');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('fuente_tmp_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Local comercial Cra 7 - arriendo\",\n  \"tipo_fuente_id\": \"30000000-0000-0000-0001-000000000003\",\n  \"clasificacion_tributaria\": \"RENTAS_CAPITAL\",\n  \"pagador_entidad\": \"Inversiones Delta Ltda\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes"]
+            }
+          }
+        },
+        {
+          "name": "10.3 POST /ingresos/fuentes · nombre duplicado (CA-020.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-020.1 · se rechaza el nombre repetido', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-020.1 · muestra \"Ya existe una fuente con ese nombre\"', function () {",
+                  "    pm.expect(pm.response.json().errors.nombre[0]).to.include('Ya existe una fuente con ese nombre');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"local comercial cra 7 - ARRIENDO\",\n  \"tipo_fuente_id\": \"30000000-0000-0000-0001-000000000003\",\n  \"clasificacion_tributaria\": \"RENTAS_CAPITAL\"\n}"
+            },
+            "description": "Mismo nombre con otra combinación de mayúsculas: el índice uq_fuentes_ingreso_usuario_nombre es sobre lower(nombre), así que RN-020.1 no distingue mayúsculas.",
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes"]
+            }
+          }
+        },
+        {
+          "name": "10.4 PUT /ingresos/fuentes/{id} · editar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-020 · fuente actualizada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.pagador_entidad).to.eql('Inversiones Omega S.A.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Local comercial Cra 7 - arriendo\",\n  \"tipo_fuente_id\": \"30000000-0000-0000-0001-000000000003\",\n  \"clasificacion_tributaria\": \"RENTAS_CAPITAL\",\n  \"pagador_entidad\": \"Inversiones Omega S.A.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes/{{fuente_tmp_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes", "{{fuente_tmp_id}}"]
+            }
+          }
+        },
+        {
+          "name": "10.5 PATCH /ingresos/fuentes/{id}/toggle · inactivar (RN-020.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-020.3 · la fuente queda inactiva', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.activa).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes/{{fuente_tmp_id}}/toggle",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes", "{{fuente_tmp_id}}", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "10.6 DELETE /ingresos/fuentes/{id} · con ingresos asociados (CA-020.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-020.2 · no se puede borrar una fuente con ingresos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-020.2 · el mensaje ofrece inactivar', function () {",
+                  "    pm.expect(pm.response.json().errors.fuente[0]).to.include('inactivarla');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes/{{fuente_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes", "{{fuente_id}}"]
+            }
+          }
+        },
+        {
+          "name": "10.7 DELETE /ingresos/fuentes/{id} · sin ingresos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-020 · una fuente sin ingresos sí se borra', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/fuentes/{{fuente_tmp_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "fuentes", "{{fuente_tmp_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-021 Registro de ingreso",
+      "item": [
+        {
+          "name": "20.1 POST /ingresos · neto calculado (CA-021.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-021 · ingreso registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('CA-021.1 · bruto 5.000.000 − ret 150.000 − aportes 400.000 = neto 4.450.000', function () {",
+                  "    pm.expect(Number(d.monto_bruto_cop)).to.eql(5000000);",
+                  "    pm.expect(Number(d.retencion_fuente_cop)).to.eql(150000);",
+                  "    pm.expect(Number(d.aportes_descontados_cop)).to.eql(400000);",
+                  "    pm.expect(Number(d.monto_neto_cop)).to.eql(4450000);",
+                  "});",
+                  "",
+                  "pm.test('RN-021.1 · origen MANUAL y estado CONFIRMADO', function () {",
+                  "    pm.expect(d.origen).to.eql('MANUAL');",
+                  "    pm.expect(d.estado).to.eql('CONFIRMADO');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('ingreso_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-30\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"5000000.00\",\n  \"retencion_fuente\": \"150000.00\",\n  \"aportes_descontados\": \"400000.00\",\n  \"descripcion\": \"Verificación CA-021.1\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "20.2 POST /ingresos · retención mayor que el bruto (CA-021.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-021.2 · se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-021.2 · muestra \"La retención no puede superar el monto bruto\"', function () {",
+                  "    pm.expect(pm.response.json().errors.retencion_fuente[0]).to.include('La retención no puede superar el monto bruto');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-30\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1000000.00\",\n  \"retencion_fuente\": \"1500000.00\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "20.3 POST /ingresos · fecha futura (CA-021.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-021.3 · se rechaza la fecha futura', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-021.3 · sugiere crear un ingreso recurrente o programado', function () {",
+                  "    const msg = pm.response.json().errors.fecha_recepcion[0];",
+                  "    pm.expect(msg.toLowerCase()).to.include('recurrente');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2030-01-15\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1000000.00\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "20.4 POST /ingresos · divisa con tasa (RN-021.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-021.3 · ingreso en divisa registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-021.3 · se guardan monto original, tasa y monto convertido', function () {",
+                  "    pm.expect(d.moneda).to.eql('USD');",
+                  "    pm.expect(Number(d.monto_original)).to.eql(1200);",
+                  "    pm.expect(Number(d.tasa_cambio_usada)).to.eql(3950.5);",
+                  "    pm.expect(Number(d.monto_bruto_cop)).to.eql(4740600);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-20\",\n  \"moneda\": \"USD\",\n  \"monto_original\": \"1200.00\",\n  \"tasa_cambio_usada\": \"3950.5000\",\n  \"descripcion\": \"Verificación RN-021.3\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "20.5 POST /ingresos · divisa sin tasa (RN-021.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-021.3 · sin tasa de cambio no se puede convertir a COP', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('tasa_cambio_usada');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-20\",\n  \"moneda\": \"EUR\",\n  \"monto_original\": \"500.00\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "20.6 POST /ingresos · hereda la cédula de la fuente (RN-021.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-021.4 · sin clasificación explícita, el ingreso hereda la de la fuente', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.clasificacion_tributaria).to.be.oneOf([",
+                  "        'RENTAS_TRABAJO', 'RENTAS_CAPITAL', 'RENTAS_NO_LABORALES', 'PENSIONES', 'DIVIDENDOS'",
+                  "    ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-15\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"750000.00\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · RF-024 Consulta y filtrado",
+      "item": [
+        {
+          "name": "30.1 GET /ingresos · paginación por defecto (RNG-10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-024 · listado disponible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const r = pm.response.json();",
+                  "",
+                  "pm.test('RNG-10 · 20 registros por página por defecto', function () {",
+                  "    pm.expect(r.data.meta.por_pagina).to.eql(20);",
+                  "});",
+                  "",
+                  "pm.test('RNG-10 · ordenado por fecha, del más reciente al más antiguo', function () {",
+                  "    const fechas = r.data.ingresos.map(i => i.fecha_recepcion);",
+                  "    const ordenadas = [...fechas].sort().reverse();",
+                  "    pm.expect(fechas).to.eql(ordenadas);",
+                  "});",
+                  "",
+                  "pm.test('RN-024.3 · se informan los totales del conjunto filtrado', function () {",
+                  "    pm.expect(r.data.totales).to.have.property('bruto');",
+                  "    pm.expect(r.data.totales).to.have.property('retencion');",
+                  "    pm.expect(r.data.totales).to.have.property('neto');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ingresos", "host": ["{{base_url}}"], "path": ["ingresos"] }
+          }
+        },
+        {
+          "name": "30.2 GET /ingresos · filtro por mes y fuente (CA-024.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-024.1 · solo registros del filtro', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const r = pm.response.json();",
+                  "const fuenteId = pm.collectionVariables.get('fuente_id');",
+                  "",
+                  "pm.test('CA-024.1 · todos los registros caen en enero 2026 y en la fuente filtrada', function () {",
+                  "    r.data.ingresos.forEach(function (i) {",
+                  "        // fecha_recepcion llega como ISO completo ('2026-01-15T05:00:00.000000Z').",
+                  "        // chai .within exige número o Date, así que se compara el prefijo:",
+                  "        // en formato ISO el orden lexicográfico coincide con el cronológico.",
+                  "        const fecha = i.fecha_recepcion.slice(0, 10);",
+                  "        pm.expect(fecha >= '2026-01-01' && fecha <= '2026-01-31', `fecha fuera de enero 2026: ${fecha}`).to.be.true;",
+                  "        pm.expect(i.fuente_id).to.eql(fuenteId);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RN-024.3 · los totales corresponden al conjunto filtrado', function () {",
+                  "    const sumaPagina = r.data.ingresos",
+                  "        .filter(i => i.estado === 'CONFIRMADO')",
+                  "        .reduce((acc, i) => acc + Number(i.monto_bruto_cop), 0);",
+                  "    pm.expect(Number(r.data.totales.bruto)).to.eql(sumaPagina);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos?fecha_desde=2026-01-01&fecha_hasta=2026-01-31&fuente_id={{fuente_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos"],
+              "query": [
+                { "key": "fecha_desde", "value": "2026-01-01" },
+                { "key": "fecha_hasta", "value": "2026-01-31" },
+                { "key": "fuente_id", "value": "{{fuente_id}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.3 GET /ingresos · sin resultados (CA-024.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-024.2 · el filtro no devuelve registros', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const r = pm.response.json();",
+                  "    pm.expect(r.data.ingresos).to.be.an('array').that.is.empty;",
+                  "    pm.expect(r.data.meta.total).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('CA-024.2 · los totales quedan en cero, no nulos', function () {",
+                  "    pm.expect(Number(pm.response.json().data.totales.bruto)).to.eql(0);",
+                  "    pm.expect(Number(pm.response.json().data.totales.neto)).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos?fecha_desde=2019-01-01&fecha_hasta=2019-01-31",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos"],
+              "query": [
+                { "key": "fecha_desde", "value": "2019-01-01" },
+                { "key": "fecha_hasta", "value": "2019-01-31" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.4 GET /ingresos · filtros combinados (RN-024.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-024.1 · filtros combinables', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RN-024.1 · se respetan moneda, origen y rango de montos', function () {",
+                  "    pm.response.json().data.ingresos.forEach(function (i) {",
+                  "        pm.expect(i.moneda.trim()).to.eql('COP');",
+                  "        pm.expect(i.origen).to.eql('MANUAL');",
+                  "        pm.expect(Number(i.monto_bruto_cop)).to.be.at.least(1000000);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RNG-10 · tamaño de página configurable', function () {",
+                  "    pm.expect(pm.response.json().data.meta.por_pagina).to.eql(50);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos?moneda=COP&origen=MANUAL&monto_min=1000000&por_pagina=50",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos"],
+              "query": [
+                { "key": "moneda", "value": "COP" },
+                { "key": "origen", "value": "MANUAL" },
+                { "key": "monto_min", "value": "1000000" },
+                { "key": "por_pagina", "value": "50" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · RF-023 Edición y eliminación",
+      "item": [
+        {
+          "name": "40.1 GET /ingresos/{id}/editar · consultar uno",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-023 · devuelve el ingreso', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('ingreso_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_id}}/editar",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_id}}", "editar"]
+            }
+          }
+        },
+        {
+          "name": "40.2 PUT /ingresos/{id} · editar (RN-023.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-023.1 · ingreso actualizado con las mismas validaciones', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RN-021.2 · el neto se recalcula solo', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(Number(d.monto_bruto_cop)).to.eql(6000000);",
+                  "    pm.expect(Number(d.monto_neto_cop)).to.eql(5450000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"fecha_recepcion\": \"2026-04-30\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"6000000.00\",\n  \"retencion_fuente\": \"150000.00\",\n  \"aportes_descontados\": \"400000.00\",\n  \"descripcion\": \"Corregido - verificación RN-023.1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_id}}"]
+            }
+          }
+        },
+        {
+          "name": "40.3 DELETE /ingresos/{id} · eliminación lógica (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-023.2 · ingreso eliminado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_id}}"]
+            }
+          }
+        },
+        {
+          "name": "40.4 GET /ingresos/{id}/editar · tras eliminar (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el registro eliminado deja de aparecer en consultas', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_id}}/editar",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_id}}", "editar"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · RF-022 Ingresos recurrentes",
+      "item": [
+        {
+          "name": "50.1 POST /ingresos/recurrentes · mensual desde el día 30 (RN-022.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-022 · recurrencia creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-022.2 · la primera ocurrencia se programa en la fecha de inicio', function () {",
+                  "    pm.expect(d.proxima_ejecucion).to.include('2026-01-30');",
+                  "    pm.expect(d.ocurrencias_generadas).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('RN-022.3 · queda en modo requiere confirmación', function () {",
+                  "    pm.expect(d.modo_confirmacion).to.eql('REQUIERE_CONFIRMACION');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('plantilla_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "description": "CA-022.1 se comprueba al ejecutar `php artisan scfp:generar-recurrencias`: con inicio el 30/01/2026 y periodicidad mensual, la ocurrencia de febrero debe caer el 28/02/2026.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-30\",\n  \"max_ocurrencias\": 6,\n  \"modo_confirmacion\": \"REQUIERE_CONFIRMACION\",\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"5000000.00\",\n  \"retencion_fuente\": \"150000.00\",\n  \"aportes_descontados\": \"400000.00\",\n  \"descripcion\": \"Salario mensual - verificación CA-022.1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingresos/recurrentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "recurrentes"]
+            }
+          }
+        },
+        {
+          "name": "50.2 POST /ingresos/recurrentes · tope ambiguo (RN-022.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-022.1 · el tope es fecha de fin o número de ocurrencias, no ambos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('max_ocurrencias');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-30\",\n  \"fecha_fin\": \"2026-12-31\",\n  \"max_ocurrencias\": 6,\n  \"modo_confirmacion\": \"AUTOMATICO\",\n  \"fuente_id\": \"{{fuente_id}}\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1000000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingresos/recurrentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "recurrentes"]
+            }
+          }
+        },
+        {
+          "name": "50.3 GET /ingresos/recurrentes · listado y pendientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-022 · listado de recurrencias', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.plantillas).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('RN-022.3 · se exponen las ocurrencias pendientes de confirmar', function () {",
+                  "    pm.expect(pm.response.json().data).to.have.property('pendientes');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/ingresos/recurrentes",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "recurrentes"]
+            }
+          }
+        },
+        {
+          "name": "50.4 PATCH /ingresos/recurrentes/{id}/toggle · pausar (CA-022.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-022.2 · la recurrencia queda pausada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.activa).to.eql(false);",
+                  "});",
+                  "",
+                  "pm.test('CA-022.2 · el mensaje avisa que no se generarán más ocurrencias', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('No se generarán más ocurrencias');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/recurrentes/{{plantilla_id}}/toggle",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "recurrentes", "{{plantilla_id}}", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "50.5 DELETE /ingresos/recurrentes/{id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-022 · recurrencia eliminada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().mensaje).to.include('se conservan como ingresos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/recurrentes/{{plantilla_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "recurrentes", "{{plantilla_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · RNG-01 Aislamiento de datos",
+      "item": [
+        {
+          "name": "60.1 GET /ingresos/{ajeno}/editar · recurso de otro usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · responde \"recurso no encontrado\" (404), no 403', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('RNG-01 · no se filtra información del registro ajeno', function () {",
+                  "    pm.expect(pm.response.text()).to.not.include('9999999');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "description": "Un 403 confirmaría que el recurso existe y es de alguien más. RNG-01 exige 404 y dejar el intento registrado en la bitácora (RF-019).",
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_ajeno_id}}/editar",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_ajeno_id}}", "editar"]
+            }
+          }
+        },
+        {
+          "name": "60.2 DELETE /ingresos/{ajeno} · recurso de otro usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · no se puede eliminar un registro ajeno', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-CSRF-TOKEN", "value": "{{csrf}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_ajeno_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos", "{{ingreso_ajeno_id}}"]
+            }
+          }
+        },
+        {
+          "name": "60.3 GET /ingresos · el listado no incluye registros ajenos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · el listado solo trae registros propios', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const ajeno = pm.collectionVariables.get('ingreso_ajeno_id');",
+                  "    const ids = pm.response.json().data.ingresos.map(i => i.id);",
+                  "    pm.expect(ids).to.not.include(ajeno);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "description": "El global scope DelUsuarioAutenticado filtra también los listados, que es donde un middleware por ruta no alcanzaría.",
+            "url": {
+              "raw": "{{base_url}}/ingresos?por_pagina=100",
+              "host": ["{{base_url}}"],
+              "path": ["ingresos"],
+              "query": [{ "key": "por_pagina", "value": "100" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
