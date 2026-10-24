@@ -1,0 +1,3806 @@
+{
+  "info": {
+    "name": "SCFP · MOD-04 Gestión de gastos",
+    "description": "Peticiones de verificación del MOD-04 (RF-025 a RF-029).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan db:seed --class=\"Database\\Seeders\\Test\\Mod04DemoSeeder\"`\n2. `php artisan serve` (o Herd) y ajustar la variable `base_url`.\n3. Ejecutar la colección completa con el Collection Runner, en orden: las peticiones encadenan ids mediante variables.\n\n## Autenticación\n\nEl SCFP usa sesión y CSRF (grupo `web`), no tokens de API. La carpeta `00 · Autenticación` inicia sesión con el formulario real y guarda el token CSRF en la variable `csrf`. Laravel regenera la sesión al autenticar (RN-003.3), por eso el token se vuelve a leer del `<meta name=\"csrf-token\">` del dashboard.\n\nLas credenciales se llaman `correo_mod04` y `password_mod04` a propósito: el entorno compartido `SCFP · Local` fija `correo` para la cuenta de MOD-03, y una variable de entorno tapa a la de la colección.\n\nLas peticiones de MOD-04 envían `Accept: application/json`, con lo que los controladores responden JSON en lugar de vista Blade.\n\n## Forma de las respuestas\n\nUna respuesta correcta trae `mensaje` y, si hay algo que devolver, `data`. El código de estado va en el HTTP, no en el cuerpo:\n\n```json\n{ \"mensaje\": \"Gasto registrado exitosamente.\", \"data\": { \"id\": \"…\" } }\n```\n\nEn los listados `data` agrupa la colección y sus metadatos: `data.gastos`, `data.meta`, `data.totales`, `data.pendientes` en `GET /gastos`; `data.categorias`, `data.paleta`, `data.iconos`, `data.limites` en `GET /gastos/categorias`; `data.plantillas`, `data.pendientes`, `data.recordatorios` en `GET /gastos/recurrentes`.\n\nLos **errores** conservan la forma de Laravel, `message` y `errors`, porque los arma el manejador de excepciones del framework y no los controladores. Por eso las peticiones que esperan 422 leen `errors.<campo>[0]` y no `data`.\n\n## Lo que no se puede comprobar por HTTP\n\n**CA-028.1**, que la suscripción mensual del día 5 genere efectivamente un gasto cada mes, lo hace el comando programado, no una ruta. La colección verifica que la plantilla quede anclada al día 5 con la clasificación configurada; la generación se verifica por consola:\n\n```bash\nphp artisan scfp:generar-recurrencias\n```\n\no con las pruebas automatizadas (`composer test:dominio`), que llaman al servicio con una fecha de corte fija.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 · Autenticación",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige al dashboard del Usuario', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod04}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod04}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-027 Categorías y subcategorías",
+      "item": [
+        {
+          "name": "10.1 GET /gastos/categorias · catálogo y resolución de ids",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-027 · catálogo consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const buscar = (nombre) => d.categorias.find((c) => c.nombre === nombre);",
+                  "const hija = (cat, nombre) => cat.subcategorias.find((s) => s.nombre === nombre);",
+                  "",
+                  "pm.test('RF-027 · incluye las predeterminadas (RF-015) y las propias', function () {",
+                  "    pm.expect(buscar('Vivienda'), 'falta la categoría predeterminada Vivienda').to.exist;",
+                  "    pm.expect(buscar('Hobbies'), 'falta la categoría propia del seeder').to.exist;",
+                  "});",
+                  "",
+                  "pm.test('RN-026.1 · la jerarquía es de dos niveles', function () {",
+                  "    pm.expect(buscar('Vivienda').categoria_padre_id).to.be.null;",
+                  "    pm.expect(hija(buscar('Vivienda'), 'Arriendo').categoria_padre_id).to.eql(buscar('Vivienda').id);",
+                  "});",
+                  "",
+                  "pm.test('RN-027.1 · informa los topes de 50 y 30', function () {",
+                  "    pm.expect(d.limites.categorias).to.eql(50);",
+                  "    pm.expect(d.limites.subcategorias_por_categoria).to.eql(30);",
+                  "});",
+                  "",
+                  "pm.test('RN-027.4 · hay paleta e íconos definidos', function () {",
+                  "    pm.expect(d.paleta).to.be.an('array').that.is.not.empty;",
+                  "    pm.expect(d.iconos).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "const vivienda = buscar('Vivienda');",
+                  "const alimentacion = buscar('Alimentación');",
+                  "const entretenimiento = buscar('Entretenimiento');",
+                  "const servicios = buscar('Servicios públicos');",
+                  "pm.collectionVariables.set('cat_vivienda_id', vivienda.id);",
+                  "pm.collectionVariables.set('sub_arriendo_id', hija(vivienda, 'Arriendo').id);",
+                  "pm.collectionVariables.set('cat_alimentacion_id', alimentacion.id);",
+                  "pm.collectionVariables.set('sub_restaurantes_id', hija(alimentacion, 'Restaurantes y domicilios').id);",
+                  "pm.collectionVariables.set('sub_mercado_id', hija(alimentacion, 'Mercado y supermercado').id);",
+                  "pm.collectionVariables.set('cat_entretenimiento_id', entretenimiento.id);",
+                  "pm.collectionVariables.set('sub_streaming_id', hija(entretenimiento, 'Suscripciones streaming').id);",
+                  "pm.collectionVariables.set('cat_servicios_id', servicios.id);",
+                  "pm.collectionVariables.set('sub_energia_id', hija(servicios, 'Energía eléctrica y gas').id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.2 POST /gastos/categorias · crear categoría propia (RN-027.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-027 · categoría propia creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RF-027 · nace activa, propia y de tipo GASTO', function () {",
+                  "    pm.expect(d.tipo).to.eql('GASTO');",
+                  "    pm.expect(d.es_predeterminada).to.be.false;",
+                  "    pm.expect(d.activa).to.be.true;",
+                  "    pm.expect(d.categoria_padre_id).to.be.null;",
+                  "});",
+                  "",
+                  "pm.test('RN-027.4 · guarda el ícono y el color de la paleta', function () {",
+                  "    pm.expect(d.icono).to.eql('utensils');",
+                  "    pm.expect(d.color_hex).to.eql('#38A169');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('cat_propia_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Antojos\",\n  \"icono\": \"utensils\",\n  \"color_hex\": \"#38A169\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.3 POST /gastos/categorias · nombre duplicado (RN-027.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.1 · los nombres son únicos en el mismo nivel', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('RN-027.1 · la unicidad ignora mayúsculas', function () {",
+                  "    pm.expect(pm.response.json().errors.nombre[0]).to.include('Ya existe');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"ANTOJOS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.4 POST /gastos/categorias · color fuera de la paleta (RN-027.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.4 · el color debe pertenecer a la paleta definida', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('color_hex');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Paleta inválida\",\n  \"color_hex\": \"#123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.5 POST /gastos/categorias · crear subcategoría (RN-026.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-027 · subcategoría creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-026.1 · queda dentro de la categoría indicada', function () {",
+                  "    pm.expect(d.categoria_padre_id).to.eql(pm.collectionVariables.get('cat_propia_id'));",
+                  "});",
+                  "",
+                  "pm.test('RN-026.2 · lleva los valores sugeridos que precargará el formulario', function () {",
+                  "    pm.expect(d.naturaleza_sugerida).to.eql('VARIABLE');",
+                  "    pm.expect(d.necesidad_sugerida).to.eql('DISCRECIONAL');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('sub_propia_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Postres\",\n  \"categoria_padre_id\": \"{{cat_propia_id}}\",\n  \"naturaleza_sugerida\": \"VARIABLE\",\n  \"necesidad_sugerida\": \"DISCRECIONAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.6 POST /gastos/categorias · subcategoría sin sugerencias (RN-026.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.2 · toda subcategoría necesita sus valores sugeridos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('naturaleza_sugerida');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Sin sugerencias\",\n  \"categoria_padre_id\": \"{{cat_propia_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.7 PUT /gastos/categorias/{id} · renombrar (RN-027.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.3 · renombrar actualiza el nombre en todos los registros', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.nombre).to.eql('Postres y dulces');",
+                  "});",
+                  "",
+                  "pm.test('RN-027.3 · el mensaje advierte que cubre los históricos', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('históricos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{sub_propia_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{sub_propia_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Postres y dulces\",\n  \"naturaleza_sugerida\": \"VARIABLE\",\n  \"necesidad_sugerida\": \"DISCRECIONAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.8 PATCH /gastos/categorias/{id}/toggle · inactivar (RN-027.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.2 · la categoría se puede inactivar', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.activa).to.be.false;",
+                  "});",
+                  "",
+                  "pm.test('RN-027.2 · avisa que no aparecerá en gastos nuevos', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('No aparecerá');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{cat_propia_id}}/toggle",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{cat_propia_id}}",
+                "toggle"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.9 PUT /gastos/categorias/{predeterminada} · rechazado (RF-015)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-015 · las predeterminadas las administra el Administrador', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('categoria');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{cat_vivienda_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{cat_vivienda_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Casa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.10 DELETE /gastos/categorias/{con gastos} · rechazado (RN-027.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.2 · una categoría con gastos asociados no se puede borrar', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('RN-027.2 · ofrece inactivar o fusionar', function () {",
+                  "    const msg = pm.response.json().errors.categoria[0];",
+                  "    pm.expect(msg).to.include('inactivarla');",
+                  "    pm.expect(msg).to.include('fusionarla');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{cafe_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{cafe_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.11 DELETE /gastos/categorias/{id} · subcategoría sin gastos (RN-027.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.2 · una subcategoría sin gastos sí se borra', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{sub_propia_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{sub_propia_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.12 DELETE /gastos/categorias/{id} · categoría sin gastos (RN-027.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.2 · la categoría propia sin gastos se borra', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{cat_propia_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{cat_propia_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-025 Registro de gasto",
+      "item": [
+        {
+          "name": "20.1 POST /gastos · registro válido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-025 · gasto registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-025.1 · guarda monto, fecha, clasificación y medio de pago', function () {",
+                  "    pm.expect(Number(d.monto_cop)).to.eql(1800000);",
+                  "    pm.expect(d.fecha).to.include('2026-03-05');",
+                  "    pm.expect(d.medio_pago).to.eql('TRANSFERENCIA');",
+                  "    pm.expect(d.comercio_beneficiario).to.eql('Inmobiliaria Centro');",
+                  "});",
+                  "",
+                  "pm.test('RN-025.1 · nace MANUAL y CONFIRMADO', function () {",
+                  "    pm.expect(d.origen).to.eql('MANUAL');",
+                  "    pm.expect(d.estado).to.eql('CONFIRMADO');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('gasto_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1800000.00\",\n  \"medio_pago\": \"TRANSFERENCIA\",\n  \"comercio_beneficiario\": \"Inmobiliaria Centro\",\n  \"descripcion\": \"Verificación RF-025\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.2 POST /gastos · monto cero (CA-025.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-025.1 · un gasto con monto 0 se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.monto_original[0]).to.include('mayor que cero');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"0.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.3 POST /gastos · monto negativo (CA-025.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-025.1 · un gasto con monto negativo se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('monto_original');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"-500.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.4 POST /gastos · fecha futura (RN-025.1)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const d = new Date();",
+                  "d.setDate(d.getDate() + 1);",
+                  "pm.collectionVariables.set('fecha_manana', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.1 · la fecha no puede ser posterior a la actual', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('RN-025.1 · sugiere crear un gasto recurrente (RF-028)', function () {",
+                  "    pm.expect(pm.response.json().errors.fecha[0]).to.include('recurrente');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"{{fecha_manana}}\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"100000.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.5 POST /gastos · divisa con tasa (RN-025.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.1 · gasto en divisa registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-025.1 · guarda monto original, tasa y monto convertido a COP', function () {",
+                  "    pm.expect(d.moneda.trim()).to.eql('USD');",
+                  "    pm.expect(Number(d.monto_original)).to.eql(120);",
+                  "    pm.expect(Number(d.tasa_cambio_usada)).to.eql(3950.5);",
+                  "    pm.expect(Number(d.monto_cop)).to.eql(474060);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_restaurantes_id}}\",\n  \"fecha\": \"2026-03-06\",\n  \"moneda\": \"USD\",\n  \"monto_original\": \"120.00\",\n  \"tasa_cambio_usada\": \"3950.5000\",\n  \"medio_pago\": \"TARJETA_DEBITO\",\n  \"descripcion\": \"Verificación de conversión a COP\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.6 POST /gastos · divisa sin tasa (RN-025.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.1 · sin tasa no se puede convertir a COP', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('tasa_cambio_usada');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_restaurantes_id}}\",\n  \"fecha\": \"2026-03-06\",\n  \"moneda\": \"EUR\",\n  \"monto_original\": \"50.00\",\n  \"medio_pago\": \"TARJETA_DEBITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.7 POST /gastos · comercio de 81 caracteres (RN-025.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.1 · el comercio admite máximo 80 caracteres', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.comercio_beneficiario[0]).to.include('80');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"100000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"comercio_beneficiario\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · RF-026 Clasificación multidimensional",
+      "item": [
+        {
+          "name": "30.1 GET /gastos/crear · sugerencias precargadas (CA-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-026 · catálogo de clasificación consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const vivienda = d.categorias.find((c) => c.nombre === 'Vivienda');",
+                  "const arriendo = vivienda.subcategorias.find((s) => s.nombre === 'Arriendo');",
+                  "",
+                  "pm.test('CA-026.1 · al elegir «Arriendo» se precargan Fijo y Esencial', function () {",
+                  "    pm.expect(arriendo.naturaleza_sugerida).to.eql('FIJO');",
+                  "    pm.expect(arriendo.necesidad_sugerida).to.eql('ESENCIAL');",
+                  "});",
+                  "",
+                  "pm.test('RN-026.1 · las seis dimensiones traen sus valores admitidos', function () {",
+                  "    pm.expect(d.dimensiones.naturalezas).to.eql(['FIJO', 'VARIABLE']);",
+                  "    pm.expect(d.dimensiones.necesidades).to.eql(['ESENCIAL', 'DISCRECIONAL']);",
+                  "    pm.expect(d.dimensiones.medios_pago).to.have.lengthOf(6);",
+                  "    pm.expect(d.dimensiones.relevancias).to.have.lengthOf(2);",
+                  "    pm.expect(d.dimensiones.subtipos_deduccion).to.have.lengthOf(6);",
+                  "    pm.expect(d.dimensiones.max_etiquetas).to.eql(10);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/crear",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "crear"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.2 POST /gastos · hereda las sugerencias (CA-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-026 · gasto clasificado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('CA-026.1 · sin enviarlas, toma Fijo y Esencial de «Arriendo»', function () {",
+                  "    pm.expect(d.naturaleza).to.eql('FIJO');",
+                  "    pm.expect(d.necesidad).to.eql('ESENCIAL');",
+                  "});",
+                  "",
+                  "pm.test('RN-026.1 · la relevancia tributaria por defecto es No deducible', function () {",
+                  "    pm.expect(d.relevancia_tributaria).to.eql('NO_DEDUCIBLE');",
+                  "    pm.expect(d.subtipo_deduccion).to.be.null;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('gasto_clasificado_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-07\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"250000.00\",\n  \"medio_pago\": \"TRANSFERENCIA\",\n  \"descripcion\": \"Verificación CA-026.1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.3 POST /gastos · sobrescribe las sugerencias (RN-026.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.2 · el usuario puede cambiar la sugerencia en cada gasto', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.naturaleza).to.eql('VARIABLE');",
+                  "    pm.expect(d.necesidad).to.eql('DISCRECIONAL');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-08\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"naturaleza\": \"VARIABLE\",\n  \"necesidad\": \"DISCRECIONAL\",\n  \"descripcion\": \"Verificación RN-026.2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.4 POST /gastos · subcategoría de otra categoría (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · la jerarquía de dos niveles tiene que ser coherente', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('subcategoria_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-08\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.5 POST /gastos · potencialmente deducible sin subtipo (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · un gasto potencialmente deducible necesita subtipo', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('subtipo_deduccion');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-08\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"relevancia_tributaria\": \"POTENCIALMENTE_DEDUCIBLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.6 POST /gastos · potencialmente deducible con subtipo (RN-026.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · guarda la relevancia y su subtipo', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.relevancia_tributaria).to.eql('POTENCIALMENTE_DEDUCIBLE');",
+                  "    pm.expect(d.subtipo_deduccion).to.eql('GMF');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-09\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"12000.00\",\n  \"medio_pago\": \"OTRO\",\n  \"relevancia_tributaria\": \"POTENCIALMENTE_DEDUCIBLE\",\n  \"subtipo_deduccion\": \"GMF\",\n  \"descripcion\": \"Verificación RN-026.3\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.7 POST /gastos · etiqueta de 31 caracteres (CA-026.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-026.3 · una etiqueta de más de 30 caracteres se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-026.3 · el mensaje indica el límite', function () {",
+                  "    pm.expect(pm.response.json().errors.etiquetas[0]).to.include('30');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-09\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"etiquetas\": [\n    \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.8 POST /gastos · undécima etiqueta (CA-026.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-026.3 · una undécima etiqueta se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('CA-026.3 · el mensaje indica el límite de 10', function () {",
+                  "    pm.expect(pm.response.json().errors.etiquetas[0]).to.include('10');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-09\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"etiquetas\": [\n    \"etiqueta-1\",\n    \"etiqueta-2\",\n    \"etiqueta-3\",\n    \"etiqueta-4\",\n    \"etiqueta-5\",\n    \"etiqueta-6\",\n    \"etiqueta-7\",\n    \"etiqueta-8\",\n    \"etiqueta-9\",\n    \"etiqueta-10\",\n    \"etiqueta-11\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.9 POST /gastos · etiquetas normalizadas (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · gasto con etiquetas registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('RN-026.1 · se normalizan a minúsculas y sin repetidas, para reutilizarlas', function () {",
+                  "    pm.expect(pm.response.json().data.etiquetas).to.eql(['viaje-cartagena', 'hotel']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-10\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"60000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"etiquetas\": [\n    \"Viaje-Cartagena\",\n    \"  viaje-cartagena  \",\n    \"HOTEL\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.10 GET /gastos/etiquetas · reutilizables (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · las etiquetas ya usadas se pueden reutilizar', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const etiquetas = pm.response.json().data;",
+                  "    pm.expect(etiquetas).to.include('viaje-cartagena');",
+                  "    pm.expect(etiquetas).to.include('hotel');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/etiquetas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "etiquetas"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.11 GET /gastos · filtro por etiqueta (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · el listado se filtra por etiqueta', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(Number(d.totales.cantidad)).to.be.above(0);",
+                  "    d.gastos.forEach((g) => pm.expect(g.etiquetas).to.include('viaje-cartagena'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?etiqueta=viaje-cartagena",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "etiqueta",
+                  "value": "viaje-cartagena"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.12 GET /gastos · filtros cruzados (CA-026.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-026.2 · se combinan varias dimensiones a la vez', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('CA-026.2 · todos los resultados cumplen las cuatro dimensiones', function () {",
+                  "    d.gastos.forEach((g) => {",
+                  "        pm.expect(g.naturaleza).to.eql('VARIABLE');",
+                  "        pm.expect(g.necesidad).to.eql('DISCRECIONAL');",
+                  "        pm.expect(g.medio_pago).to.eql('TARJETA_CREDITO');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('CA-026.2 · los totales corresponden exactamente al filtro', function () {",
+                  "    const suma = d.gastos.reduce((acc, g) => acc + Number(g.monto_cop), 0);",
+                  "    pm.expect(Number(d.totales.monto)).to.eql(suma);",
+                  "    pm.expect(Number(d.totales.cantidad)).to.eql(d.gastos.length);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?naturaleza=VARIABLE&necesidad=DISCRECIONAL&medio_pago=TARJETA_CREDITO&fecha_desde=2026-01-01&fecha_hasta=2026-12-31",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "naturaleza",
+                  "value": "VARIABLE"
+                },
+                {
+                  "key": "necesidad",
+                  "value": "DISCRECIONAL"
+                },
+                {
+                  "key": "medio_pago",
+                  "value": "TARJETA_CREDITO"
+                },
+                {
+                  "key": "fecha_desde",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "fecha_hasta",
+                  "value": "2026-12-31"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · RN-025.2 Indicadores anuales",
+      "item": [
+        {
+          "name": "40.1 GET /gastos/indicadores · línea base",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.2 · indicadores consultados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-025.2 · expone los dos acumulados del año', function () {",
+                  "    pm.expect(d).to.have.property('consumos_tarjeta_credito');",
+                  "    pm.expect(d).to.have.property('compras_y_consumos_totales');",
+                  "    pm.expect(d.anio).to.eql(2026);",
+                  "});",
+                  "",
+                  "pm.test('RNG-08 · la respuesta trae el aviso legal de cálculos', function () {",
+                  "    pm.expect(pm.response.json().aviso).to.include('No constituyen asesoría');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('ind_tarjeta', d.consumos_tarjeta_credito);",
+                  "pm.collectionVariables.set('ind_compras', d.compras_y_consumos_totales);",
+                  "pm.collectionVariables.set('ind_deducible', d.potencialmente_deducible);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/indicadores?anio=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "indicadores"
+              ],
+              "query": [
+                {
+                  "key": "anio",
+                  "value": "2026"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.2 POST /gastos · consumo con tarjeta de $ 200.000 (CA-025.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.2 · gasto con tarjeta de crédito registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.medio_pago).to.eql('TARJETA_CREDITO');",
+                  "    pm.expect(Number(d.monto_cop)).to.eql(200000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_restaurantes_id}}\",\n  \"fecha\": \"2026-03-11\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"200000.00\",\n  \"medio_pago\": \"TARJETA_CREDITO\",\n  \"descripcion\": \"Verificación CA-025.2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.3 GET /gastos/indicadores · los dos acumulados suben (CA-025.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-025.2 · indicadores consultados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const antesTarjeta = Number(pm.collectionVariables.get('ind_tarjeta'));",
+                  "const antesCompras = Number(pm.collectionVariables.get('ind_compras'));",
+                  "",
+                  "pm.test('CA-025.2 · el acumulado de consumos con tarjeta sube $ 200.000', function () {",
+                  "    pm.expect(Number(d.consumos_tarjeta_credito) - antesTarjeta).to.eql(200000);",
+                  "});",
+                  "",
+                  "pm.test('CA-025.2 · el de compras y consumos también sube $ 200.000', function () {",
+                  "    pm.expect(Number(d.compras_y_consumos_totales) - antesCompras).to.eql(200000);",
+                  "});",
+                  "",
+                  "pm.test('RN-026.3 · el acumulado de potencialmente deducibles no se altera', function () {",
+                  "    pm.expect(Number(d.potencialmente_deducible))",
+                  "        .to.eql(Number(pm.collectionVariables.get('ind_deducible')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/indicadores?anio=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "indicadores"
+              ],
+              "query": [
+                {
+                  "key": "anio",
+                  "value": "2026"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · RF-029 Consulta y filtrado",
+      "item": [
+        {
+          "name": "50.1 GET /gastos · paginación por defecto (RNG-10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-029 · listado consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RNG-10 · 20 registros por página', function () {",
+                  "    pm.expect(d.meta.por_pagina).to.eql(20);",
+                  "    pm.expect(d.meta.pagina_actual).to.eql(1);",
+                  "});",
+                  "",
+                  "pm.test('RNG-10 · ordenado por fecha, del más reciente al más antiguo', function () {",
+                  "    const fechas = d.gastos.map((g) => g.fecha.slice(0, 10));",
+                  "    const ordenadas = [...fechas].sort().reverse();",
+                  "    pm.expect(fechas).to.eql(ordenadas);",
+                  "});",
+                  "",
+                  "pm.test('RN-029.1 · cada fila trae sus seis dimensiones', function () {",
+                  "    const g = d.gastos[0];",
+                  "    ['categoria', 'subcategoria', 'naturaleza', 'necesidad', 'medio_pago',",
+                  "     'relevancia_tributaria', 'etiquetas'].forEach((campo) => {",
+                  "        pm.expect(g, `falta ${campo}`).to.have.property(campo);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.2 GET /gastos · tamaño de página inválido (RNG-10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-10 · un tamaño fuera de 10/20/50/100 cae en 20', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.meta.por_pagina).to.eql(20);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?por_pagina=37",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "por_pagina",
+                  "value": "37"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.3 GET /gastos · filtro por mes y categoría (RN-029.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.1 · filtro por rango de fechas y categoría', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-029.1 · solo aparecen gastos de enero de la categoría', function () {",
+                  "    d.gastos.forEach((g) => {",
+                  "        pm.expect(g.fecha.slice(0, 7)).to.eql('2026-01');",
+                  "        pm.expect(g.categoria_id).to.eql(pm.collectionVariables.get('cat_vivienda_id'));",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('CA-029.1 · los totales corresponden al filtro', function () {",
+                  "    const suma = d.gastos.reduce((acc, g) => acc + Number(g.monto_cop), 0);",
+                  "    pm.expect(Number(d.totales.monto)).to.eql(suma);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?fecha_desde=2026-01-01&fecha_hasta=2026-01-31&categoria_id={{cat_vivienda_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "fecha_desde",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "fecha_hasta",
+                  "value": "2026-01-31"
+                },
+                {
+                  "key": "categoria_id",
+                  "value": "{{cat_vivienda_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.4 GET /gastos · texto libre en descripción o comercio (RN-029.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.1 · búsqueda por texto libre', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-029.1 · el texto se busca en descripción y en comercio, sin distinguir mayúsculas', function () {",
+                  "    pm.expect(Number(d.totales.cantidad)).to.be.above(0);",
+                  "    d.gastos.forEach((g) => {",
+                  "        const texto = `${g.descripcion || ''} ${g.comercio_beneficiario || ''}`.toLowerCase();",
+                  "        pm.expect(texto).to.include('inmobiliaria');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?texto=INMOBILIARIA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "texto",
+                  "value": "INMOBILIARIA"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.5 GET /gastos · totales del conjunto filtrado completo (CA-029.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-029 · listado paginado consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RNG-10 · la página trae 10 registros', function () {",
+                  "    pm.expect(d.meta.por_pagina).to.eql(10);",
+                  "    pm.expect(d.gastos).to.have.lengthOf(10);",
+                  "});",
+                  "",
+                  "pm.test('CA-029.1 · los totales cubren el conjunto filtrado, no la página', function () {",
+                  "    pm.expect(Number(d.totales.cantidad)).to.be.above(d.gastos.length);",
+                  "    pm.expect(Number(d.totales.cantidad)).to.eql(d.meta.total - Number(d.pendientes.cantidad));",
+                  "});",
+                  "",
+                  "pm.test('RN-029.1 · el total desglosa tarjeta de crédito y deducibles', function () {",
+                  "    pm.expect(Number(d.totales.tarjeta_credito)).to.be.at.least(0);",
+                  "    pm.expect(Number(d.totales.potencialmente_deducible)).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?fecha_desde=2026-01-01&fecha_hasta=2026-12-31&por_pagina=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "fecha_desde",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "fecha_hasta",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "por_pagina",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.6 GET /gastos · sin resultados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-029 · consulta sin resultados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('El listado vuelve vacío y los totales en cero', function () {",
+                  "    pm.expect(d.gastos).to.be.an('array').that.is.empty;",
+                  "    pm.expect(Number(d.totales.cantidad)).to.eql(0);",
+                  "    pm.expect(Number(d.totales.monto)).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?fecha_desde=2019-01-01&fecha_hasta=2019-12-31",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "fecha_desde",
+                  "value": "2019-01-01"
+                },
+                {
+                  "key": "fecha_hasta",
+                  "value": "2019-12-31"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · RF-029 Edición, eliminación y edición masiva",
+      "item": [
+        {
+          "name": "60.1 GET /gastos/{id}/editar · consultar uno",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-029 · gasto consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RN-027.3 · la categoría se resuelve por llave, no por texto', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.categoria).to.have.property('nombre');",
+                  "    pm.expect(d.subcategoria).to.have.property('nombre');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_id}}/editar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_id}}",
+                "editar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.2 PUT /gastos/{id} · editar (RN-029.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.1 · se pueden editar todos los campos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(Number(d.monto_cop)).to.eql(1950000);",
+                  "    pm.expect(d.medio_pago).to.eql('TARJETA_CREDITO');",
+                  "    pm.expect(d.descripcion).to.eql('Arriendo corregido');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1950000.00\",\n  \"medio_pago\": \"TARJETA_CREDITO\",\n  \"comercio_beneficiario\": \"Inmobiliaria Centro\",\n  \"descripcion\": \"Arriendo corregido\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.3 PUT /gastos/{id} · revalida el monto (RN-029.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.1 · la edición repite las validaciones de RF-025', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('monto_original');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"0.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.4 PATCH /gastos/edicion-masiva · hasta 100 gastos (RN-029.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.3 · edición masiva aplicada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-029.3 · se modificaron los dos gastos seleccionados', function () {",
+                  "    pm.expect(d.modificados).to.eql(2);",
+                  "    pm.expect(d.solicitados).to.eql(2);",
+                  "});",
+                  "",
+                  "pm.test('RN-029.3 · cambia naturaleza, necesidad y etiquetas en una sola operación', function () {",
+                  "    pm.expect(d.cambios.naturaleza).to.eql('VARIABLE');",
+                  "    pm.expect(d.cambios.necesidad).to.eql('DISCRECIONAL');",
+                  "    pm.expect(d.cambios.etiquetas).to.eql(['revisado']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/edicion-masiva",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "edicion-masiva"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{gasto_id}}\",\n    \"{{gasto_clasificado_id}}\"\n  ],\n  \"naturaleza\": \"VARIABLE\",\n  \"necesidad\": \"DISCRECIONAL\",\n  \"etiquetas\": [\n    \"Revisado\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.5 PATCH /gastos/edicion-masiva · sin cambios (RN-029.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.3 · la operación necesita al menos un cambio', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('cambios');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/edicion-masiva",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "edicion-masiva"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{gasto_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.6 PATCH /gastos/edicion-masiva · pareja incompleta (RN-026.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-026.1 · cambiar la clasificación exige categoría y subcategoría', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('subcategoria_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/edicion-masiva",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "edicion-masiva"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{gasto_id}}\"\n  ],\n  \"categoria_id\": \"{{cat_vivienda_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.7 DELETE /gastos/{id} · eliminación lógica (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el gasto se elimina', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().mensaje).to.include('eliminado');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.8 GET /gastos/{id}/editar · tras eliminar (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · deja de aparecer en consultas', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "// El registro se conserva en la tabla para auditoría hasta que se",
+                  "// suprima la cuenta (RF-010); eso se verifica en base de datos, no acá."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_id}}/editar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_id}}",
+                "editar"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "70 · RF-028 Gastos recurrentes",
+      "item": [
+        {
+          "name": "70.1 POST /gastos/recurrentes · suscripción mensual el día 5 (CA-028.1)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const hoy = new Date();",
+                  "const prox = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 5);",
+                  "pm.collectionVariables.set('fecha_dia_5', `${prox.getFullYear()}-${p(prox.getMonth() + 1)}-05`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-028 · plantilla de gasto recurrente creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('CA-028.1 · suscripción mensual de $ 39.900 anclada al día 5', function () {",
+                  "    pm.expect(d.periodicidad).to.eql('MENSUAL');",
+                  "    pm.expect(Number(d.datos_plantilla.monto_cop)).to.eql(39900);",
+                  "    pm.expect(d.proxima_ejecucion.slice(0, 10)).to.eql(pm.collectionVariables.get('fecha_dia_5'));",
+                  "});",
+                  "",
+                  "pm.test('RN-028.1 · es una plantilla de GASTO y nace activa, sin ocurrencias', function () {",
+                  "    pm.expect(d.tipo_movimiento).to.eql('GASTO');",
+                  "    pm.expect(d.ocurrencias_generadas).to.eql(0);",
+                  "    pm.expect(d.activa).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('CA-028.1 · guarda la clasificación con la que nacerá cada ocurrencia', function () {",
+                  "    pm.expect(d.datos_plantilla.medio_pago).to.eql('TARJETA_CREDITO');",
+                  "    pm.expect(d.datos_plantilla.naturaleza).to.eql('FIJO');",
+                  "    pm.expect(d.datos_plantilla.necesidad).to.eql('DISCRECIONAL');",
+                  "    pm.expect(d.datos_plantilla.etiquetas).to.eql(['suscripcion']);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('plantilla_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_entretenimiento_id}}\",\n  \"subcategoria_id\": \"{{sub_streaming_id}}\",\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"{{fecha_dia_5}}\",\n  \"modo_confirmacion\": \"AUTOMATICO\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"39900.00\",\n  \"medio_pago\": \"TARJETA_CREDITO\",\n  \"etiquetas\": [\n    \"suscripcion\"\n  ],\n  \"comercio_beneficiario\": \"Netflix\",\n  \"descripcion\": \"Suscripción mensual\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.2 POST /gastos/recurrentes · tope ambiguo (RN-022.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-022.1 (vía RN-028.1) · el tope es por fecha de fin o por ocurrencias, no ambos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('max_ocurrencias');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_entretenimiento_id}}\",\n  \"subcategoria_id\": \"{{sub_streaming_id}}\",\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-05\",\n  \"fecha_fin\": \"2026-12-31\",\n  \"max_ocurrencias\": 6,\n  \"modo_confirmacion\": \"AUTOMATICO\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"39900.00\",\n  \"medio_pago\": \"TARJETA_CREDITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.3 POST /gastos/recurrentes · monto estimado (RN-028.2)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const d = new Date();",
+                  "d.setDate(d.getDate() + 2);",
+                  "pm.collectionVariables.set('fecha_en_2_dias', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-028.2 · plantilla con monto estimado creada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-028.2 · queda marcada como monto estimado', function () {",
+                  "    pm.expect(d.es_monto_estimado).to.be.true;",
+                  "    pm.expect(d.modo_confirmacion).to.eql('AUTOMATICO');",
+                  "});",
+                  "",
+                  "pm.test('RN-028.3 · la próxima ocurrencia cae dentro de la ventana de 3 días', function () {",
+                  "    pm.expect(d.proxima_ejecucion.slice(0, 10)).to.eql(pm.collectionVariables.get('fecha_en_2_dias'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('plantilla_estimada_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_servicios_id}}\",\n  \"subcategoria_id\": \"{{sub_energia_id}}\",\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"{{fecha_en_2_dias}}\",\n  \"modo_confirmacion\": \"AUTOMATICO\",\n  \"es_monto_estimado\": true,\n  \"moneda\": \"COP\",\n  \"monto_original\": \"180000.00\",\n  \"medio_pago\": \"TRANSFERENCIA\",\n  \"descripcion\": \"Servicio de monto variable\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.4 GET /gastos/recurrentes · listado, pendientes y recordatorios (RN-028.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-028 · gastos recurrentes consultados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RF-028 · las dos plantillas creadas aparecen en el listado', function () {",
+                  "    const ids = d.plantillas.map((p) => p.id);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('plantilla_id'));",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('plantilla_estimada_id'));",
+                  "});",
+                  "",
+                  "pm.test('RN-028.3 · la plantilla de los próximos 3 días entra en los recordatorios', function () {",
+                  "    const ids = d.recordatorios.map((p) => p.id);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('plantilla_estimada_id'));",
+                  "});",
+                  "",
+                  "pm.test('RN-028.2 · hay un bloque de ocurrencias pendientes de confirmar', function () {",
+                  "    pm.expect(d.pendientes).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.5 PUT /gastos/recurrentes/{id} · editar (RN-022.4)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const hoy = new Date();",
+                  "const prox = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 5);",
+                  "pm.collectionVariables.set('fecha_dia_5', `${prox.getFullYear()}-${p(prox.getMonth() + 1)}-05`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-022.4 (vía RN-028.1) · plantilla actualizada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(Number(pm.response.json().data.datos_plantilla.monto_cop)).to.eql(45900);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes/{{plantilla_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes",
+                "{{plantilla_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_entretenimiento_id}}\",\n  \"subcategoria_id\": \"{{sub_streaming_id}}\",\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"{{fecha_dia_5}}\",\n  \"modo_confirmacion\": \"AUTOMATICO\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"45900.00\",\n  \"medio_pago\": \"TARJETA_CREDITO\",\n  \"etiquetas\": [\n    \"suscripcion\"\n  ],\n  \"descripcion\": \"Suscripción con aumento de precio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.6 PATCH /gastos/recurrentes/{id}/toggle · pausar (CA-022.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-022.2 (vía RN-028.1) · la recurrencia queda pausada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.activa).to.be.false;",
+                  "});",
+                  "",
+                  "pm.test('CA-022.2 · avisa que no se generarán más ocurrencias', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('No se generarán');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes/{{plantilla_id}}/toggle",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes",
+                "{{plantilla_id}}",
+                "toggle"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.7 DELETE /gastos/recurrentes/{id} · eliminar la plantilla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-028 · plantilla eliminada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RF-028 · las ocurrencias ya generadas se conservan como gastos', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('se conservan');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes/{{plantilla_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes",
+                "{{plantilla_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.8 DELETE /gastos/recurrentes/{id} · limpiar la de monto estimado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-028 · plantilla de monto estimado eliminada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/recurrentes/{{plantilla_estimada_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "recurrentes",
+                "{{plantilla_estimada_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "80 · RF-027 Fusión de categorías (CA-027.1)",
+      "item": [
+        {
+          "name": "80.1 GET /gastos · gastos de «Café» antes de fusionar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-029 · listado filtrado por la subcategoría «Café»', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('El seeder dejó 2 gastos en «Café»', function () {",
+                  "    pm.expect(Number(d.totales.cantidad)).to.eql(2);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('cafe_total', d.totales.monto);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?subcategoria_id={{cafe_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "subcategoria_id",
+                  "value": "{{cafe_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "80.2 POST /gastos/categorias/{id}/fusionar · «Café» en «Restaurantes» (CA-027.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-027.2 · fusión aplicada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('CA-027.1 · todos los gastos de «Café» pasan al destino', function () {",
+                  "    pm.expect(pm.response.json().data.gastos_reclasificados).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias/{{cafe_id}}/fusionar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias",
+                "{{cafe_id}}",
+                "fusionar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destino_id\": \"{{sub_restaurantes_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "80.3 GET /gastos · «Café» ya no tiene gastos (CA-027.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-027.1 · la subcategoría de origen queda sin gastos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(Number(pm.response.json().data.totales.cantidad)).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?subcategoria_id={{cafe_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "subcategoria_id",
+                  "value": "{{cafe_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "80.4 GET /gastos/categorias · «Café» desapareció (CA-027.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-027 · catálogo consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const alimentacion = pm.response.json().data.categorias",
+                  "    .find((c) => c.nombre === 'Alimentación');",
+                  "",
+                  "pm.test('CA-027.1 · «Café» desaparece del catálogo', function () {",
+                  "    const nombres = alimentacion.subcategorias.map((s) => s.nombre);",
+                  "    pm.expect(nombres).to.not.include('Café');",
+                  "    pm.expect(nombres).to.include('Restaurantes y domicilios');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/categorias",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "categorias"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "90 · RNG-01 Aislamiento de datos",
+      "item": [
+        {
+          "name": "90.1 GET /gastos/{ajeno}/editar · recurso de otro usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · un recurso ajeno responde «recurso no encontrado»', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "// RF-019: el intento queda registrado en bitacora_auditoria con la",
+                  "// acción ACCESO_DENEGADO_RECURSO_AJENO. Se verifica en base de datos."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_ajeno_id}}/editar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_ajeno_id}}",
+                "editar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "90.2 DELETE /gastos/{ajeno} · recurso de otro usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · no se puede eliminar un gasto ajeno', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_ajeno_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_ajeno_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "90.3 GET /gastos · el listado no incluye registros ajenos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · listado consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RNG-01 · el gasto del otro usuario no aparece', function () {",
+                  "    const ids = pm.response.json().data.gastos.map((g) => g.id);",
+                  "    pm.expect(ids).to.not.include(pm.collectionVariables.get('gasto_ajeno_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos?por_pagina=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ],
+              "query": [
+                {
+                  "key": "por_pagina",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "90.4 PATCH /gastos/edicion-masiva · ignora los ids ajenos (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-029.3 · la operación se acepta', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RNG-01 · el gasto ajeno no se modifica', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.solicitados).to.eql(1);",
+                  "    pm.expect(d.modificados).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/edicion-masiva",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "edicion-masiva"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{gasto_ajeno_id}}\"\n  ],\n  \"naturaleza\": \"VARIABLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod04",
+      "value": "mod04@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "password_mod04",
+      "value": "Scfp#Demo2026",
+      "type": "string"
+    },
+    {
+      "key": "csrf",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cat_vivienda_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_arriendo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cat_alimentacion_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_restaurantes_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_mercado_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cat_entretenimiento_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_streaming_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cat_servicios_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_energia_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cat_propia_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sub_propia_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gasto_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gasto_clasificado_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "plantilla_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "plantilla_estimada_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_dia_5",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_en_2_dias",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_manana",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ind_tarjeta",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ind_compras",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ind_deducible",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cafe_total",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cafe_id",
+      "value": "90000000-0000-0000-0004-000000000010",
+      "type": "string",
+      "description": "Subcategoría propia «Café» creada por Mod04DemoSeeder. CA-027.1: se fusiona en «Restaurantes y domicilios»."
+    },
+    {
+      "key": "gasto_ajeno_id",
+      "value": "90000000-0000-0000-0004-000000000002",
+      "type": "string",
+      "description": "Gasto del segundo usuario creado por Mod04DemoSeeder. RNG-01: debe responder 404."
+    }
+  ]
+}

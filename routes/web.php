@@ -6,6 +6,9 @@ use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
 use App\Http\Controllers\FuenteIngresoController;
+use App\Http\Controllers\GastoCategoriaController;
+use App\Http\Controllers\GastoController;
+use App\Http\Controllers\GastoRecurrenteController;
 use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
 use App\Http\Controllers\PoliticaTratamientoController;
@@ -70,6 +73,47 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
     // RN-022.3: Confirmar una ocurrencia generada en modo "Requiere confirmación"
     Route::patch('/ingresos/{id}/confirmar', [IngresoController::class, 'confirmar'])->name('ingresos.confirmar');
+
+    /*
+    | MOD-04 — Gestión de gastos (característica B)
+    |
+    | Las rutas con segmento fijo van antes de las paramétricas para que
+    | /gastos/categorias y /gastos/recurrentes no se confundan con un id.
+    */
+
+    // RF-027: Categorías y subcategorías personalizadas
+    Route::get('/gastos/categorias', [GastoCategoriaController::class, 'index'])->name('gastos.categorias.index');
+    Route::post('/gastos/categorias', [GastoCategoriaController::class, 'store'])->name('gastos.categorias.store');
+    Route::put('/gastos/categorias/{id}', [GastoCategoriaController::class, 'update'])->name('gastos.categorias.update');
+    Route::patch('/gastos/categorias/{id}/toggle', [GastoCategoriaController::class, 'toggleActiva'])->name('gastos.categorias.toggle');
+    // RN-027.2 / CA-027.1: fusionar una categoría propia en otra
+    Route::post('/gastos/categorias/{id}/fusionar', [GastoCategoriaController::class, 'fusionar'])->name('gastos.categorias.fusionar');
+    Route::delete('/gastos/categorias/{id}', [GastoCategoriaController::class, 'destroy'])->name('gastos.categorias.destroy');
+
+    // RF-028: Gastos recurrentes
+    Route::get('/gastos/recurrentes', [GastoRecurrenteController::class, 'index'])->name('gastos.recurrentes.index');
+    Route::post('/gastos/recurrentes', [GastoRecurrenteController::class, 'store'])->name('gastos.recurrentes.store');
+    Route::put('/gastos/recurrentes/{id}', [GastoRecurrenteController::class, 'update'])->name('gastos.recurrentes.update');
+    Route::patch('/gastos/recurrentes/{id}/toggle', [GastoRecurrenteController::class, 'toggleActiva'])->name('gastos.recurrentes.toggle');
+    Route::delete('/gastos/recurrentes/{id}', [GastoRecurrenteController::class, 'destroy'])->name('gastos.recurrentes.destroy');
+
+    // RN-025.2: acumulados anuales de consumos con tarjeta y de compras y consumos
+    Route::get('/gastos/indicadores', [GastoController::class, 'indicadores'])->name('gastos.indicadores');
+    // RN-026.1 (6): etiquetas ya usadas, para reutilizarlas
+    Route::get('/gastos/etiquetas', [GastoController::class, 'etiquetas'])->name('gastos.etiquetas');
+    // RN-029.3: edición masiva de hasta 100 gastos
+    Route::patch('/gastos/edicion-masiva', [GastoController::class, 'edicionMasiva'])->name('gastos.edicion-masiva');
+
+    // RF-029: Consulta y filtrado · RF-025: Registro · RF-026: Clasificación
+    Route::get('/gastos', [GastoController::class, 'index'])->name('gastos.index');
+    Route::get('/gastos/crear', [GastoController::class, 'create'])->name('gastos.create');
+    Route::post('/gastos', [GastoController::class, 'store'])->name('gastos.store');
+    Route::get('/gastos/{id}/editar', [GastoController::class, 'edit'])->name('gastos.edit');
+    Route::put('/gastos/{id}', [GastoController::class, 'update'])->name('gastos.update');
+    Route::delete('/gastos/{id}', [GastoController::class, 'destroy'])->name('gastos.destroy');
+
+    // RN-028.2: Confirmar el monto real de una ocurrencia con monto estimado
+    Route::patch('/gastos/{id}/confirmar', [GastoController::class, 'confirmar'])->name('gastos.confirmar');
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

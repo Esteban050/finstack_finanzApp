@@ -55,11 +55,14 @@ Artisan::command('scfp:purgar-supresiones', function () {
 })->purpose('Eliminación física definitiva de cuentas con supresión cumplida');
 
 // RN-022.2: Generar las ocurrencias vencidas de los ingresos recurrentes (RF-022)
+// RN-028.1: y de los gastos recurrentes (RF-028), que siguen las mismas reglas.
 Artisan::command('scfp:generar-recurrencias', function () {
-    $total = RecurrenciaService::generarIngresosPendientes();
+    $ingresos = RecurrenciaService::generarIngresosPendientes();
+    $gastos = RecurrenciaService::generarGastosPendientes();
 
-    $this->info("Se generaron {$total} ocurrencias de ingresos recurrentes (RN-022.2).");
-})->purpose('Generar las ocurrencias programadas de los ingresos recurrentes');
+    $this->info("Se generaron {$ingresos} ocurrencias de ingresos recurrentes (RN-022.2).");
+    $this->info("Se generaron {$gastos} ocurrencias de gastos recurrentes (RN-028.1).");
+})->purpose('Generar las ocurrencias programadas de los ingresos y gastos recurrentes');
 
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();

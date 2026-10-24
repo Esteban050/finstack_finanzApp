@@ -91,6 +91,17 @@ class PlantillaRecurrencia extends Model
         return $query->where('tipo_movimiento', 'INGRESO');
     }
 
+    /** RF-028: Plantillas de gasto recurrente (MOD-04). */
+    public function scopeDeGastos(Builder $query): Builder
+    {
+        return $query->where('tipo_movimiento', 'GASTO');
+    }
+
+    public function gastos(): HasMany
+    {
+        return $this->hasMany(Gasto::class, 'plantilla_recurrencia_id');
+    }
+
     public function scopeDelUsuario(Builder $query, string $usuarioId): Builder
     {
         return $query->where('usuario_id', $usuarioId);
@@ -98,9 +109,18 @@ class PlantillaRecurrencia extends Model
 
     /**
      * RN-022.3: En modo "Requiere confirmación" la ocurrencia nace en estado PENDIENTE.
+     *
+     * RN-028.2: Un gasto recurrente marcado como "Monto estimado" también nace
+     * PENDIENTE, aunque el modo sea AUTOMATICO: el usuario debe confirmar el
+     * monto real antes de que entre en los cálculos (CA-028.2). No afecta a los
+     * ingresos recurrentes, cuyas plantillas nacen con es_monto_estimado en falso.
      */
     public function estadoOcurrencia(): string
     {
+        if ($this->es_monto_estimado) {
+            return 'PENDIENTE';
+        }
+
         return $this->modo_confirmacion === 'REQUIERE_CONFIRMACION' ? 'PENDIENTE' : 'CONFIRMADO';
     }
 
