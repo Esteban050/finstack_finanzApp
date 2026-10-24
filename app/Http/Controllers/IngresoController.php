@@ -113,6 +113,7 @@ class IngresoController extends Controller
      */
     public function store(Request $request): RedirectResponse|JsonResponse
     {
+        $this->procesarPorcentajes($request);
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
@@ -179,6 +180,7 @@ class IngresoController extends Controller
     public function update(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $ingreso = $this->ingresoPropio($id);
+        $this->procesarPorcentajes($request);
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
@@ -445,5 +447,30 @@ class IngresoController extends Controller
         }
 
         abort(404);
+    }
+
+    /**
+     * Si se envían porcentajes de retención o aportes, calcula los valores monetarios
+     * correspondientes para mantener compatibilidad con las reglas de negocio del dominio.
+     */
+    private function procesarPorcentajes(Request $request): void
+    {
+        if ($request->filled('monto_original')) {
+            $monto = (float) $request->input('monto_original');
+
+            if ($request->filled('porcentaje_retencion')) {
+                $pct = (float) $request->input('porcentaje_retencion');
+                if ($pct >= 0 && (! $request->filled('retencion_fuente') || (float) $request->input('retencion_fuente') == 0)) {
+                    $request->merge(['retencion_fuente' => number_format($monto * ($pct / 100), 2, '.', '')]);
+                }
+            }
+
+            if ($request->filled('porcentaje_aportes')) {
+                $pct = (float) $request->input('porcentaje_aportes');
+                if ($pct >= 0 && (! $request->filled('aportes_descontados') || (float) $request->input('aportes_descontados') == 0)) {
+                    $request->merge(['aportes_descontados' => number_format($monto * ($pct / 100), 2, '.', '')]);
+                }
+            }
+        }
     }
 }

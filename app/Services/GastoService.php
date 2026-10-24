@@ -323,7 +323,7 @@ class GastoService
      * RF-027 / RNG-01: Una categoría de gasto activa que el Usuario puede usar:
      * propia o predeterminada del catálogo global (RF-015).
      */
-    private static function categoriaUsable(string $id, string $usuarioId): ?Categoria
+    public static function categoriaUsable(string $id, string $usuarioId): ?Categoria
     {
         return Categoria::where('id', $id)
             ->where('tipo', 'GASTO')

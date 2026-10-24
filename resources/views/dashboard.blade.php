@@ -63,21 +63,46 @@
                 </div>
             </div>
 
-            <!-- Accesos Rápidos -->
+            <!-- Acciones Principales: Ingresos y Egresos -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <a href="{{ route('ingresos.create') }}" class="p-6 bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl shadow-sm border border-emerald-200 hover:shadow-md transition flex items-center justify-between group">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-extrabold text-base shadow-sm">+</span>
+                            <h4 class="font-bold text-gray-900 group-hover:text-emerald-700 text-lg">Registrar Ingreso</h4>
+                        </div>
+                        <p class="text-xs text-gray-600">Salarios, honorarios, arriendos o dividendos con clasificación tributaria (Art. 330 ET).</p>
+                    </div>
+                    <span class="text-emerald-600 font-bold text-sm ml-4 group-hover:translate-x-1 transition-transform">&rarr;</span>
+                </a>
+
+                <a href="{{ route('gastos.create') }}" class="p-6 bg-gradient-to-br from-rose-50 to-red-50 rounded-xl shadow-sm border border-rose-200 hover:shadow-md transition flex items-center justify-between group">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-extrabold text-base shadow-sm">−</span>
+                            <h4 class="font-bold text-gray-900 group-hover:text-rose-700 text-lg">Registrar Egreso</h4>
+                        </div>
+                        <p class="text-xs text-gray-600">Gastos fijos, variables o deducibles con categoría e IVA/INC desglosado.</p>
+                    </div>
+                    <span class="text-rose-600 font-bold text-sm ml-4 group-hover:translate-x-1 transition-transform">&rarr;</span>
+                </a>
+            </div>
+
+            <!-- Accesos Rápidos Complementarios -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <a href="{{ route('profile.show') }}" class="p-6 bg-white rounded-xl shadow border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1">Mi Perfil Financiero</h4>
+                <a href="{{ route('profile.show') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Mi Perfil Financiero</h4>
                     <p class="text-xs text-gray-500">Actualiza tus ocupaciones, ARL, dependientes y datos de contacto.</p>
                 </a>
 
-                <a href="{{ route('profile.export') }}" class="p-6 bg-white rounded-xl shadow border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1">Exportar Mis Datos</h4>
-                    <p class="text-xs text-gray-500">Descarga un paquete .zip estructurado en JSON y CSV de tu información.</p>
+                <a href="{{ route('ingresos.index') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Ingresos</h4>
+                    <p class="text-xs text-gray-500">Consulta y gestiona todos tus ingresos confirmados y pendientes.</p>
                 </a>
 
-                <a href="{{ route('politica.mostrar') }}" class="p-6 bg-white rounded-xl shadow border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1">Tratamiento de Datos</h4>
-                    <p class="text-xs text-gray-500">Consulta la política vigente de Habeas Data y tu historial de aceptaciones.</p>
+                <a href="{{ route('gastos.index') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Egresos</h4>
+                    <p class="text-xs text-gray-500">Revisa tus gastos registrados, categorías y filtros por fecha.</p>
                 </a>
             </div>
         </div>

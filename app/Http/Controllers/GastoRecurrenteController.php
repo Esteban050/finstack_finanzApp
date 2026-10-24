@@ -83,6 +83,9 @@ class GastoRecurrenteController extends Controller
             'periodicidades' => PlantillaRecurrencia::PERIODICIDADES,
             'modosConfirmacion' => PlantillaRecurrencia::MODOS_CONFIRMACION,
             'mediosPago' => Gasto::MEDIOS_PAGO,
+            'dimensiones' => [
+                'medios_pago' => Gasto::MEDIOS_PAGO,
+            ],
         ]));
     }
 
@@ -300,7 +303,7 @@ class GastoRecurrenteController extends Controller
             'moneda' => ['required', 'string', 'size:3', 'alpha'],
             'tasa_cambio_usada' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,4})?$/'],
             'categoria_id' => ['required', 'uuid'],
-            'subcategoria_id' => ['required', 'uuid'],
+            'subcategoria_id' => ['nullable', 'uuid'],
             'medio_pago' => ['required', Rule::in(Gasto::MEDIOS_PAGO)],
             'naturaleza' => ['nullable', Rule::in(Gasto::NATURALEZAS)],
             'necesidad' => ['nullable', Rule::in(Gasto::NECESIDADES)],
@@ -345,7 +348,6 @@ class GastoRecurrenteController extends Controller
             'tasa_cambio_usada.regex' => 'La tasa de cambio admite hasta 8 dígitos enteros y 4 decimales.',
             'categoria_id.required' => 'Seleccione la categoría del gasto.',
             'categoria_id.uuid' => 'La categoría seleccionada no es válida.',
-            'subcategoria_id.required' => 'Seleccione la subcategoría del gasto.',
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
             'medio_pago.required' => 'Seleccione el medio de pago.',
             'medio_pago.in' => 'El medio de pago debe ser EFECTIVO, TARJETA_DEBITO, TARJETA_CREDITO, TRANSFERENCIA, BILLETERA_DIGITAL u OTRO.',
@@ -368,19 +370,38 @@ class GastoRecurrenteController extends Controller
      */
     private function datosPlantilla(array $validated): array
     {
-        $subcategoria = GastoService::validarJerarquia(
-            $validated['categoria_id'],
-            $validated['subcategoria_id'],
-            Auth::id()
-        );
+        $subcategoria = null;
+        $categoriaId = $validated['categoria_id'];
+        $subcategoriaId = $validated['subcategoria_id'] ?? null;
+
+        if (! empty($subcategoriaId)) {
+            $subcategoria = GastoService::validarJerarquia(
+                $categoriaId,
+                $subcategoriaId,
+                Auth::id()
+            );
+            $categoriaId = $subcategoria->categoria_padre_id;
+            $sugerencias = GastoService::aplicarSugerencias($subcategoria, $validated);
+        } else {
+            $categoria = GastoService::categoriaUsable($categoriaId, Auth::id());
+            if ($categoria === null) {
+                throw ValidationException::withMessages([
+                    'categoria_id' => 'La categoría no existe, está inactiva o no pertenece a tus categorías de gasto.',
+                ]);
+            }
+            $sugerencias = [
+                'naturaleza' => $validated['naturaleza'] ?? ($categoria->naturaleza_sugerida ?? 'VARIABLE'),
+                'necesidad' => $validated['necesidad'] ?? ($categoria->necesidad_sugerida ?? 'DISCRECIONAL'),
+            ];
+        }
 
         return array_merge(
             GastoService::prepararMontos($validated),
-            GastoService::aplicarSugerencias($subcategoria, $validated),
+            $sugerencias,
             GastoService::validarRelevancia($validated),
             [
-                'categoria_id' => $subcategoria->categoria_padre_id,
-                'subcategoria_id' => $subcategoria->id,
+                'categoria_id' => $categoriaId,
+                'subcategoria_id' => $subcategoria?->id,
                 'medio_pago' => $validated['medio_pago'],
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
