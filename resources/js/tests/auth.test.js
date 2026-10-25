@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { passwordChecks, validateAuth, secondsRemaining } from '../auth/rules.js';
+import { passwordChecks, validateAuth, secondsRemaining, validateProfilePresentation } from '../auth/rules.js';
 import { contrastCases } from '../utils/contrast.js';
 
 const valid = {nombres:'María José', apellidos:'Gómez', tipo_documento:'CC',numero_documento:'ABC12345',correo:'prueba@example.invalid',password:'ClaveDistinta!9',password_confirmation:'ClaveDistinta!9',acepta_politica:'1'};
@@ -61,4 +61,10 @@ test('Blade auth real: campos del contrato, CSRF, servidor literal y sin rutas f
     assert.match(rendered['change-password'],/name="current_password"/);
     assert.match(rendered['change-password'],/name="_method" value="PUT"/);
     for (const html of Object.values(rendered)) for (const form of html.matchAll(/<form[^>]*method="POST"[^>]*>([\s\S]*?)<\/form>/g)) assert.match(form[1],/name="_token"/,'CSRF en cada POST');
+});
+
+test('QA-004: teléfono de perfil valida diez dígitos antes del POST',()=>{
+    const values={nombres:'María',apellidos:'Muñoz',telefono:'1234567890'};
+    assert.deepEqual(validateProfilePresentation(values),{});
+    assert.ok(validateProfilePresentation({...values,telefono:'123456789'}).telefono);
 });

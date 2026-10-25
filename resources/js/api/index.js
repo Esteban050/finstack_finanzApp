@@ -19,6 +19,7 @@ export class ApiError extends Error {
 }
 
 export function safeMessage(value, fallback = 'No fue posible completar la operación. Intenta nuevamente.') {
+    if (typeof value === 'string' && (/^validation\./i.test(value) || /^[a-z][a-z_-]*(?:\.[a-z_\d-]+)+$/.test(value))) return 'Revisa este campo';
     return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|trace|exception|stack|server|servidor|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
 }
 

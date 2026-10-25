@@ -1,3 +1,4 @@
+import { validateProfilePresentation } from '../auth/rules.js';
 import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
 import { safeMessage } from '../api/index.js';
@@ -92,6 +93,11 @@ export function registerFoundation(Alpine) {
 }
 
 export function mountFoundation() {
+    document.querySelectorAll('[data-profile-form]').forEach((form) => {
+        const validate = () => validateProfilePresentation(Object.fromEntries(new FormData(form)));
+        bindErrorRevalidation(form, validate);
+        form.addEventListener('submit', (event) => { const errors = validate(); if (Object.keys(errors).length) {event.preventDefault(); mapFieldErrors(form, errors);} });
+    });
     // Adaptador para las vistas existentes: conserva sus nombres de campo y contrato.
     window.scfpPreviewIncome = (prefix = '') => {
         const get = (name) => document.getElementById(prefix + name);
