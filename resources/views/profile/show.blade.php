@@ -217,4 +217,12 @@
             </div>
         </div>
     </div>
+    @if(isset($historialPerfiles))
+    <x-ui.card title="Historial del perfil tributario">
+        <p class="ui-help">Versiones disponibles para consultar la vigencia de tus datos.</p>
+        <table class="ui-table"><thead><tr><th>Desde</th><th>Hasta</th><th>Ocupaciones</th><th>Ciudad</th></tr></thead><tbody>
+            @forelse($historialPerfiles as $version)<tr><td>{{ $version->vigente_desde?->format('d/m/Y') }}</td><td>{{ $version->vigente_hasta?->format('d/m/Y') ?? 'Vigente' }}</td><td>{{ implode(', ', $version->ocupaciones ?? []) }}</td><td>{{ $version->ciudad_residencia }}</td></tr>@empty<tr><td colspan="4">No hay versiones del perfil disponibles.</td></tr>@endforelse
+        </tbody></table>
+    </x-ui.card>
+    @endif
 </x-app-layout>
