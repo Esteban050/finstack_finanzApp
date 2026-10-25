@@ -1,4 +1,4 @@
-import { formatMoney, formatTRM, parseMoneyInput, validateAmount, percentageOf, percentageFrom, subtractMoney } from '../utils/money.js';
+import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
 import { safeMessage } from '../api/index.js';
 import { renderIllustration } from './illustrations/index.js';
@@ -35,23 +35,27 @@ export function registerFoundation(Alpine) {
             let message = '';
             try {
                 this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
-                if (this.canonical && !validateAmount(this.canonical)) message = 'RNG-09: el monto debe ser mayor que 0 y hasta $ 999.999.999.999,99.';
-                if (!this.canonical && input.required) message = 'RNG-05: este campo es obligatorio.';
+                const allowedZero = this.$root.dataset.allowZero === 'true';
+                const inRange = this.canonical && (allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
+                if (this.canonical && !inRange) message = allowedZero ? 'El valor debe ser mayor o igual a $ 0.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';
+                if (!this.canonical && input.required) message = 'Este campo es obligatorio.';
             } catch (error) { this.canonical = ''; message = error.message; }
             this.invalid = Boolean(message);
+            input.setAttribute('aria-invalid', String(this.invalid));
             input.setCustomValidity(message);
             const error = field.querySelector('[data-field-error]');
             error.textContent = message;
             error.hidden = !message;
+            this.$dispatch('money-change', { name: field.dataset.field, amount: this.canonical, valid: !message });
         },
     }));
     Alpine.data('tagInput', () => ({
         tags: [], draft: '',
         init() { const tags = JSON.parse(this.$root.dataset.tags || '[]'); this.tags = Array.isArray(tags) ? tags : []; },
         add() {
-            const tag = this.draft.trim();
+            const tag = this.draft.trim().toLocaleLowerCase('es-CO');
             const error = this.$root.closest('[data-field]').querySelector('[data-field-error]');
-            const message = tag.length < 2 || tag.length > 30 || this.tags.length >= 10 ? 'RN-026.1: hasta 10 etiquetas de 2 a 30 caracteres.' : '';
+            const message = [...tag].length < 2 || [...tag].length > 30 ? 'Cada etiqueta debe tener entre 2 y 30 caracteres.' : this.tags.length >= 10 && !this.tags.includes(tag) ? 'Un gasto admite como máximo 10 etiquetas.' : '';
             error.textContent = message; error.hidden = !message;
             if (!message) { if (!this.tags.includes(tag)) this.tags.push(tag); this.draft = ''; }
         },
@@ -69,7 +73,7 @@ export function mountFoundation() {
             get('retencion_fuente').value = retention;
             get('aportes_descontados').value = contributions;
             const preview = document.getElementById('neto-preview');
-            if (preview && !prefix) preview.textContent = formatMoney(subtractMoney(subtractMoney(amount, retention), contributions), document.getElementById('moneda')?.value || 'COP') + ' (estimado)';
+            if (preview && !prefix) preview.textContent = formatMoney(subtractMoney(subtractMoney(amount, retention), contributions));
         } catch { /* Durante una entrada incompleta se conservan los valores anteriores. */ }
     };
     document.querySelectorAll('[data-percentage-amount]').forEach((input) => {
@@ -80,14 +84,11 @@ export function mountFoundation() {
     });
     document.querySelectorAll('[data-illustration]').forEach((host) => host.replaceChildren(renderIllustration(host.dataset.illustration)));
     document.querySelectorAll('[data-money]').forEach((host) => {
-        try { host.textContent = formatMoney(host.dataset.money, host.dataset.currency || 'COP'); }
+        try { host.textContent = formatMoney(host.dataset.money); }
         catch { host.textContent = '—'; }
     });
     document.querySelectorAll('[data-date]').forEach((host) => {
         try { host.textContent = formatDate(host.dataset.date); } catch { host.textContent = '—'; }
-    });
-    document.querySelectorAll('[data-trm]').forEach((host) => {
-        try { host.textContent = formatTRM(host.dataset.trm); } catch { host.textContent = '—'; }
     });
     document.querySelectorAll('[data-date-no-future]').forEach((input) => { input.max = todayBogota(); });
     document.querySelectorAll('input[name=fecha], input[name=fecha_recepcion]').forEach((input) => { input.max = todayBogota(); });
@@ -115,7 +116,10 @@ export function mountFoundation() {
         if (input && error && !error.hidden) input.setAttribute('aria-invalid', 'true');
     });
     document.querySelectorAll('label:not([for])').forEach((label, index) => {
-        const input = label.parentElement.querySelector('input:not([type=hidden]), select, textarea');
+        // Las etiquetas envolventes pertenecen a su propio control, nunca al primero del grupo.
+        const ownInput = label.querySelector('input:not([type=hidden]), select, textarea');
+        const siblings = label.parentElement.querySelectorAll('input:not([type=hidden]), select, textarea');
+        const input = ownInput ?? (siblings.length === 1 ? siblings[0] : null);
         if (input) { input.id ||= `legacy-field-${index}`; label.htmlFor = input.id; }
     });
     const drawer = document.querySelector('#navigation-drawer');
@@ -126,6 +130,7 @@ export function mountFoundation() {
     matchMedia('(min-width: 768px)').addEventListener('change', (event) => { if (event.matches && drawer?.open) drawer.close(); });
     document.querySelector('[data-dismiss-toast]')?.addEventListener('click', () => { document.querySelector('#ui-toast').hidden = true; });
     installConfirmation();
+    document.querySelectorAll('[data-page-size]').forEach((select) => select.addEventListener('change', () => select.form.requestSubmit()));
     window.addEventListener('pageshow', resetLoading);
     document.addEventListener('submit', (event) => {
         if (event.defaultPrevented || event.target.method === 'dialog' || event.target.target === '_blank') return;
@@ -150,6 +155,11 @@ function installConfirmation() {
         if (!destructive || approved.has(form)) { approved.delete(form); return; }
         event.preventDefault(); event.stopImmediatePropagation();
         const trigger = event.submitter;
+        dialog.querySelector('#confirm-title').textContent = form.dataset.confirmTitle || 'Confirmar eliminación';
+        dialog.querySelector('[value=confirm]').textContent = form.dataset.confirmLabel || 'Eliminar';
+        let description = form.dataset.confirmDescription || '¿Deseas eliminar este registro?';
+        if (form.dataset.confirmDate && form.dataset.confirmAmount) description = `${formatDate(form.dataset.confirmDate)} · ${form.dataset.confirmSource || ''} · ${formatMoney(form.dataset.confirmAmount)}. ${description}`;
+        dialog.querySelector('#confirm-description').textContent = description;
         dialog.returnValue = '';
         dialog.showModal();
         dialog.addEventListener('close', () => {

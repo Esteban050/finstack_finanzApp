@@ -1,0 +1,29 @@
+.expense-tax-heading { margin-top: 1rem; }
+.expense-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1.5rem; margin-top: 1rem; }
+.expense-bulk-panel { margin-block: 1.5rem; padding: 1.5rem; background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-lg); }
+.expense-table { margin-top: 1.5rem; }
+.expense-table td p { margin: .5rem 0; }
+.expense-table td { overflow-wrap: anywhere; }
+.expense-table input[type=checkbox] { min-width: 20px; min-height: 20px; }
+.expense-row-selector { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; }
+.expense-table .ui-table td:not(:has([data-money])) { text-align: left; }
+@media (min-width: 1200px) {
+    .expense-table th:first-child { width: 84px; }
+    .expense-table th:nth-child(2) { width: 130px; }
+}
+.income-type-control [data-expense-category-icon] { position: absolute; left: .875rem; top: 50%; transform: translateY(-50%); pointer-events: none; line-height: 0; }
+.scfp-theme .income-type-control:has([data-expense-category-icon]:not([hidden])) select { padding-left: 2.75rem; }
+.expense-editor .income-summary dl > div { display: grid; gap: .375rem; }
+.expense-editor .income-summary dd { text-align: left; }
+.expense-category-node > .ui-card { margin-bottom: 1.5rem; }
+.expense-category-children { margin-left: 1.5rem; padding-left: 1.5rem; border-left: 1px solid var(--ui-border-strong); }
+.expense-category-children .ui-card { padding: 1rem 1.25rem; }
+.expense-category-children h2 { font-size: 1rem; }
+.expense-category-dialog { width: min(600px, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.5rem; background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-lg); }
+.expense-category-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.expense-visual-options { display: grid; gap: 1rem; }
+@media (max-width: 767px) {
+    .expense-filter-grid { grid-template-columns: 1fr; }
+    .expense-category-children { margin-left: .5rem; padding-left: .75rem; }
+    .expense-category-node .income-source-head { display: grid; }
+}

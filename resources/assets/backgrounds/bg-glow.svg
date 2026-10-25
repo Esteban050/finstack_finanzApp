@@ -7,7 +7,6 @@
       <stop offset="0" stop-color="#2DD4BF" stop-opacity=".16"/><stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="1200" height="800" fill="#0B1210"/>
   <rect width="1200" height="800" fill="url(#a)"/>
   <rect width="1200" height="800" fill="url(#b)"/>
 </svg>

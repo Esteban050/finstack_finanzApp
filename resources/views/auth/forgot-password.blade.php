@@ -1,25 +1,11 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600">
-        {{ __('Forgot your password? No problem. Just let us know your email address and we will email you a password reset link that will allow you to choose a new one.') }}
-    </div>
-
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
-
-    <form method="POST" action="{{ route('password.email') }}">
+    <x-slot name="title">Recuperar contraseña</x-slot>
+    <h1>Recuperar contraseña</h1><p>Ingresa tu correo para solicitar un enlace de restablecimiento.</p>
+    <x-auth.status />
+    <form method="POST" action="{{ route('password.email') }}" data-auth-form="recovery" novalidate>
         @csrf
-
-        <!-- Email Address -->
-        <div>
-            <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
-        </div>
-
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
-                {{ __('Email Password Reset Link') }}
-            </x-primary-button>
-        </div>
+        <x-ui.field name="correo" label="Correo electrónico" :required="true"><input id="correo" name="correo" type="email" maxlength="254" value="{{ old('correo') }}" required autocomplete="email" aria-describedby="correo-error correo-client-error"><p id="correo-client-error" data-auth-client-error="correo" class="ui-error" aria-live="polite" hidden></p></x-ui.field>
+        <x-auth.submit label="Enviar enlace" />
     </form>
+    <p class="auth-alternative"><a href="{{ route('login') }}">Volver a iniciar sesión</a></p>
 </x-guest-layout>

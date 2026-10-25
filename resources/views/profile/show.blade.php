@@ -67,10 +67,7 @@
                             <x-input-label for="telefono" value="Teléfono (10 dígitos)" />
                             <x-text-input id="telefono" type="text" name="telefono" maxlength="10" :value="old('telefono', $perfilActivo?->telefono)" class="w-full mt-1" />
                         </div>
-                        <div>
-                            <x-input-label for="ultimos_digitos_nit" value="Últimos 2 dígitos NIT/Cédula (00-99)" />
-                            <x-text-input id="ultimos_digitos_nit" type="text" maxlength="2" name="ultimos_digitos_nit" :value="old('ultimos_digitos_nit', $perfilActivo?->ultimos_digitos_nit)" class="w-full mt-1 font-mono" placeholder="Ej: 37" />
-                        </div>
+                        <input type="hidden" name="ultimos_digitos_nit" value="{{ substr(preg_replace('/\D/', '', (string) $usuario->numero_documento), -2) }}">
                     </div>
 
                     <!-- Personas a cargo y Responsable IVA -->
@@ -90,7 +87,7 @@
 
                     <!-- Perfil de Ocupación RN-008.2 -->
                     <div>
-                        <x-input-label value="Perfil de Ocupación (Selección Múltiple) *" />
+                        <p class="font-medium">Perfil de ocupación (puedes seleccionar varias) *</p>
                         @php
                             $ocupacionesActuales = old('ocupaciones', $perfilActivo?->ocupaciones ?? []);
                         @endphp
@@ -142,29 +139,7 @@
             <!-- 2. CAMBIO DE CONTRASEÑA -->
             <div class="bg-white p-8 shadow sm:rounded-xl">
                 <h3 class="text-lg font-bold text-gray-900 border-b pb-3 mb-6">2. Cambio de Contraseña</h3>
-                <form method="POST" action="{{ route('password.custom.change') }}" class="space-y-4 max-w-xl">
-                    @csrf
-                    @method('PUT')
-
-                    <div>
-                        <x-input-label for="current_password" value="Contraseña Actual *" />
-                        <x-text-input id="current_password" type="password" name="current_password" required class="w-full mt-1" />
-                    </div>
-
-                    <div>
-                        <x-input-label for="new_password" value="Nueva Contraseña (10-64 chars, Mayús, Minús, Núm, Especial) *" />
-                        <x-text-input id="new_password" type="password" name="password" required class="w-full mt-1" />
-                    </div>
-
-                    <div>
-                        <x-input-label for="password_confirmation" value="Confirmar Nueva Contraseña *" />
-                        <x-text-input id="password_confirmation" type="password" name="password_confirmation" required class="w-full mt-1" />
-                    </div>
-
-                    <x-primary-button>
-                        Actualizar Contraseña
-                    </x-primary-button>
-                </form>
+                <x-auth.change-password :email="$usuario->correo" :document="$usuario->numero_documento" />
             </div>
 
             <!-- 3. VERIFICACIÓN EN DOS PASOS (MFA) -->

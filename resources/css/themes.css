@@ -1,0 +1,15 @@
+/* El tema oscuro conserva los tokens aprobados; el claro cambia solo tokens. */
+:root[data-theme=light] {
+    color-scheme: light;
+    --ui-bg: #F4F6F8;
+    --ui-surface: #FFFFFF;
+    --ui-raised: #E8EDF2;
+    --ui-border: #CED6DF;
+    --ui-border-strong: #6B7A8C;
+    --ui-text: #17212B;
+    --ui-muted: #48596B;
+    --accent: #047857;
+    --accent-contrast: #FFFFFF;
+    --ui-danger: #B91C1C;
+    --ui-warning: #854D0E;
+}

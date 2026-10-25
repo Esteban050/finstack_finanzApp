@@ -1,52 +1,13 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600">
-        Hemos enviado un código numérico de 6 dígitos a tu correo registrado. Ingrésalo a continuación para completar tu inicio de sesión (vence en 10 minutos).
-    </div>
-
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
-
-    <form method="POST" action="{{ route('mfa.verify') }}">
+    <x-slot name="title">Código de verificación</x-slot>
+    <h1>Código de verificación</h1><p>Ingresa el código de 6 dígitos enviado a tu correo.</p>
+    <x-auth.status />
+    <form method="POST" action="{{ route('mfa.verify') }}" data-auth-form="mfa" novalidate>
         @csrf
-
-        <!-- Código de 6 dígitos -->
-        <div>
-            <x-input-label for="codigo" value="Código de Verificación (6 dígitos)" />
-            <x-text-input id="codigo" class="block mt-1 w-full text-center tracking-widest text-2xl font-mono"
-                          type="text"
-                          name="codigo"
-                          maxlength="6"
-                          required
-                          autofocus />
-            <x-input-error :messages="$errors->get('codigo')" class="mt-2" />
-        </div>
-
-        <!-- Recordar dispositivo -->
-        <div class="block mt-4">
-            <label for="recordar_dispositivo" class="inline-flex items-center">
-                <input id="recordar_dispositivo" type="checkbox" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" name="recordar_dispositivo" value="1">
-                <span class="ms-2 text-sm text-gray-600">Recordar este dispositivo por 30 días</span>
-            </label>
-        </div>
-
-        <div class="flex items-center justify-between mt-6">
-            <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none" href="{{ route('login') }}">
-                Cancelar y volver al inicio
-            </a>
-
-            <x-primary-button class="ms-3">
-                Verificar Código
-            </x-primary-button>
-        </div>
+        <x-ui.field name="codigo" label="Código de verificación" :required="true"><input id="codigo" name="codigo" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required class="auth-code" aria-describedby="codigo-error codigo-client-error"><p id="codigo-client-error" data-auth-client-error="codigo" class="ui-error" aria-live="polite" hidden></p></x-ui.field>
+        <label class="auth-checkbox" for="recordar_dispositivo"><input id="recordar_dispositivo" name="recordar_dispositivo" type="checkbox" value="1"><span>Recordar este dispositivo por 30 días</span></label>
+        <x-auth.submit label="Verificar código" loading="Verificando…" />
     </form>
-
-    <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-sm">
-        <span class="text-gray-500">¿No recibiste el código o expiró?</span>
-        <form method="POST" action="{{ route('mfa.resend') }}" class="inline">
-            @csrf
-            <button type="submit" class="underline text-indigo-600 hover:text-indigo-900 font-semibold focus:outline-none">
-                Reenviar código
-            </button>
-        </form>
-    </div>
+    <div class="auth-resend-details"><x-auth.resend :mfa="true" /></div>
+    <p class="auth-alternative"><a href="{{ route('login') }}">Volver a iniciar sesión</a></p>
 </x-guest-layout>

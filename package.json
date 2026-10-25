@@ -7,7 +7,8 @@
         "dev": "vite",
         "check-icons": "node scripts/check-icons.mjs",
         "lint": "node scripts/lint-frontend.mjs",
-        "test": "node --test resources/js/tests/*.test.js"
+        "test": "node --test resources/js/tests/*.test.js",
+        "check-styleguide": "node scripts/check-styleguide-build.mjs"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",

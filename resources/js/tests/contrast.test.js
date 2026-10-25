@@ -1,21 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { contrastRatio, contrastCases, maximumKitBackdrop } from '../utils/contrast.js';
 
 const tokens = fs.readFileSync(new URL('../../css/design-system.css', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../css/tokens.css', import.meta.url), 'utf8');
 function color(name) {
     const value = tokens.match(new RegExp('--' + name + ':\\s*([^;]+)'))[1];
     return value.startsWith('var(') ? color(value.slice(6, -1)) : value;
 }
-function luminance(hex) {
-    const rgb = hex.slice(1).match(/../g).map((c) => parseInt(c, 16) / 255).map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
-    return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
-}
-function ratio(a, b) { const values = [luminance(color(a)), luminance(color(b))].sort((x, y) => y - x); return (values[0] + .05) / (values[1] + .05); }
+test('WCAG: referencia blanco/negro y colores iguales', () => {
+    assert.equal(contrastRatio('#ffffff', '#000000'), 21);
+    assert.equal(contrastRatio('#0B0F14', '#0B0F14'), 1);
+});
 test('tokens AA: texto ≥4.5 y bordes/foco ≥3', () => {
-    for (const background of ['ui-bg', 'ui-surface', 'ui-raised']) {
-        for (const foreground of ['ui-text', 'ui-muted', 'accent', 'ui-danger', 'ui-warning']) assert.ok(ratio(foreground, background) >= 4.5, `${foreground}/${background}`);
-        assert.ok(ratio('ui-border', background) >= 3, `borde/${background}`);
-    }
-    for (const button of ['accent', 'ui-danger']) assert.ok(ratio('ui-bg', button) >= 4.5);
+    for (const item of contrastCases(color)) assert.ok(item.ratio >= item.minimum, `${item.foreground}/${item.background}: ${item.ratio.toFixed(2)}`);
+});
+
+test('el texto directo y los controles mantienen AA incluso con el máximo conservador de los fondos', () => {
+    const css = fs.readFileSync(new URL('../../css/design-system.css', import.meta.url), 'utf8');
+    const opacity = (part) => Number(css.match(new RegExp('::' + part + ' \\{ background:[^}]*opacity:\\s*([\\d.]+)'))[1]);
+    const glow = fs.readFileSync(new URL('../../assets/backgrounds/bg-glow.svg', import.meta.url), 'utf8');
+    const grid = fs.readFileSync(new URL('../../assets/backgrounds/bg-grid.svg', import.meta.url), 'utf8');
+    const backdrop = maximumKitBackdrop(color('ui-bg'), glow, grid, opacity('before'), opacity('after'));
+    assert.ok(opacity('after') <= .07);
+    for (const item of contrastCases(color, backdrop)) assert.ok(item.ratio >= item.minimum, `${item.foreground}/${item.background}`);
 });

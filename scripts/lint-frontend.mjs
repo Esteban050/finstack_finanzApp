@@ -19,8 +19,8 @@ console.log(`Lint frontend OK: sintaxis de ${count} archivos JS y reglas de segu
 for (const file of files('resources/css').filter((file) => file.endsWith('.css'))) postcss.parse(fs.readFileSync(file, 'utf8'), { from: file });
 for (const file of files('resources/views').filter((file) => file.endsWith('.blade.php'))) {
     const source = fs.readFileSync(file, 'utf8');
-    for (const [, name] of source.matchAll(/<x-ui\.([a-z-]+)\b/g)) {
-        if (!fs.existsSync(`resources/views/components/ui/${name}.blade.php`)) throw new Error(`${file}: componente ui.${name} inexistente`);
+    for (const [, namespace, name] of source.matchAll(/<x-(ui|income|expense|auth)\.([a-z-]+)\b/g)) {
+        if (!fs.existsSync(`resources/views/components/${namespace}/${name}.blade.php`)) throw new Error(`${file}: componente ${namespace}.${name} inexistente`);
     }
     if (/parseFloat\(|\(float\)/.test(source)) throw new Error(`${file}: aritmética monetaria con float prohibida`);
 }

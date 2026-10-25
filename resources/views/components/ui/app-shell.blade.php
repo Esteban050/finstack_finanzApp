@@ -1,4 +1,5 @@
-@props(['title' => 'SCFP'])
+@props(['title' => 'FinanzApp'])
+<div class="ui-shell-backdrop" aria-hidden="true"></div>
 <a class="ui-skip" href="#main-content">Ir al contenido</a>
 @auth
 <aside class="ui-sidebar" aria-label="Navegación principal">@include('layouts.navigation')</aside>
@@ -11,6 +12,7 @@
     <header class="ui-topbar">
         @auth<x-ui.button variant="ghost" class="ui-menu-toggle" data-open-drawer aria-label="Abrir menú" aria-controls="navigation-drawer" aria-expanded="false"><x-icon name="ui-menu" /></x-ui.button>@endauth
         <span class="ui-topbar-title">{{ $title }}</span>
+        <x-ui.theme-switch />
     </header>
     <main id="main-content" class="ui-content" tabindex="-1">
         @include('layouts.module-tabs')

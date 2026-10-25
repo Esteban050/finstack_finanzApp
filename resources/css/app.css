@@ -1,5 +1,9 @@
 @import './tokens.css';
 @import './design-system.css';
+@import './themes.css';
+@import './income.css';
+@import './expenses.css';
+@import './auth.css';
 
 @tailwind base;
 @tailwind components;

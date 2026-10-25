@@ -1,0 +1,44 @@
+/* Solo la composición de la guía. Los componentes conservan su CSS de producción. */
+.sg-intro { padding-block: 1rem 3rem; max-width: 58rem; }
+.sg-eyebrow { margin: 0 0 1rem; color: var(--accent); font-size: var(--ui-text-meta); font-weight: 600; letter-spacing: .07em; }
+.sg-lead { margin: 1.5rem 0; color: var(--ui-muted); font-size: 1.125rem; max-width: 42rem; }
+.sg-notice { color: var(--ui-muted); font-size: var(--ui-text-meta); padding: 1rem 0; border-block: 1px solid var(--ui-border); }
+.sg-index { display: flex; flex-wrap: wrap; gap: 1rem 1.75rem; padding-top: 1rem; font-size: var(--ui-text-small); }
+.sg-index a { padding-block: .5rem; }
+.sg-section { padding-block: 3.5rem; border-top: 1px solid var(--ui-border); scroll-margin-top: 1.5rem; min-width: 0; }
+.sg-section-heading { margin-bottom: 2.5rem; max-width: 42rem; }
+.sg-section-heading > p:last-child { color: var(--ui-muted); margin: .875rem 0 0; }
+.sg-color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1.25rem; margin-bottom: 3rem; }
+.sg-swatch { min-width: 0; }
+.sg-swatch > span { display: block; height: 5rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); margin-bottom: .875rem; }
+.sg-swatch code, .sg-swatch small { display: block; overflow-wrap: anywhere; font-size: var(--ui-text-meta); color: var(--ui-muted); }
+.sg-type-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; padding: 2.5rem 0; border-block: 1px solid var(--ui-border); margin-bottom: 2.5rem; }
+.sg-amount { font-size: var(--ui-text-amount); line-height: 1.15; margin: .5rem 0 1rem; letter-spacing: -.045em; font-weight: 600; }
+.sg-type-title { font-size: var(--ui-text-title); line-height: 1.2; letter-spacing: -.035em; margin: .5rem 0 1rem; }
+.sg-spacing { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: end; margin-block: 1.5rem 2rem; }
+.sg-spacing > div { display: grid; gap: .75rem; font-size: var(--ui-text-meta); color: var(--ui-muted); }
+.sg-spacing span { display: block; background: var(--accent); height: .5rem; }
+.sg-example-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+.sg-example-grid > * { min-width: 0; }
+.sg-example-grid .ui-card > .ui-help { margin-top: 1.5rem; }
+.sg-form-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
+.sg-form-aside { display: grid; gap: 2rem; min-width: 0; }
+.sg-form-aside > .ui-field { padding-inline: .25rem; }
+.sg-form-footer { display: flex; flex-wrap: wrap; gap: 1.25rem; justify-content: space-between; align-items: center; padding-top: 1.5rem; border-top: 1px solid var(--ui-border); }
+.sg-two-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.sg-table-totals { display: flex; flex-wrap: wrap; gap: 2rem 4rem; justify-content: flex-end; border-top: 2px solid var(--ui-border); padding-top: 1.75rem; margin: 0; }
+.sg-table-totals dt { color: var(--ui-muted); font-size: var(--ui-text-meta); margin-bottom: .5rem; }
+.sg-table-totals dd { font-size: 1.5rem; margin: 0; font-weight: 600; letter-spacing: -.025em; }
+.sg-details, .sg-contrast { margin-top: 2rem; }
+.sg-details > summary, .sg-contrast > summary { padding-block: 1rem; color: var(--accent); font-size: var(--ui-text-small); }
+.sg-details > div { margin-top: 1.5rem; }
+.sg-contrast td, .sg-contrast th { text-align: left !important; }
+@media (max-width: 1100px) { .sg-form-layout, .sg-type-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) {
+    .sg-example-grid, .sg-two-fields { grid-template-columns: minmax(0, 1fr); }
+    .sg-intro { padding-bottom: 2rem; }
+    .sg-section { padding-block: 2.5rem; }
+    .sg-section-heading { margin-bottom: 1.75rem; }
+    .sg-type-grid { gap: 2rem; }
+    .sg-table-totals { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+}

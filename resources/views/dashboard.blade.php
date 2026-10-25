@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            Dashboard — Sistema de Control Financiero Personal (SCFP)
+            Resumen · FinanzApp
         </h2>
     </x-slot>
 
@@ -89,22 +89,28 @@
             </div>
 
             <!-- Accesos Rápidos Complementarios -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <a href="{{ route('profile.show') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
                     <h4 class="font-bold text-gray-900 mb-1 text-sm">Mi Perfil Financiero</h4>
                     <p class="text-xs text-gray-500">Actualiza tus ocupaciones, ARL, dependientes y datos de contacto.</p>
                 </a>
 
-                <a href="{{ route('ingresos.index') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Ingresos</h4>
-                    <p class="text-xs text-gray-500">Consulta y gestiona todos tus ingresos confirmados y pendientes.</p>
-                </a>
-
-                <a href="{{ route('gastos.index') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Gastos</h4>
-                    <p class="text-xs text-gray-500">Revisa tus gastos registrados, categorías y filtros por fecha.</p>
+                <a href="#movimientos" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de movimientos</h4>
+                    <p class="text-sm text-gray-500">Consulta tus ingresos y gastos en un solo lugar.</p>
                 </a>
             </div>
+            <section id="movimientos" data-movements-history class="ui-card" aria-labelledby="movements-title">
+                <h2 id="movements-title">Historial de movimientos</h2>
+                <div role="tablist" aria-label="Tipo de movimiento" class="ui-inline">
+                    <button type="button" role="tab" id="history-income" aria-controls="history-panel" aria-selected="true" class="ui-button ui-button--secondary" data-history-url="{{ route('ingresos.index', ['panel' => 'movimientos']) }}">Ingresos</button>
+                    <button type="button" role="tab" id="history-expenses" aria-controls="history-panel" aria-selected="false" tabindex="-1" class="ui-button ui-button--secondary" data-history-url="{{ route('gastos.index', ['panel' => 'movimientos']) }}">Gastos</button>
+                </div>
+                <p data-history-loading role="status">Cargando movimientos…</p>
+                <div id="history-panel" role="tabpanel" aria-labelledby="history-income">
+                    <iframe data-movements-frame title="Historial de ingresos" src="{{ route('ingresos.index', ['panel' => 'movimientos']) }}" class="ui-history-frame"></iframe>
+                </div>
+            </section>
         </div>
     </div>
 </x-app-layout>

@@ -1,58 +1,14 @@
 <x-guest-layout>
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
-
-    @if ($errors->has('verificacion_error'))
-        <div class="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg">
-            {{ $errors->first('verificacion_error') }}
-            <div class="mt-2">
-                <a href="{{ route('password.request') }}" class="underline text-indigo-700 font-semibold">¿Necesitas ayuda?</a>
-            </div>
-        </div>
-    @endif
-
-    <form method="POST" action="{{ route('login') }}">
+    <x-slot name="title">Iniciar sesión</x-slot>
+    <h1>Iniciar sesión</h1>
+    <x-auth.status />
+    <form method="POST" action="{{ route('login') }}" data-auth-form="login" novalidate>
         @csrf
-
-        <!-- Email Address -->
-        <div>
-            <x-input-label for="correo" value="Correo Electrónico" />
-            <x-text-input id="correo" class="block mt-1 w-full" type="email" name="correo" :value="old('correo')" required autofocus autocomplete="username" />
-            <x-input-error :messages="$errors->get('correo')" class="mt-2" />
-        </div>
-
-        <!-- Password -->
-        <div class="mt-4">
-            <x-input-label for="password" value="Contraseña" />
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
-        </div>
-
-        <!-- Remember Device (RF-012 RN-012.6) -->
-        <div class="block mt-4">
-            <label for="recordar_dispositivo" class="inline-flex items-center">
-                <input id="recordar_dispositivo" type="checkbox" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" name="recordar_dispositivo" value="1">
-                <span class="ms-2 text-sm text-gray-600">Recordar este dispositivo por 30 días</span>
-            </label>
-        </div>
-
-        <div class="flex items-center justify-between mt-6">
-            @if (Route::has('password.request'))
-                <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" href="{{ route('password.request') }}">
-                    ¿Olvidaste tu contraseña?
-                </a>
-            @endif
-
-            <x-primary-button class="ms-3">
-                Iniciar Sesión
-            </x-primary-button>
-        </div>
-
-        <div class="mt-6 text-center text-sm text-gray-500">
-            ¿No tienes cuenta? <a href="{{ route('register') }}" class="text-indigo-600 font-semibold hover:underline">Regístrate aquí</a>
-        </div>
+        <x-ui.field name="correo" label="Correo electrónico" :required="true"><input id="correo" name="correo" type="email" maxlength="254" value="{{ old('correo') }}" required autocomplete="email" aria-describedby="correo-error correo-client-error"><p id="correo-client-error" data-auth-client-error="correo" class="ui-error" aria-live="polite" hidden></p></x-ui.field>
+        <x-auth.password autocomplete="current-password" />
+        <p class="auth-forgot"><a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a></p>
+        <x-auth.submit label="Iniciar sesión" loading="Ingresando…" />
     </form>
+    <p class="auth-alternative">¿No tienes cuenta? <a href="{{ route('register') }}">Crear cuenta</a></p>
+    <details class="auth-resend-details" @if($errors->has('verificacion_error') || in_array(session('status'), ['Revisa tu correo para activar la cuenta', 'Si tu cuenta está pendiente de verificación, recibirás un correo.', 'Correo de verificación reenviado exitosamente.']) || str_contains($errors->first('correo'), 'Debes esperar') || str_contains($errors->first('correo'), 'límite')) open @endif><summary>Reenviar correo de verificación</summary><x-auth.resend /></details>
 </x-guest-layout>
