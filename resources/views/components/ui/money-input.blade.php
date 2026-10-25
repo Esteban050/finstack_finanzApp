@@ -1,6 +1,6 @@
 @props(['name', 'label' => 'Monto', 'currencyName' => null, 'value' => '', 'required' => true, 'allowZero' => false, 'id' => null, 'deduction' => false, 'editing' => false])
 @php($inputId = $id ?? $name)
-<x-ui.field :name="$name" :id="$inputId" :label="$label" :required="$required" :help="$allowZero ? 'Valor mayor o igual a $ 0. Máximo dos decimales.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99. Máximo dos decimales.'">
+<x-ui.field :name="$name" :id="$inputId" :label="$label" :required="$required" :help="$deduction ? 'Porcentaje entre 0 y 100 o valor en COP; máximo dos decimales.' : ($allowZero ? 'Valor mayor o igual a $ 0. Máximo dos decimales.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99. Máximo dos decimales.')">
     <div x-data="moneyInput" data-value="{{ old($name, $value) }}" data-allow-zero="{{ $allowZero ? 'true' : 'false' }}" data-deduction="{{ $deduction ? 'true' : 'false' }}" data-editing="{{ $editing ? 'true' : 'false' }}" @deduction-mode="setMode($event.detail)">
     @if($deduction)<div class="ui-inline ui-deduction-mode" role="group" aria-label="Unidad de {{ $label }}"><button type="button" class="ui-button ui-button--secondary" @click="$dispatch('deduction-mode', 'percent')" :aria-pressed="mode === 'percent'">%</button><button type="button" class="ui-button ui-button--secondary" @click="$dispatch('deduction-mode', 'money')" :aria-pressed="mode === 'money'">$</button></div>@endif
     <div class="ui-money">

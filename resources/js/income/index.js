@@ -82,7 +82,7 @@ export function mountIncome() {
         const date = editor.querySelector('[data-income-date]');
         if (date && !date.value) date.value = todayBogota();
         const summary = (override = {}) => {
-            try { const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatMoney(result[output.dataset.incomeSummary]); }
+            try { if (!(override.monto_original ?? valuesOf(form).monto_original)) throw new Error(); const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatMoney(result[output.dataset.incomeSummary]); }
             catch { for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = '—'; }
         };
         editor.addEventListener('money-change', (event) => {
