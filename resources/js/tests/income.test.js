@@ -79,6 +79,7 @@ test('G-05: hermanas del inventario usan claves existentes y distintas', async()
     const icons=Object.values(subcategoryIcons);
     for(let i=0;i<icons.length;i+=2) assert.notEqual(icons[i],icons[i+1]);
     assert.equal(catalogVisual({nombre:'Arriendo',icono:'home'},{}).iconName,'src-arrendamientos');
+    assert.equal(catalogVisual({nombre:'Impuestos',icono:'credit-card'},{}).iconName,'cat-impuestos');
 });
 
 test('QA-008: revalidación compartida sincroniza error y ARIA en 0→1 y 361→360',async()=>{

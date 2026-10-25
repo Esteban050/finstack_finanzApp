@@ -1,4 +1,4 @@
-import { getCategoryVisual } from '../ui/icons/categoryIcons.js';
+import { getCategoryVisual, CATEGORY_DEFAULTS } from '../ui/icons/categoryIcons.js';
 import { ICONS } from '../ui/icons/icons.js';
 
 export const legacyIcons = {
@@ -55,7 +55,7 @@ export function catalogVisual(category, palette) {
     const hex = String(category?.color_hex ?? '').trim().toUpperCase();
     const color = colors.find((name) => hex && hex === String(palette[name] ?? '').trim().toUpperCase()) ?? 'slate';
     const icon = category?.icono;
-    const iconName = Object.hasOwn(ICONS, icon) ? icon : subcategoryIcons[category?.nombre] ?? legacyIcons[icon]?.[0] ?? sourceIcons[category?.typeName] ?? getCategoryVisual(category?.nombre ?? '').iconName;
+    const iconName = Object.hasOwn(ICONS, icon) ? icon : subcategoryIcons[category?.nombre] ?? CATEGORY_DEFAULTS[category?.nombre]?.icon ?? legacyIcons[icon]?.[0] ?? sourceIcons[category?.typeName] ?? getCategoryVisual(category?.nombre ?? '').iconName;
     return getCategoryVisual(category, { color, iconName });
 }
 export function categoryPalette(style) {
