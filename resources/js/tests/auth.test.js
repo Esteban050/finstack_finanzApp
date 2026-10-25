@@ -68,3 +68,10 @@ test('QA-004: teléfono de perfil valida diez dígitos antes del POST',()=>{
     assert.deepEqual(validateProfilePresentation(values),{});
     assert.ok(validateProfilePresentation({...values,telefono:'123456789'}).telefono);
 });
+
+test('F6-57: ambos apellidos y nombres admiten letras Unicode y rechazan números/emoji y límites',()=>{
+    for(const field of ['nombres','apellidos']) {
+        for(const value of ['Áñ','María José','Ñ'.repeat(60)]) assert.equal(validateAuth('register',{...valid,[field]:value})[field],undefined);
+        for(const value of ['A','Ñ'.repeat(61),'Gómez2','Muñoz😀']) assert.ok(validateAuth('register',{...valid,[field]:value})[field]);
+    }
+});
