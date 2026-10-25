@@ -54,7 +54,11 @@
 .ui-brand { display: flex; align-items: center; gap: .75rem; font-size: 1.5rem; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }
 .ui-brand-mark { width: 36px; height: 36px; flex-shrink: 0; }
 .ui-brand-name > span { display: block; margin-top: .375rem; color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 400; letter-spacing: 0; }
-.ui-icon-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: .5rem; }
+.ui-icon-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .5rem; }
+.ui-icon-picker > input { grid-column: 1 / -1; }
+.ui-icon-picker fieldset { min-inline-size: 0; margin: 0; padding: .5rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+.ui-icon-picker legend { font-size: var(--ui-text-meta); color: var(--ui-muted); }
+.ui-icon-picker button { width: 100%; }
 .ui-icon-picker button { display: grid; place-items: center; min-height: 48px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
 .ui-icon-picker button[aria-pressed=true] { color: var(--accent); border: 2px solid var(--accent); background: var(--ui-raised); }
 .ui-navigation { display: grid; gap: .5rem; margin-top: 3rem; }
