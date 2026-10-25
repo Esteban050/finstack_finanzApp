@@ -207,7 +207,8 @@ html:has(dialog[open]) { overflow: hidden; }
 #modal-cat > div { max-height: calc(100dvh - 3rem); overflow-y: auto; }
 
 /* Tablas compartidas: conservar palabras y cantidades, desplazar solo la región. */
-.ui-table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; }
+.ui-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; }
+.ui-card { min-width: 0; max-width: 100%; }
 .ui-table th, .ui-table td, .ui-table p { overflow-wrap: normal; word-break: normal; hyphens: none; }
 .ui-table .ui-button, .ui-table button, .ui-table .ui-badge, .ui-table [data-money], .ui-table time { white-space: nowrap; }
 .ui-table [data-money] { font-variant-numeric: tabular-nums; }
