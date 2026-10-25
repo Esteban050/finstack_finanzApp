@@ -91,3 +91,11 @@ test('G-02: opcionales incompatibles se omiten sin bloquear; payload permitido',
     assert.deepEqual(categoryPayload({nombre:'QA-Test',icono:'home',color_hex:'#2B6CB0'},['home'],['#2B6CB0']).data,{nombre:'QA-Test',icono:'home',color_hex:'#2B6CB0'});
     assert.deepEqual(categoryPayload({nombre:'QA-Test'},[],[]).warnings,[]);
 });
+
+test('G-02: todas las opciones aceptadas por el contrato se conservan sin avisos',()=>{
+    const source=fs.readFileSync('app/Services/CategoriaGastoService.php','utf8');
+    const read=(name)=>[...source.match(new RegExp('public const '+name+' = \\[([\\s\\S]*?)\\];'))[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
+    const icons=read('ICONOS'),colors=read('PALETA');
+    for(const icono of icons) assert.deepEqual(categoryPayload({nombre:'QA-Test',icono},icons,colors).warnings,[]);
+    for(const color_hex of colors) assert.deepEqual(categoryPayload({nombre:'QA-Test',color_hex},icons,colors).warnings,[]);
+});
