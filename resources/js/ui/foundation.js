@@ -147,8 +147,14 @@ export function mountFoundation() {
     document.querySelectorAll('[data-field]').forEach((field) => {
         const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
         const error = field.querySelector('[data-field-error]');
-        if (input && error && !error.hidden) input.setAttribute('aria-invalid', 'true');
+        if (input && error) {
+            input.id ||= field.querySelector('label')?.htmlFor || field.dataset.field;
+            const described = new Set((input.getAttribute('aria-describedby') || '').split(' ').filter(Boolean)); described.add(error.id);
+            input.setAttribute('aria-describedby', [...described].join(' '));
+            input.setAttribute('aria-invalid', String(!error.hidden));
+        }
     });
+    document.querySelector('[aria-invalid=true]:not([disabled])')?.focus();
     document.querySelectorAll('label:not([for])').forEach((label, index) => {
         // Las etiquetas envolventes pertenecen a su propio control, nunca al primero del grupo.
         const ownInput = label.querySelector('input:not([type=hidden]), select, textarea');
