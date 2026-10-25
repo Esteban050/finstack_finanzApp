@@ -64,3 +64,15 @@ export function validateCategory(values, catalog, { id = null, parentId = null }
     return errors;
 }
 export { validateIncomeFilters as validateExpenseFilters };
+
+export function categoryPayload(values, icons, colors, {parentId = null, originalIcon = '', originalColor = '', editing = false} = {}) {
+    const data = {nombre: (values.nombre ?? '').trim()}, warnings = [];
+    if (!editing && parentId) data.categoria_padre_id = parentId;
+    if (parentId) for (const key of ['naturaleza_sugerida','necesidad_sugerida']) data[key] = values[key];
+    for (const [key, allowed, original] of [['icono',icons,originalIcon],['color_hex',colors,originalColor]]) {
+        const value = values[key] || original;
+        if (value && allowed.includes(value)) data[key] = value;
+        else if (value) warnings.push(key === 'icono' ? 'El ícono elegido no está disponible; se guardará sin ese ícono.' : 'El color elegido no está disponible; se guardará sin ese color.');
+    }
+    return {data, warnings};
+}

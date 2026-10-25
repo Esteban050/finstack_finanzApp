@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { PAYMENT_LABELS, validateExpense, validateTags, validateBulk, validateCategory, selectionWith, validateTagDraft } from '../expenses/rules.js';
+import { PAYMENT_LABELS, validateExpense, validateTags, validateBulk, validateCategory, selectionWith, validateTagDraft, categoryPayload } from '../expenses/rules.js';
 
 const catalog = [{id: 'housing', nombre: 'Vivienda', activa: true, es_predeterminada: true, subcategorias: [{id: 'rent', nombre: 'Arriendo', activa: true, naturaleza_sugerida: 'FIJO', necesidad_sugerida: 'ESENCIAL'}]}, {id: 'empty', nombre: 'Sin hijas', activa: true, subcategorias: []}];
 const expense = {fecha: '2026-01-01', monto_original: '999999999999.99', categoria_id: 'housing', subcategoria_id: 'rent', medio_pago: 'TARJETA_CREDITO', naturaleza: 'FIJO', necesidad: 'ESENCIAL', relevancia_tributaria: 'NO_DEDUCIBLE', etiquetas: []};
@@ -84,4 +84,10 @@ test('G-01: sugerencias envían enums exactos y dejan de estar inválidas al cor
     assert.deepEqual(validateCategory(v,catalog,{parentId:'housing'}),{});
     assert.ok(validateCategory({...v,naturaleza_sugerida:'Fijo'},catalog,{parentId:'housing'}).naturaleza_sugerida);
     assert.ok(validateCategory({...v,necesidad_sugerida:''},catalog,{parentId:'housing'}).necesidad_sugerida);
+});
+
+test('G-02: opcionales incompatibles se omiten sin bloquear; payload permitido',()=>{
+    assert.deepEqual(categoryPayload({nombre:'QA-Test',icono:'cat-vivienda',color_hex:'#FB923C',rol:'ADMIN'},['home'],['#2B6CB0']).data,{nombre:'QA-Test'});
+    assert.deepEqual(categoryPayload({nombre:'QA-Test',icono:'home',color_hex:'#2B6CB0'},['home'],['#2B6CB0']).data,{nombre:'QA-Test',icono:'home',color_hex:'#2B6CB0'});
+    assert.deepEqual(categoryPayload({nombre:'QA-Test'},[],[]).warnings,[]);
 });

@@ -6,7 +6,7 @@ import { moneyInputErrors } from '../income/index.js';
 import { formatMoney, validateAmount } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
 import { ENABLE_FOREIGN_CURRENCY } from '../config/currency.js';
-import { validateExpense, validateExpenseFilters, validateBulk, validateCategory, selectionWith, validateTagDraft } from './rules.js';
+import { validateExpense, validateExpenseFilters, validateBulk, validateCategory, selectionWith, validateTagDraft, categoryPayload } from './rules.js';
 
 const valuesOf = (form) => {
     const data = new FormData(form), values = Object.fromEntries(data);
@@ -100,7 +100,7 @@ export function mountExpenses() {
     }));
     document.querySelectorAll('[data-expense-form], [data-expense-action], [data-expense-confirm], [data-expense-bulk], [data-expense-category-form], [data-expense-merge]').forEach((form) => form.addEventListener('submit', async (event) => {
         event.preventDefault(); if (form.getAttribute('aria-busy') === 'true') return;
-        const values = valuesOf(form), catalog = catalogOf(form); let errors = {};
+        let values = valuesOf(form); const catalog = catalogOf(form); let errors = {};
         if ('moneda' in values && !ENABLE_FOREIGN_CURRENCY) values.moneda = 'COP';
         if (form.hasAttribute('data-expense-form')) {
             const recurrence = form.querySelector('[data-recurrence-fields]');
@@ -116,13 +116,12 @@ export function mountExpenses() {
             for (const key of ['categoria_id','subcategoria_id','naturaleza','necesidad']) if (!values[key]) delete values[key];
         }
         if (form.hasAttribute('data-expense-category-form')) {
-            if (!values.icono && form.dataset.originalIcon) values.icono = form.dataset.originalIcon;
-            if (!values.color_hex && form.dataset.originalColor) values.color_hex = form.dataset.originalColor;
             errors = validateCategory(values, catalog, {id: form.dataset.categoryId || null, parentId: values.categoria_padre_id || form.dataset.parentId || null});
-            const allowedIcons = JSON.parse(form.dataset.allowedIcons), allowedColors = JSON.parse(form.dataset.allowedColors);
-            if (values.icono && !allowedIcons.includes(values.icono)) errors.icono = ['Este ícono todavía no está disponible para guardar. Puedes conservar el ícono actual o dejarlo sin seleccionar.'];
-            if (values.color_hex && !allowedColors.includes(values.color_hex)) errors.color_hex = ['Este color todavía no está disponible para guardar. Puedes conservar el color actual o dejarlo sin seleccionar.'];
-            if (!form.dataset.parentId && !values.categoria_padre_id) { delete values.naturaleza_sugerida; delete values.necesidad_sugerida; }
+            const prepared = categoryPayload(values, JSON.parse(form.dataset.allowedIcons), JSON.parse(form.dataset.allowedColors), {parentId: values.categoria_padre_id || form.dataset.parentId || null, originalIcon: form.dataset.originalIcon, originalColor: form.dataset.originalColor, editing: Boolean(form.dataset.categoryId)});
+            values = {...prepared.data, _method: values._method};
+            const notice = form.querySelector('[data-expense-status]');
+            if (notice && prepared.warnings.length) { notice.hidden = false; notice.textContent = prepared.warnings.join(' '); notice.setAttribute('role','status'); }
+
         }
         if (form.hasAttribute('data-expense-merge') && !values.destino_id) errors.destino_id = ['Selecciona el destino de la fusión.'];
         const tagDraft = form.querySelector('.ui-tags input:not([type=hidden])');
