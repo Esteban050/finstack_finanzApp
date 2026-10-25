@@ -41,7 +41,7 @@
                             </button>
                         </form>
                         <form method="POST" action="{{ route('gastos.destroy', $p->id) }}"
-                              onsubmit="return confirm('¿Descartar este gasto pendiente?')">
+                              data-confirm-delete>
                             @csrf @method('DELETE')
                             <button type="submit" class="rounded border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">
                                 Descartar
@@ -89,7 +89,7 @@
                         </button>
                     </form>
                     <form method="POST" action="{{ route('gastos.recurrentes.destroy', $pl->id) }}"
-                          onsubmit="return confirm('¿Eliminar esta recurrencia?')">
+                          data-confirm-delete>
                         @csrf @method('DELETE')
                         <button type="submit" class="rounded border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">
                             Eliminar

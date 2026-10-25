@@ -4,7 +4,10 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "check-icons": "node scripts/check-icons.mjs",
+        "lint": "node scripts/lint-frontend.mjs",
+        "test": "node --test resources/js/tests/*.test.js"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",
@@ -21,6 +24,7 @@
         "@laravel/multiplex": "^0.4.1"
     },
     "dependencies": {
-        "chart.js": "^4.5.1"
+        "chart.js": "^4.5.1",
+        "decimal.js": "^10.6.0"
     }
 }

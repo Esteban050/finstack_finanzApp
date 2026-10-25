@@ -63,7 +63,7 @@
                 </div>
             </div>
 
-            <!-- Acciones Principales: Ingresos y Egresos -->
+            <!-- Acciones Principales: Ingresos y Gastos -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <a href="{{ route('ingresos.create') }}" class="p-6 bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl shadow-sm border border-emerald-200 hover:shadow-md transition flex items-center justify-between group">
                     <div class="space-y-1">
@@ -80,7 +80,7 @@
                     <div class="space-y-1">
                         <div class="flex items-center gap-2">
                             <span class="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-extrabold text-base shadow-sm">−</span>
-                            <h4 class="font-bold text-gray-900 group-hover:text-rose-700 text-lg">Registrar Egreso</h4>
+                            <h4 class="font-bold text-gray-900 group-hover:text-rose-700 text-lg">Registrar Gasto</h4>
                         </div>
                         <p class="text-xs text-gray-600">Gastos fijos, variables o deducibles con categoría e IVA/INC desglosado.</p>
                     </div>
@@ -101,7 +101,7 @@
                 </a>
 
                 <a href="{{ route('gastos.index') }}" class="p-5 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
-                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Egresos</h4>
+                    <h4 class="font-bold text-gray-900 mb-1 text-sm">Historial de Gastos</h4>
                     <p class="text-xs text-gray-500">Revisa tus gastos registrados, categorías y filtros por fecha.</p>
                 </a>
             </div>

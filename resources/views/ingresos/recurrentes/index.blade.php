@@ -37,7 +37,7 @@
                             </button>
                         </form>
                         <form method="POST" action="{{ route('ingresos.destroy', $p->id) }}"
-                              onsubmit="return confirm('¿Descartar este ingreso pendiente?')">
+                              data-confirm-delete>
                             @csrf @method('DELETE')
                             <button type="submit" class="rounded border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">
                                 Descartar
@@ -81,7 +81,7 @@
                         </button>
                     </form>
                     <form method="POST" action="{{ route('ingresos.recurrentes.destroy', $pl->id) }}"
-                          onsubmit="return confirm('¿Eliminar esta plantilla? Las ocurrencias ya generadas se conservan.')">
+                          data-confirm-delete>
                         @csrf @method('DELETE')
                         <button type="submit" class="rounded border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">
                             Eliminar
@@ -311,15 +311,7 @@
 
     /* Cálculo automático de retención y aportes en recurrencias */
     function calcularPorcentajesRecurrente() {
-        const bruto = parseFloat(document.getElementById('rec_monto_original').value) || 0;
-        const pctRet = parseFloat(document.getElementById('rec_porcentaje_retencion').value) || 0;
-        const pctAp  = parseFloat(document.getElementById('rec_porcentaje_aportes').value) || 0;
-
-        const valRet = Math.round((bruto * (pctRet / 100)) * 100) / 100;
-        const valAp  = Math.round((bruto * (pctAp / 100)) * 100) / 100;
-
-        document.getElementById('rec_retencion_fuente').value = valRet.toFixed(2);
-        document.getElementById('rec_aportes_descontados').value = valAp.toFixed(2);
+        window.scfpPreviewIncome?.('rec_');
     }
 
     function cambiarTipoTope(tipo) {

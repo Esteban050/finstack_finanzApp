@@ -168,15 +168,13 @@
 
     {{-- Tabla — RN-026.1 columnas --}}
     @if($gastos->isEmpty())
-        <div class="rounded-lg border border-dashed border-gray-300 bg-white py-16 text-center text-gray-500">
-            No hay gastos para los filtros seleccionados.
-        </div>
+        <x-ui.empty-state illustration="empty_gastos" title="No hay gastos para los filtros seleccionados." />
     @else
         <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm bg-white">
             <table class="min-w-full text-sm divide-y divide-gray-100">
                 <thead class="bg-gray-50 text-xs uppercase text-gray-500 tracking-wide">
                     <tr>
-                        <th class="px-3 py-3 text-left"><input type="checkbox" id="sel-todos" class="rounded"></th>
+                        <th class="px-3 py-3 text-left"><input type="checkbox" id="sel-todos" class="rounded" aria-label="Seleccionar todos los gastos de esta página"></th>
                         <th class="px-3 py-3 text-left">Fecha</th>
                         <th class="px-3 py-3 text-left">Categoría</th>
                         <th class="px-3 py-3 text-left">Naturaleza</th>
@@ -193,7 +191,7 @@
                         <tr class="hover:bg-gray-50 transition">
                             <td class="px-3 py-3">
                                 <input type="checkbox" name="ids[]" value="{{ $gasto->id }}"
-                                       class="rounded gasto-check">
+                                       class="rounded gasto-check" aria-label="Seleccionar gasto del {{ \Carbon\Carbon::parse($gasto->fecha)->format('d/m/Y') }}">
                             </td>
                             <td class="px-3 py-3 whitespace-nowrap">{{ \Carbon\Carbon::parse($gasto->fecha)->format('d/m/Y') }}</td>
                             <td class="px-3 py-3 text-xs">
@@ -229,7 +227,7 @@
                                 @endif
                                 <a href="{{ route('gastos.edit', $gasto->id) }}" class="text-xs text-indigo-600 hover:underline">Editar</a>
                                 <form method="POST" action="{{ route('gastos.destroy', $gasto->id) }}"
-                                      onsubmit="return confirm('¿Eliminar gasto del {{ \Carbon\Carbon::parse($gasto->fecha)->format('d/m/Y') }}?')">
+                                      data-confirm-delete>
                                     @csrf @method('DELETE')
                                     <button type="submit" class="text-xs text-red-600 hover:underline">Eliminar</button>
                                 </form>
@@ -251,7 +249,7 @@
 
         <div class="flex justify-between items-center text-sm text-gray-500">
             <span>Mostrando {{ $gastos->firstItem() }}–{{ $gastos->lastItem() }} de {{ $gastos->total() }}</span>
-            {{ $gastos->links() }}
+            <x-ui.pagination :paginator="$gastos" />
         </div>
     @endif
 </div>

@@ -140,9 +140,7 @@
     {{-- Tabla de ingresos — RN-024.2 --}}
     @if($ingresos->isEmpty())
         {{-- CA-024.2 --}}
-        <div class="rounded-lg border border-dashed border-gray-300 bg-white py-16 text-center text-gray-500">
-            No hay ingresos para los filtros seleccionados.
-        </div>
+        <x-ui.empty-state illustration="empty_ingresos" title="No hay ingresos para los filtros seleccionados." />
     @else
         <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm bg-white">
             <table class="min-w-full text-sm divide-y divide-gray-100">
@@ -188,7 +186,7 @@
                                 <a href="{{ route('ingresos.edit', $ingreso->id) }}" class="text-xs text-indigo-600 hover:underline">Editar</a>
                                 {{-- CA-023.2: diálogo de confirmación antes de eliminar --}}
                                 <form method="POST" action="{{ route('ingresos.destroy', $ingreso->id) }}"
-                                      onsubmit="return confirm('¿Eliminar el ingreso de {{ \Carbon\Carbon::parse($ingreso->fecha_recepcion)->format('d/m/Y') }} — {{ addslashes($ingreso->fuente?->nombre ?? 'Sin fuente') }} — $ {{ number_format($ingreso->monto_bruto_cop, 2) }}?')">
+                                      data-confirm-delete>
                                     @csrf @method('DELETE')
                                     <button type="submit" class="text-xs text-red-600 hover:underline">Eliminar</button>
                                 </form>
@@ -202,7 +200,7 @@
         {{-- Paginación --}}
         <div class="flex justify-between items-center text-sm text-gray-500">
             <span>Mostrando {{ $ingresos->firstItem() }}–{{ $ingresos->lastItem() }} de {{ $ingresos->total() }} registros</span>
-            {{ $ingresos->links() }}
+            <x-ui.pagination :paginator="$ingresos" />
         </div>
     @endif
 

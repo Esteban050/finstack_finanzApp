@@ -1,0 +1,160 @@
+import { formatMoney, formatTRM, parseMoneyInput, validateAmount, percentageOf, percentageFrom, subtractMoney } from '../utils/money.js';
+import { formatDate, todayBogota } from '../utils/date.js';
+import { safeMessage } from '../api/index.js';
+import { renderIllustration } from './illustrations/index.js';
+import { renderIcon } from './icons/Icon.js';
+import { getCategoryVisual } from './icons/categoryIcons.js';
+
+export function mapFieldErrors(form, errors) {
+    for (const field of form.querySelectorAll('[data-field]')) {
+        const raw = errors[field.dataset.field] ?? [];
+        const messages = Array.isArray(raw) ? raw : [raw];
+        const error = field.querySelector('[data-field-error]');
+        if (!error) continue;
+        error.textContent = messages.map((message) => safeMessage(message, 'Revisa la regla de validación de este campo.')).join(' ');
+        error.hidden = messages.length === 0;
+        const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
+        input?.setAttribute('aria-invalid', String(messages.length > 0));
+    }
+    form.querySelector('[aria-invalid=true]')?.focus();
+}
+
+export function registerFoundation(Alpine) {
+    Alpine.data('moneyInput', () => ({
+        display: '', canonical: '', invalid: false,
+        init() {
+            this.canonical = this.$root.dataset.value;
+            if (this.canonical) {
+                try { this.display = formatMoney(this.canonical).replace(/^\$ /, ''); }
+                catch { this.display = this.canonical; this.validate(); }
+            }
+        },
+        validate() {
+            const field = this.$root.closest('[data-field]');
+            const input = field.querySelector('input[type=text]');
+            let message = '';
+            try {
+                this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
+                if (this.canonical && !validateAmount(this.canonical)) message = 'RNG-09: el monto debe ser mayor que 0 y hasta $ 999.999.999.999,99.';
+                if (!this.canonical && input.required) message = 'RNG-05: este campo es obligatorio.';
+            } catch (error) { this.canonical = ''; message = error.message; }
+            this.invalid = Boolean(message);
+            input.setCustomValidity(message);
+            const error = field.querySelector('[data-field-error]');
+            error.textContent = message;
+            error.hidden = !message;
+        },
+    }));
+    Alpine.data('tagInput', () => ({
+        tags: [], draft: '',
+        init() { const tags = JSON.parse(this.$root.dataset.tags || '[]'); this.tags = Array.isArray(tags) ? tags : []; },
+        add() {
+            const tag = this.draft.trim();
+            const error = this.$root.closest('[data-field]').querySelector('[data-field-error]');
+            const message = tag.length < 2 || tag.length > 30 || this.tags.length >= 10 ? 'RN-026.1: hasta 10 etiquetas de 2 a 30 caracteres.' : '';
+            error.textContent = message; error.hidden = !message;
+            if (!message) { if (!this.tags.includes(tag)) this.tags.push(tag); this.draft = ''; }
+        },
+    }));
+}
+
+export function mountFoundation() {
+    // Adaptador para las vistas existentes: conserva sus nombres de campo y contrato.
+    window.scfpPreviewIncome = (prefix = '') => {
+        const get = (name) => document.getElementById(prefix + name);
+        try {
+            const amount = get('monto_original').value || '0';
+            const retention = percentageOf(amount, get('porcentaje_retencion').value || '0');
+            const contributions = percentageOf(amount, get('porcentaje_aportes').value || '0');
+            get('retencion_fuente').value = retention;
+            get('aportes_descontados').value = contributions;
+            const preview = document.getElementById('neto-preview');
+            if (preview && !prefix) preview.textContent = formatMoney(subtractMoney(subtractMoney(amount, retention), contributions), document.getElementById('moneda')?.value || 'COP') + ' (estimado)';
+        } catch { /* Durante una entrada incompleta se conservan los valores anteriores. */ }
+    };
+    document.querySelectorAll('[data-percentage-amount]').forEach((input) => {
+        input.step = 'any';
+        if (!input.value) {
+            try { input.value = percentageFrom(input.dataset.percentageAmount, document.getElementById('monto_original').value || '0'); } catch { input.value = ''; }
+        }
+    });
+    document.querySelectorAll('[data-illustration]').forEach((host) => host.replaceChildren(renderIllustration(host.dataset.illustration)));
+    document.querySelectorAll('[data-money]').forEach((host) => {
+        try { host.textContent = formatMoney(host.dataset.money, host.dataset.currency || 'COP'); }
+        catch { host.textContent = '—'; }
+    });
+    document.querySelectorAll('[data-date]').forEach((host) => {
+        try { host.textContent = formatDate(host.dataset.date); } catch { host.textContent = '—'; }
+    });
+    document.querySelectorAll('[data-trm]').forEach((host) => {
+        try { host.textContent = formatTRM(host.dataset.trm); } catch { host.textContent = '—'; }
+    });
+    document.querySelectorAll('[data-date-no-future]').forEach((input) => { input.max = todayBogota(); });
+    document.querySelectorAll('input[name=fecha], input[name=fecha_recepcion]').forEach((input) => { input.max = todayBogota(); });
+    document.querySelectorAll('input[name=monto_original]').forEach((input) => { input.max = '999999999999.99'; });
+    document.querySelectorAll('[data-category-name]').forEach((host) => {
+        const visual = getCategoryVisual({ nombre: host.dataset.categoryName, icono: host.dataset.categoryIcon || undefined, color: host.dataset.categoryColor || undefined });
+        host.style.color = /^var\(--cat-[a-z]+\)$/.test(visual.colorVar) ? visual.colorVar : 'var(--cat-slate)';
+        host.prepend(renderIcon(visual.iconName, { size: 20 }));
+    });
+    // Mejora tablas existentes con etiquetas de columna para su presentación como tarjetas.
+    document.querySelectorAll('.ui-content table').forEach((table) => {
+        table.classList.add('ui-table');
+        table.setAttribute('role', 'table');
+        table.querySelectorAll('thead, tbody').forEach((group) => group.setAttribute('role', 'rowgroup'));
+        table.querySelectorAll('tr').forEach((row) => row.setAttribute('role', 'row'));
+        table.querySelectorAll('th').forEach((cell) => { cell.scope = 'col'; cell.setAttribute('role', 'columnheader'); });
+        table.querySelectorAll('td').forEach((cell) => cell.setAttribute('role', 'cell'));
+        const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent.trim());
+        table.querySelectorAll('tbody tr').forEach((row) => [...row.children].forEach((cell, index) => { cell.dataset.label ||= headers[index] || ''; }));
+    });
+    // Vincula también los errores iniciales de Blade y los campos de las vistas heredadas.
+    document.querySelectorAll('[data-field]').forEach((field) => {
+        const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
+        const error = field.querySelector('[data-field-error]');
+        if (input && error && !error.hidden) input.setAttribute('aria-invalid', 'true');
+    });
+    document.querySelectorAll('label:not([for])').forEach((label, index) => {
+        const input = label.parentElement.querySelector('input:not([type=hidden]), select, textarea');
+        if (input) { input.id ||= `legacy-field-${index}`; label.htmlFor = input.id; }
+    });
+    const drawer = document.querySelector('#navigation-drawer');
+    const openButton = document.querySelector('[data-open-drawer]');
+    openButton?.addEventListener('click', () => { drawer.showModal(); openButton.setAttribute('aria-expanded', 'true'); });
+    drawer?.addEventListener('close', () => { openButton.setAttribute('aria-expanded', 'false'); openButton.focus(); });
+    drawer?.addEventListener('click', (event) => { if (event.target === drawer && event.clientX > drawer.getBoundingClientRect().right) drawer.close(); });
+    matchMedia('(min-width: 768px)').addEventListener('change', (event) => { if (event.matches && drawer?.open) drawer.close(); });
+    document.querySelector('[data-dismiss-toast]')?.addEventListener('click', () => { document.querySelector('#ui-toast').hidden = true; });
+    installConfirmation();
+    window.addEventListener('pageshow', resetLoading);
+    document.addEventListener('submit', (event) => {
+        if (event.defaultPrevented || event.target.method === 'dialog' || event.target.target === '_blank') return;
+        const loading = document.querySelector('[data-page-loading]');
+        if (loading) { loading.hidden = false; document.querySelector('#main-content')?.setAttribute('aria-busy', 'true'); }
+    });
+}
+
+function resetLoading() {
+    const loading = document.querySelector('[data-page-loading]');
+    if (loading) loading.hidden = true;
+    document.querySelector('#main-content')?.setAttribute('aria-busy', 'false');
+}
+
+function installConfirmation() {
+    const dialog = document.querySelector('#confirm-dialog');
+    if (!dialog) return;
+    const approved = new WeakSet();
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        const destructive = form.querySelector('input[name=_method]')?.value.toUpperCase() === 'DELETE' || form.hasAttribute('data-confirm-delete') || event.submitter?.hasAttribute('data-confirm-delete');
+        if (!destructive || approved.has(form)) { approved.delete(form); return; }
+        event.preventDefault(); event.stopImmediatePropagation();
+        const trigger = event.submitter;
+        dialog.returnValue = '';
+        dialog.showModal();
+        dialog.addEventListener('close', () => {
+            trigger?.focus();
+            if (dialog.returnValue === 'confirm') { approved.add(form); form.requestSubmit(trigger || undefined); }
+        }, { once: true });
+    }, true);
+}

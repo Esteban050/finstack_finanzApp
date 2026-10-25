@@ -86,16 +86,7 @@
             @error('tasa_cambio_usada') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
         </div>
 
-        @php
-            $brutoVal = (float) old('monto_original', $ingreso->monto_original);
-            $retVal   = (float) old('retencion_fuente', $ingreso->retencion_fuente_cop);
-            $apVal    = (float) old('aportes_descontados', $ingreso->aportes_descontados_cop);
-
-            $pctRetVal = $brutoVal > 0 ? round(($retVal / $brutoVal) * 100, 2) : 0;
-            $pctApVal  = $brutoVal > 0 ? round(($apVal / $brutoVal) * 100, 2) : 0;
-        @endphp
-
-        {{-- Retención — Porcentaje y Valor calculado (RF-021) --}}
+{{-- Retención — Porcentaje y Valor calculado (RF-021) --}}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <div>
                 <label for="porcentaje_retencion" class="block text-sm font-semibold text-gray-700 mb-1">
@@ -103,7 +94,7 @@
                 </label>
                 <div class="relative">
                     <input type="number" id="porcentaje_retencion" name="porcentaje_retencion"
-                           value="{{ old('porcentaje_retencion', $pctRetVal) }}"
+                           value="{{ old('porcentaje_retencion', '') }}" data-percentage-amount="{{ old('retencion_fuente', $ingreso->retencion_fuente_cop) }}"
                            step="0.01" min="0" max="100" placeholder="0"
                            class="w-full rounded border-gray-300 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                            oninput="calcularPorcentajes()">
@@ -142,7 +133,7 @@
                 </label>
                 <div class="relative">
                     <input type="number" id="porcentaje_aportes" name="porcentaje_aportes"
-                           value="{{ old('porcentaje_aportes', $pctApVal) }}"
+                           value="{{ old('porcentaje_aportes', '') }}" data-percentage-amount="{{ old('aportes_descontados', $ingreso->aportes_descontados_cop) }}"
                            step="0.01" min="0" max="100" placeholder="0"
                            class="w-full rounded border-gray-300 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                            oninput="calcularPorcentajes()">
@@ -217,19 +208,7 @@
 
 <script>
 function calcularPorcentajes() {
-    const bruto = parseFloat(document.getElementById('monto_original').value) || 0;
-    const pctRet = parseFloat(document.getElementById('porcentaje_retencion').value) || 0;
-    const pctAp  = parseFloat(document.getElementById('porcentaje_aportes').value) || 0;
-
-    const valRet = Math.round((bruto * (pctRet / 100)) * 100) / 100;
-    const valAp  = Math.round((bruto * (pctAp / 100)) * 100) / 100;
-
-    document.getElementById('retencion_fuente').value = valRet.toFixed(2);
-    document.getElementById('aportes_descontados').value = valAp.toFixed(2);
-
-    const neto = bruto - valRet - valAp;
-    document.getElementById('neto-preview').textContent =
-        '$ ' + neto.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    window.scfpPreviewIncome?.();
 }
 
 function setPorcentajeRetencion(valor) {

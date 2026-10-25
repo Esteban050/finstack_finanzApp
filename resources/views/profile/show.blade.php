@@ -248,7 +248,7 @@
                         <x-input-label for="confirmacion_palabra" value="Escribe exactamente la palabra ELIMINAR para confirmar *" />
                         <x-text-input id="confirmacion_palabra" type="text" name="confirmacion_palabra" required class="w-full mt-1 font-mono uppercase" placeholder="ELIMINAR" />
                     </div>
-                    <button type="submit" onclick="return confirm('¿Estás seguro de que deseas solicitar la supresión de tu cuenta?')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow">
+                    <button type="submit" data-confirm-delete class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow">
                         Confirmar Solicitud de Supresión
                     </button>
                 </form>

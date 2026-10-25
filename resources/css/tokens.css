@@ -1,0 +1,20 @@
+:root {
+  --cat-emerald: #34D399;
+  --cat-sky: #38BDF8;
+  --cat-violet: #A78BFA;
+  --cat-pink: #F472B6;
+  --cat-amber: #FBBF24;
+  --cat-orange: #FB923C;
+  --cat-red: #F87171;
+  --cat-teal: #2DD4BF;
+  --cat-lime: #A3E635;
+  --cat-indigo: #818CF8;
+  --cat-rose: #FB7185;
+  --cat-slate: #94A3B8;
+}
+
+.auth-bg {
+  background: url('../assets/backgrounds/bg-grid.svg');
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}

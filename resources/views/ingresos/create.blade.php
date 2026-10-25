@@ -222,20 +222,7 @@
 <script>
 /* Cálculo automático de montos a partir de porcentajes */
 function calcularPorcentajes() {
-    const bruto = parseFloat(document.getElementById('monto_original').value) || 0;
-    const pctRet = parseFloat(document.getElementById('porcentaje_retencion').value) || 0;
-    const pctAp  = parseFloat(document.getElementById('porcentaje_aportes').value) || 0;
-
-    // Calcular valores en moneda redondeados a 2 decimales
-    const valRet = Math.round((bruto * (pctRet / 100)) * 100) / 100;
-    const valAp  = Math.round((bruto * (pctAp / 100)) * 100) / 100;
-
-    document.getElementById('retencion_fuente').value = valRet.toFixed(2);
-    document.getElementById('aportes_descontados').value = valAp.toFixed(2);
-
-    const neto = bruto - valRet - valAp;
-    document.getElementById('neto-preview').textContent =
-        '$ ' + neto.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    window.scfpPreviewIncome?.();
 }
 
 function setPorcentajeRetencion(valor) {

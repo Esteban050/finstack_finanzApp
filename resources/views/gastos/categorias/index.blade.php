@@ -64,7 +64,7 @@
                         </button>
                         {{-- Eliminar — RN-027.2 --}}
                         <form method="POST" action="{{ route('gastos.categorias.destroy', $cat->id) }}"
-                              onsubmit="return confirm('¿Eliminar la categoría «{{ addslashes($cat->nombre) }}»?')">
+                              data-confirm-delete>
                             @csrf @method('DELETE')
                             <button type="submit" class="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">
                                 Eliminar
@@ -109,7 +109,7 @@
                                         Fusionar
                                     </button>
                                     <form method="POST" action="{{ route('gastos.categorias.destroy', $sub->id) }}"
-                                          onsubmit="return confirm('¿Eliminar «{{ addslashes($sub->nombre) }}»?')">
+                                          data-confirm-delete>
                                         @csrf @method('DELETE')
                                         <button type="submit" class="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600">Eliminar</button>
                                     </form>

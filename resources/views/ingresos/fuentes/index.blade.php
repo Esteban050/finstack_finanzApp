@@ -149,7 +149,7 @@
 
                                         {{-- Eliminar (RN-020.3 / CA-020.2) --}}
                                         <form method="POST" action="{{ route('ingresos.fuentes.destroy', $f->id) }}"
-                                              onsubmit="return confirm('¿Seguro que deseas eliminar la fuente «{{ addslashes($f->nombre) }}»? Si tiene ingresos asociados, solo podrás inactivarla.')"
+                                              data-confirm-delete
                                               class="inline">
                                             @csrf
                                             @method('DELETE')

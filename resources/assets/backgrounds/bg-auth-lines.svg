@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" preserveAspectRatio="xMidYMid slice" fill="none" stroke="#34D399" stroke-width="1.2">
+  <defs><path id="w" d="M-60 260C120 170 260 400 440 310S700 190 860 300"/></defs>
+  <g stroke-opacity=".10">
+    <use href="#w" y="0"/><use href="#w" y="48"/><use href="#w" y="96"/><use href="#w" y="144"/>
+    <use href="#w" y="192"/><use href="#w" y="240"/><use href="#w" y="288"/><use href="#w" y="336"/>
+    <use href="#w" y="384"/><use href="#w" y="432"/><use href="#w" y="480"/><use href="#w" y="528"/>
+  </g>
+</svg>
