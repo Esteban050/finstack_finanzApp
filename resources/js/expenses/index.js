@@ -104,7 +104,7 @@ export function mountExpenses() {
     }));
     document.querySelectorAll('[data-expense-form], [data-expense-action], [data-expense-confirm], [data-expense-bulk], [data-expense-category-form], [data-expense-merge]').forEach((form) => form.addEventListener('submit', async (event) => {
         event.preventDefault(); if (form.getAttribute('aria-busy') === 'true') return;
-        let values = valuesOf(form); const catalog = catalogOf(form); let errors = {};
+        let values = valuesOf(form); const catalog = catalogOf(form); let errors = {}, optionalWarnings = [];
         if ('moneda' in values && !ENABLE_FOREIGN_CURRENCY) values.moneda = 'COP';
         if (form.hasAttribute('data-expense-form')) {
             const recurrence = form.querySelector('[data-recurrence-fields]');
@@ -122,6 +122,7 @@ export function mountExpenses() {
         if (form.hasAttribute('data-expense-category-form')) {
             errors = validateCategory(values, catalog, {id: form.dataset.categoryId || null, parentId: values.categoria_padre_id || form.dataset.parentId || null});
             const prepared = categoryPayload(values, JSON.parse(form.dataset.allowedIcons), JSON.parse(form.dataset.allowedColors), {parentId: values.categoria_padre_id || form.dataset.parentId || null, originalIcon: form.dataset.originalIcon, originalColor: form.dataset.originalColor, editing: Boolean(form.dataset.categoryId)});
+            optionalWarnings = prepared.warnings;
             values = {...prepared.data, _method: values._method};
             const notice = form.querySelector('[data-expense-status]');
             if (notice && prepared.warnings.length) { notice.hidden = false; notice.textContent = prepared.warnings.join(' '); notice.setAttribute('role','status'); }
@@ -131,7 +132,7 @@ export function mountExpenses() {
         const tagDraft = form.querySelector('.ui-tags input:not([type=hidden])');
         if (tagDraft && !tagDraft.disabled) { const message = validateTagDraft(tagDraft.value, values.etiquetas ?? []); if (message) errors.etiquetas = [message]; }
         errors = {...errors, ...moneyInputErrors(form)}; mapFieldErrors(form, errors);
-        const status = form.querySelector('[data-expense-status]'); if (status) status.hidden = true;
+        const status = form.querySelector('[data-expense-status]'); if (status) {status.hidden = !optionalWarnings.length; status.textContent = optionalWarnings.join(' ');}
         if (Object.keys(errors).length) return;
         // Solo el envío válido convierte las etiquetas en la lista del contrato.
         if (values.relevancia_tributaria === 'NO_DEDUCIBLE') delete values.subtipo_deduccion;
