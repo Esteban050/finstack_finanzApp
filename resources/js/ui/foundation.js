@@ -152,6 +152,13 @@ export function mountFoundation() {
         table.querySelectorAll('td').forEach((cell) => cell.setAttribute('role', 'cell'));
         const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent.trim());
         table.querySelectorAll('tbody tr').forEach((row) => [...row.children].forEach((cell, index) => { cell.dataset.label ||= headers[index] || ''; }));
+        const actions = {Editar:'ui-editar', Eliminar:'ui-eliminar', Confirmar:'act-confirmar', Descartar:'act-descartar'};
+        for (const cell of table.querySelectorAll('td[data-label=Acciones]')) for (const button of cell.querySelectorAll('a,button')) {
+            const label = button.textContent.trim(), icon = actions[label];
+            if (!icon) continue;
+            button.setAttribute('aria-label',label); button.title=label;
+            button.classList.add('ui-button','ui-button--ghost'); button.replaceChildren(renderIcon(icon,{size:20}));
+        }
     });
     // Vincula también los errores iniciales de Blade y los campos de las vistas heredadas.
     document.querySelectorAll('[data-field]').forEach((field) => {
