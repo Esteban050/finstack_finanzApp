@@ -3,7 +3,6 @@
 .expense-bulk-panel { margin-block: 1.5rem; padding: 1.5rem; background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-lg); }
 .expense-table { margin-top: 1.5rem; }
 .expense-table td p { margin: .5rem 0; }
-.expense-table td { overflow-wrap: anywhere; }
 .expense-table input[type=checkbox] { min-width: 20px; min-height: 20px; }
 .expense-row-selector { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; }
 .expense-table .ui-table td:not(:has([data-money])) { text-align: left; }

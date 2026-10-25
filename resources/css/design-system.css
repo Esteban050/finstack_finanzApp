@@ -219,3 +219,5 @@ html:has(dialog[open]) { overflow: hidden; }
     .ui-table td:has([data-money]) { text-align: right; }
     .ui-table .ui-inline { flex-wrap: wrap; }
 }
+
+.scfp-theme [data-money] { white-space: nowrap; font-variant-numeric: tabular-nums; }
