@@ -1,5 +1,5 @@
 import { request, safeMessage } from '../api/index.js';
-import { mapFieldErrors } from '../ui/foundation.js';
+import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { renderIcon } from '../ui/icons/Icon.js';
 import { catalogVisual, categoryPalette } from '../income/catalog.js';
 import { moneyInputErrors } from '../income/index.js';
@@ -129,7 +129,7 @@ export function mountExpenses() {
         if (tagDraft && !tagDraft.disabled) { const message = validateTagDraft(tagDraft.value, values.etiquetas ?? []); if (message) errors.etiquetas = [message]; }
         errors = {...errors, ...moneyInputErrors(form)}; mapFieldErrors(form, errors);
         const status = form.querySelector('[data-expense-status]'); if (status) status.hidden = true;
-        if (Object.keys(errors).length) { if (status) { status.hidden = false; status.textContent = Object.values(errors).flat().join(' '); } return; }
+        if (Object.keys(errors).length) return;
         // Solo el envío válido convierte las etiquetas en la lista del contrato.
         if (values.relevancia_tributaria === 'NO_DEDUCIBLE') delete values.subtipo_deduccion;
         const submit = event.submitter; submit?.setAttribute('disabled', ''); form.setAttribute('aria-busy', 'true');
@@ -149,6 +149,7 @@ export function mountExpenses() {
     document.querySelectorAll('[data-open-expense-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.openExpenseDialog).showModal()));
     document.querySelectorAll('[data-close-expense-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
     document.querySelectorAll('[data-expense-category-form]').forEach((form) => {
+        bindErrorRevalidation(form, () => validateCategory(valuesOf(form), catalogOf(form), {id: form.dataset.categoryId || null, parentId: form.querySelector('[name=categoria_padre_id]')?.value || form.dataset.parentId || null}));
         const parent = form.querySelector('[data-category-parent]'), panel = form.querySelector('[data-category-suggestions]');
         const update = () => { const hasParent = Boolean(parent?.value || form.dataset.parentId); panel.hidden = !hasParent; for (const input of panel.querySelectorAll('select')) { input.disabled = !hasParent; input.required = hasParent; } };
         parent?.addEventListener('change', update); update();

@@ -5,18 +5,25 @@ import { renderIllustration } from './illustrations/index.js';
 import { renderIcon } from './icons/Icon.js';
 import { getCategoryVisual } from './icons/categoryIcons.js';
 
-export function mapFieldErrors(form, errors) {
+export function mapFieldErrors(form, errors, { focus = true, onlyErrored = false } = {}) {
     for (const field of form.querySelectorAll('[data-field]')) {
         const raw = errors[field.dataset.field] ?? [];
         const messages = Array.isArray(raw) ? raw : [raw];
         const error = field.querySelector('[data-field-error]');
-        if (!error) continue;
+        if (!error || (onlyErrored && error.hidden)) continue;
         error.textContent = messages.map((message) => safeMessage(message, 'Revisa la regla de validación de este campo.')).join(' ');
         error.hidden = messages.length === 0;
         const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
         input?.setAttribute('aria-invalid', String(messages.length > 0));
     }
-    form.querySelector('[aria-invalid=true]')?.focus();
+    if (focus) form.querySelector('[aria-invalid=true]:not([disabled])')?.focus();
+}
+
+export function bindErrorRevalidation(form, validate) {
+    const update = () => {
+        if (form.querySelector('[aria-invalid=true]')) mapFieldErrors(form, validate(), {focus: false, onlyErrored: true});
+    };
+    form.addEventListener('input', update); form.addEventListener('change', update);
 }
 
 export function registerFoundation(Alpine) {

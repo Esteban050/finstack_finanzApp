@@ -59,8 +59,8 @@ export function validateCategory(values, catalog, { id = null, parentId = null }
     if (!id && peers.filter((item) => !item.es_predeterminada).length >= (parentId ? 30 : 50)) errors.nombre = [parentId ? 'Alcanzaste el máximo de 30 subcategorías en esta categoría' : 'Alcanzaste el máximo de 50 categorías'];
     else if ([...name].length < 2 || [...name].length > 40) errors.nombre = ['El nombre debe tener entre 2 y 40 caracteres.'];
     else if (peers.some((item) => item.id !== id && item.nombre.trim().toLocaleLowerCase('es-CO') === name.toLocaleLowerCase('es-CO'))) errors.nombre = ['Ya existe una categoría con ese nombre en este nivel.'];
-    if (parentId && !values.naturaleza_sugerida) errors.naturaleza_sugerida = ['Selecciona la naturaleza sugerida.'];
-    if (parentId && !values.necesidad_sugerida) errors.necesidad_sugerida = ['Selecciona la necesidad sugerida.'];
+    if (parentId && !['FIJO','VARIABLE'].includes(values.naturaleza_sugerida)) errors.naturaleza_sugerida = ['Selecciona la naturaleza sugerida.'];
+    if (parentId && !['ESENCIAL','DISCRECIONAL'].includes(values.necesidad_sugerida)) errors.necesidad_sugerida = ['Selecciona la necesidad sugerida.'];
     return errors;
 }
 export { validateIncomeFilters as validateExpenseFilters };

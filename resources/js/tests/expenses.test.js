@@ -78,3 +78,10 @@ test('Blade real: fila pendiente, totales independientes y plantilla editable si
     const ids = [...rendered.recurrences.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(ids.length,new Set(ids).size,'IDs únicos entre confirmación, edición y creación');
 });
+
+test('G-01: sugerencias envían enums exactos y dejan de estar inválidas al corregir',()=>{
+    const v={nombre:'QA-Hija',naturaleza_sugerida:'FIJO',necesidad_sugerida:'ESENCIAL'};
+    assert.deepEqual(validateCategory(v,catalog,{parentId:'housing'}),{});
+    assert.ok(validateCategory({...v,naturaleza_sugerida:'Fijo'},catalog,{parentId:'housing'}).naturaleza_sugerida);
+    assert.ok(validateCategory({...v,necesidad_sugerida:''},catalog,{parentId:'housing'}).necesidad_sugerida);
+});
