@@ -1,4 +1,4 @@
-import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney } from '../utils/money.js';
+import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
 import { safeMessage } from '../api/index.js';
 import { renderIllustration } from './illustrations/index.js';
@@ -21,25 +21,47 @@ export function mapFieldErrors(form, errors) {
 
 export function registerFoundation(Alpine) {
     Alpine.data('moneyInput', () => ({
-        display: '', canonical: '', invalid: false,
+        display: '', canonical: '', invalid: false, mode: 'money', preview: '—',
         init() {
             this.canonical = this.$root.dataset.value;
+            if (this.$root.dataset.deduction === 'true') {
+                queueMicrotask(() => {
+                    const state = this.$root.dataset.editing === 'true' ? deductionMode(this.canonical || '0', this.gross()) : {mode:'percent',display:'0'};
+                    this.mode = state.mode; this.display = state.mode === 'money' ? formatMoney(this.canonical || '0').replace(/^\$ /, '') : state.display;
+                    this.validate();
+                });
+                this.$root.closest('form')?.addEventListener('money-change', (event) => { if (event.detail.name === 'monto_original' && this.mode === 'percent') this.validate(); });
+            }
             if (this.canonical) {
                 try { this.display = formatMoney(this.canonical).replace(/^\$ /, ''); }
                 catch { this.display = this.canonical; this.validate(); }
             }
+        },
+        gross() { return this.$root.closest('form')?.querySelector('[name=monto_original]')?.value || ''; },
+        setMode(mode) {
+            const amount = this.canonical;
+            this.mode = mode;
+            if (mode === 'percent') this.display = deductionMode(amount || '0', this.gross()).mode === 'percent' ? deductionMode(amount || '0', this.gross()).display : '0';
+            else this.display = amount ? formatMoney(amount).replace(/^\$ /, '') : '';
+            this.validate();
         },
         validate() {
             const field = this.$root.closest('[data-field]');
             const input = field.querySelector('input[type=text]');
             let message = '';
             try {
-                this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
+                if (this.mode === 'percent') {
+                    const percent = parsePercentage(this.display);
+                    this.canonical = this.gross() ? percentageOf(this.gross(), percent) : '';
+                } else this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
                 const allowedZero = this.$root.dataset.allowZero === 'true';
                 const inRange = this.canonical && (allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
                 if (this.canonical && !inRange) message = allowedZero ? 'El valor debe ser mayor o igual a $ 0.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';
                 if (!this.canonical && input.required) message = 'Este campo es obligatorio.';
             } catch (error) { this.canonical = ''; message = error.message; }
+            const hidden = this.$root.querySelector('input[type=hidden][name]');
+            if (hidden) hidden.value = this.canonical;
+            this.preview = this.mode === 'percent' && this.canonical && !message ? '= ' + formatMoney(this.canonical) : '—';
             this.invalid = Boolean(message);
             input.setAttribute('aria-invalid', String(this.invalid));
             input.setCustomValidity(message);

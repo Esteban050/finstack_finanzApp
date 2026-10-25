@@ -20,8 +20,8 @@
             <input type="hidden" name="moneda" value="COP">
             <x-ui.money-input name="monto_original" :id="$prefix.'-gross'" label="Monto bruto" :value="(string) ($record['monto_original'] ?? '')" />
             <div class="income-two-fields">
-                <x-ui.money-input name="retencion_fuente" :id="$prefix.'-retention'" label="Retención en la fuente" :value="(string) ($record['retencion_fuente'] ?? '0')" :allow-zero="true" :required="false" />
-                <x-ui.money-input name="aportes_descontados" :id="$prefix.'-contributions'" label="Aportes obligatorios descontados" :value="(string) ($record['aportes_descontados'] ?? '0')" :allow-zero="true" :required="false" />
+                <x-ui.money-input name="retencion_fuente" :id="$prefix.'-retention'" label="Retención en la fuente" :value="(string) ($record['retencion_fuente'] ?? '0')" :allow-zero="true" :required="false" :deduction="true" :editing="count($record) > 0" />
+                <x-ui.money-input name="aportes_descontados" :id="$prefix.'-contributions'" label="Aportes obligatorios descontados" :value="(string) ($record['aportes_descontados'] ?? '0')" :allow-zero="true" :required="false" :deduction="true" :editing="count($record) > 0" />
             </div>
         </x-ui.card>
         <x-ui.card title="Detalle y clasificación">

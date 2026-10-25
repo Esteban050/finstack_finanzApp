@@ -67,3 +67,8 @@ test('los filtros preservan límites exactos sin sumar la página', () => {
     assert.doesNotMatch(list, /number_format|parseFloat|\.reduce\(/);
     assert.ok(fs.readFileSync('resources/views/ingresos/fuentes/index.blade.php', 'utf8').includes('tieneIngresos()'));
 });
+
+test('G-04: neto cero válido y descuentos conjuntos sobre bruto rechazados',()=>{
+    assert.deepEqual(validateIncome({...valid,retencion_fuente:'5000000',aportes_descontados:'0'}),{});
+    assert.ok(validateIncome({...valid,retencion_fuente:'3000000',aportes_descontados:'2500000'}).aportes_descontados);
+});
