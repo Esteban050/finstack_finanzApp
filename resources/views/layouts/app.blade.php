@@ -5,8 +5,10 @@
     <title>@yield('title', 'FinanzApp')</title>
     <x-ui.theme-init />
     <script>
+        const privateHistoryNavigation = performance.getEntriesByType('navigation').some(function (entry) { return entry.type === 'back_forward'; });
+        if (privateHistoryNavigation) document.documentElement.style.visibility = 'hidden';
         window.addEventListener('pageshow', function (event) {
-            if (event.persisted) {
+            if (event.persisted || privateHistoryNavigation) {
                 document.documentElement.style.visibility = 'hidden';
                 window.location.replace(@js(route('login')));
             }
