@@ -70,8 +70,8 @@
                         </x-ui.field>
                         <x-ui.field name="responsable_iva" label="¿Responsable de IVA?" :required="true">
                             <select id="responsable_iva" name="responsable_iva" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="0" {{ old('responsable_iva', $perfilActivo?->responsable_iva) ? '' : 'selected' }}>No</option>
-                                <option value="1" {{ old('responsable_iva', $perfilActivo?->responsable_iva) ? 'selected' : '' }}>Sí (Obliga a declarar renta automáticamente)</option>
+                                <option value="0" @selected(!in_array(old('responsable_iva', $perfilActivo?->responsable_iva), [1, '1', true], true))>No</option>
+                                <option value="1" @selected(in_array(old('responsable_iva', $perfilActivo?->responsable_iva), [1, '1', true], true))>Sí (Obliga a declarar renta automáticamente)</option>
                             </select>
                         </x-ui.field>
                     </div>
@@ -95,8 +95,8 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-indigo-50/50 rounded-lg border border-indigo-100">
                         <x-ui.field name="es_salario_integral" label="¿Tiene Salario Integral? (Asalariado)">
                             <select id="es_salario_integral" name="es_salario_integral" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="0" {{ old('es_salario_integral', $perfilActivo?->es_salario_integral) ? '' : 'selected' }}>No</option>
-                                <option value="1" {{ old('es_salario_integral', $perfilActivo?->es_salario_integral) ? 'selected' : '' }}>Sí</option>
+                                <option value="0" @selected(!in_array(old('es_salario_integral', $perfilActivo?->es_salario_integral), [1, '1', true], true))>No</option>
+                                <option value="1" @selected(in_array(old('es_salario_integral', $perfilActivo?->es_salario_integral), [1, '1', true], true))>Sí</option>
                             </select>
                         </x-ui.field>
                         <x-ui.field name="clase_riesgo_arl" label="Clase de Riesgo ARL (Indep./Contratista)">
@@ -109,8 +109,8 @@
                         </x-ui.field>
                         <x-ui.field name="arl_obligatoria" label="Afiliación ARL">
                             <select id="arl_obligatoria" name="arl_obligatoria" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="1" {{ old('arl_obligatoria', $perfilActivo?->arl_obligatoria) ? 'selected' : '' }}>Obligatoria</option>
-                                <option value="0" {{ old('arl_obligatoria', $perfilActivo?->arl_obligatoria) === false ? 'selected' : '' }}>Voluntaria</option>
+                                <option value="1" @selected(in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Obligatoria</option>
+                                <option value="0" @selected(!in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Voluntaria</option>
                             </select>
                         </x-ui.field>
                     </div>
