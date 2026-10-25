@@ -134,11 +134,11 @@ html:has(dialog[open]) { overflow: hidden; }
 .ui-help-tip summary:hover { background: var(--ui-raised); }
 .ui-help-tip summary::-webkit-details-marker { display: none; }
 .ui-help-tip p { margin: .5rem 0 0; background: var(--ui-raised); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); padding: 1.25rem; max-width: min(320px, 100%); font-size: var(--ui-text-small); }
-.ui-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ui-text-small); }
+.ui-table { width: 100%; table-layout: auto; border-collapse: collapse; text-align: left; font-size: var(--ui-text-small); }
 .ui-table td { display: table-cell; }
-.ui-table .whitespace-nowrap { white-space: normal; }
+.ui-table .whitespace-nowrap { white-space: nowrap; }
 .ui-table caption { text-align: left; color: var(--ui-muted); padding: 0 0 1.5rem; font-size: var(--ui-text-small); }
-.ui-table th, .ui-table td { padding: 1.125rem 1rem; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; vertical-align: middle; }
+.ui-table th, .ui-table td { padding: 1.125rem 1rem; border-bottom: 1px solid var(--ui-border); overflow-wrap: normal; word-break: normal; hyphens: none; vertical-align: middle; }
 .ui-table th { color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 600; background: var(--ui-surface); }
 .ui-table tbody tr:hover { background: var(--ui-surface); }
 .ui-table td:has([data-money]), .ui-table th[data-align=right] { text-align: right; }
@@ -205,3 +205,17 @@ html:has(dialog[open]) { overflow: hidden; }
 .scfp-theme .ui-button--primary:enabled:hover, .scfp-theme a.ui-button--primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ui-text)); color: var(--accent-contrast); border-color: var(--accent); }
 
 #modal-cat > div { max-height: calc(100dvh - 3rem); overflow-y: auto; }
+
+/* Tablas compartidas: conservar palabras y cantidades, desplazar solo la región. */
+.ui-table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; }
+.ui-table th, .ui-table td, .ui-table p { overflow-wrap: normal; word-break: normal; hyphens: none; }
+.ui-table .ui-button, .ui-table button, .ui-table .ui-badge, .ui-table [data-money], .ui-table time { white-space: nowrap; }
+.ui-table [data-money] { font-variant-numeric: tabular-nums; }
+.ui-table .ui-inline { flex-wrap: nowrap; }
+.ui-deduction-mode { margin-bottom: .5rem; }
+.ui-deduction-mode [aria-pressed=true] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+@media (max-width: 767px) {
+    .ui-table td { grid-template-columns: minmax(0, 1fr); gap: .375rem; }
+    .ui-table td:has([data-money]) { text-align: right; }
+    .ui-table .ui-inline { flex-wrap: wrap; }
+}

@@ -130,6 +130,11 @@ export function mountFoundation() {
     // Mejora tablas existentes con etiquetas de columna para su presentación como tarjetas.
     document.querySelectorAll('.ui-content table').forEach((table) => {
         table.classList.add('ui-table');
+        if (!table.parentElement.classList.contains('ui-table-scroll')) {
+            const region = document.createElement('div'); region.className = 'ui-table-scroll'; region.tabIndex = 0;
+            region.setAttribute('role', 'region'); region.setAttribute('aria-label', table.caption?.textContent || 'Tabla de registros');
+            table.before(region); region.append(table);
+        }
         table.setAttribute('role', 'table');
         table.querySelectorAll('thead, tbody').forEach((group) => group.setAttribute('role', 'rowgroup'));
         table.querySelectorAll('tr').forEach((row) => row.setAttribute('role', 'row'));
