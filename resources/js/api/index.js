@@ -7,7 +7,6 @@
 // TODO(contrato: mensajes auth: login bloqueado no es genérico; registro duplicado, reutilización y mensajes MFA difieren en puntuación. Mantener los mensajes recibidos literalmente.)
 // TODO(contrato: registro: apellidos no tiene validación de letras/espacios en servidor; PasswordPolicyRule también prohíbe la parte local del correo de longitud >= 3.)
 // TODO(contrato: auth.verify-email y auth.confirm-password no tienen ruta de vista activa: la verificación redirige al login y la confirmación no está registrada.)
-// TODO(contrato: RN-027.4: CategoriaGastoService todavía valida 16 colores antiguos y claves legacy. Actualizar su contrato a las 87 claves del kit y los 12 hex --cat-*; el front no traduce silenciosamente los valores elegidos al enviar.)
 // TODO(contrato: RN-027: no existe operación de reorganización/reparentado ni campo de orden; no ofrecer arrastre que no se guarde.)
 // TODO(contrato: RN-025: subcategoria_id sigue nullable en registro/recurrencia del backend; el front exige subcategoría activa y bloquea categorías sin hijas.)
 // TODO(contrato: RN-025: no hay cotización por fecha; ENABLE_FOREIGN_CURRENCY permanece false sin tasas simuladas.)
@@ -89,8 +88,6 @@ export async function request(url, { method = 'GET', data, signal } = {}) {
 
 
 // TODO(contrato: RNG-10: fuentes y categorías se entregan como colecciones sin paginación; confirmar meta y filtros antes de conectarlas a Pagination.)
-// TODO(contrato: resumen financiero: falta endpoint o variables Blade de indicadores; no calcular totales ni insertar valores simulados.)
-// TODO(contrato: RN-027.4: extender a las pantallas de categorías la adaptación visual del catálogo usada por fuentes, sin modificar el kit.)
 // TODO(contrato: el backend debe confirmar el alcance exclusivo en COP y la política para registros históricos en otra moneda; el front ya envía COP en los formularios que lo exigen.)
 // TODO(contrato: RN-021: falta ranking de fuentes más usadas; no presentar el orden alfabético como popularidad ni fabricar frecuencias.)
 // TODO(contrato: RN-022: falta operación de terminación distinta de pausar; solo existe activa y DELETE elimina la plantilla conservando ocurrencias. La UI ofrece Pausar/Reanudar y Eliminar plantilla, sin estado terminado. El ancla de las plantillas con ocurrencias es inmutable en el servidor.)
