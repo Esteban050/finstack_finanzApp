@@ -93,3 +93,9 @@ test('QA-008: revalidación compartida sincroniza error y ARIA en 0→1 y 361→
         assert.equal(error.hidden,true); assert.equal(error.textContent,''); assert.equal(attributes['aria-invalid'],'false');
     }
 });
+
+test('QA-007: balance resta totales confirmados, admite negativo y no usa filas',async()=>{
+    const {dashboardTotals}=await import('../ui/movements.js');
+    assert.equal(dashboardTotals({bruto:'5000000',retencion:'150000',aportes:'400000',neto:'4450000'},{monto:'4500000'}).balance,'-50000.00');
+    assert.throws(()=>dashboardTotals({bruto:100,retencion:'0',aportes:'0',neto:'100'},{monto:'0'}));
+});

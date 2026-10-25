@@ -19,3 +19,12 @@ export function todayBogota() {
     const get = (name) => parts.find((part) => part.type === name).value;
     return `${get('year')}-${get('month')}-${get('day')}`;
 }
+
+export function periodRange(period, today = todayBogota()) {
+    const [year,month] = today.split('-').map(Number);
+    const date = (y,m,d) => new Date(Date.UTC(y,m-1,d)).toISOString().slice(0,10);
+    if (period === 'mes-anterior') return {from:date(year,month-1,1),to:date(year,month,0)};
+    if (period === 'trimestre') return {from:date(year,Math.floor((month-1)/3)*3+1,1),to:today};
+    if (period === 'ano') return {from:date(year,1,1),to:today};
+    return {from:date(year,month,1),to:today};
+}
