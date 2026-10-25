@@ -1,5 +1,4 @@
 // Único límite de acceso HTTP del nuevo frontend. Las URLs se entregan desde Blade mediante route().
-// TODO(contrato: acceso raíz: '/' sigue siendo una vista pública. Redirigir según sesión requiere modificar rutas/middleware, fuera del alcance autorizado; no sustituirlo por una redirección de cliente.)
 // TODO(contrato: autenticación: no existe ruta/documento de términos de uso ni aceptación/versionado separado. La casilla envía únicamente acepta_politica del contrato actual.)
 // TODO(contrato: RN-006.2: no existe endpoint de renovación ni metadatos de expiración; no simular Continuar sesión con una petición arbitraria.)
 // TODO(contrato: RN-002.2/RF-012: reenvíos sin metadatos de espera/cupos. La cuenta regresiva local ayuda a la UX; la autoridad de los límites sigue siendo el servidor.)
