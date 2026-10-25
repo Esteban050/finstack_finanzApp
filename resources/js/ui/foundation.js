@@ -1,5 +1,5 @@
 import { validateProfilePresentation } from '../auth/rules.js';
-import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode } from '../utils/money.js';
+import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode, normalizeMoneyInput } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
 import { safeMessage, validResourcePath } from '../api/index.js';
 import { renderIllustration } from './illustrations/index.js';
@@ -61,7 +61,7 @@ export function registerFoundation(Alpine) {
                 if (this.mode === 'percent') {
                     const percent = parsePercentage(this.display);
                     this.canonical = this.gross() ? percentageOf(this.gross(), percent) : '';
-                } else this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
+                } else { this.display = normalizeMoneyInput(this.display); this.canonical = this.display === '' ? '' : parseMoneyInput(this.display); }
                 const allowedZero = this.$root.dataset.allowZero === 'true';
                 const inRange = this.canonical && (allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
                 if (this.canonical && !inRange) message = allowedZero ? 'El valor debe ser mayor o igual a $ 0.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';

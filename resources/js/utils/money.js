@@ -50,7 +50,11 @@ export function deductionMode(amount, gross) {
 }
 export const percentageFrom = (amount, total) => decimal(total).isZero() ? '0' : decimal(amount).div(decimal(total)).times('100').toFixed(24);
 
+export function normalizeMoneyInput(value) {
+    return typeof value === 'string' ? value.replace(/[$\s\u00a0\u202f]/g, '') : value;
+}
 export function parseMoneyInput(value) {
+    value = normalizeMoneyInput(value);
     if (typeof value !== 'string' || !/^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(value)) {
         throw new TypeError('Usa puntos para los miles y coma para los decimales.');
     }

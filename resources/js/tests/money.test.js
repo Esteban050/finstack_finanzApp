@@ -31,3 +31,8 @@ test('entrada localizada estricta sin redondear silenciosamente', () => {
     assert.equal(deductionMode('150000','5000000').mode,'percent');
     assert.equal(deductionMode('0.01','999999999999.99').mode,'money');
 });
+
+test('pegado: símbolo COP y espacios normales/duros mantienen formato estricto',()=>{
+    for(const value of ['$ 5.000.000','$\u00a05.000.000',' $ 5.000.000,50 ']) assert.equal(parseMoneyInput(value),value.includes(',50')?'5000000.50':'5000000.00');
+    for(const value of ['$ 1.23','$ 5,000,000','$ 1e5']) assert.throws(()=>parseMoneyInput(value));
+});
