@@ -35,13 +35,13 @@ export function registerFoundation(Alpine) {
             if (this.$root.dataset.deduction === 'true') {
                 queueMicrotask(() => {
                     const state = this.$root.dataset.editing === 'true' ? deductionMode(this.canonical || '0', this.gross()) : {mode:'percent',display:'0'};
-                    this.mode = state.mode; this.display = state.mode === 'money' ? formatMoney(this.canonical || '0').replace(/^\$ /, '') : state.display;
+                    this.mode = state.mode; this.display = state.mode === 'money' ? formatMoney(this.canonical || '0').replace(/^\$\s/, '') : state.display;
                     this.validate();
                 });
                 this.$root.closest('form')?.addEventListener('money-change', (event) => { if (event.detail.name === 'monto_original' && this.mode === 'percent') this.validate(); });
             }
             if (this.canonical) {
-                try { this.display = formatMoney(this.canonical).replace(/^\$ /, ''); }
+                try { this.display = formatMoney(this.canonical).replace(/^\$\s/, ''); }
                 catch { this.display = this.canonical; this.validate(); }
             }
         },
@@ -50,7 +50,7 @@ export function registerFoundation(Alpine) {
             const amount = this.canonical;
             this.mode = mode;
             if (mode === 'percent') this.display = deductionMode(amount || '0', this.gross()).mode === 'percent' ? deductionMode(amount || '0', this.gross()).display : '0';
-            else this.display = amount ? formatMoney(amount).replace(/^\$ /, '') : '';
+            else this.display = amount ? formatMoney(amount).replace(/^\$\s/, '') : '';
             this.validate();
         },
         validate() {

@@ -66,5 +66,5 @@ export function formatMoney(amount) {
     const [whole, cents] = value.abs().toFixed(2).split('.');
     const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const fraction = cents !== '00' ? ',' + cents : '';
-    return `${value.isNegative() && !value.isZero() ? '-' : ''}$ ${grouped}${fraction}`;
+    return `${value.isNegative() && !value.isZero() ? '-' : ''}$\u00a0${grouped}${fraction}`;
 }

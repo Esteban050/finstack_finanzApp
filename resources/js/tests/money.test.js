@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { formatMoney, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
 
 test('formato COP sin pérdida de precisión', () => {
-    assert.equal(formatMoney('1234567'), '$ 1.234.567');
-    assert.equal(formatMoney('1234.50'), '$ 1.234,50');
-    assert.equal(formatMoney('999999999999.99'), '$ 999.999.999.999,99');
-    assert.equal(formatMoney('-1234.56'), '-$ 1.234,56');
+    assert.equal(formatMoney('1234567'), '$\u00a01.234.567');
+    assert.equal(formatMoney('1234.50'), '$\u00a01.234,50');
+    assert.equal(formatMoney('999999999999.99'), '$\u00a0999.999.999.999,99');
+    assert.equal(formatMoney('-1234.56'), '-$\u00a01.234,56');
     assert.throws(() => formatMoney(0.1), TypeError);
 });
 test('RNG-09: extremos y precisión de registro', () => {
