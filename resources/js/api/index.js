@@ -20,11 +20,42 @@ export class ApiError extends Error {
 
 export function safeMessage(value, fallback = 'No fue posible completar la operación. Intenta nuevamente.') {
     if (typeof value === 'string' && (/^validation\./i.test(value) || /^[a-z][a-z_-]*(?:\.[a-z_\d-]+)+$/.test(value))) return 'Revisa este campo';
-    return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|trace|exception|stack|server|servidor|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
+    return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|select\s|trace|exception|stack|server|servidor|[A-Z]:\\|\/var\/|\/home\/|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
 }
 
+export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+export function validResourcePath(path) {
+    const parts = path.split('/').filter(Boolean);
+    if (!['ingresos','gastos'].includes(parts[0]) || parts.length < 2) return true;
+    if (['fuentes','categorias','recurrentes'].includes(parts[1])) return parts.length < 3 || isUuid(parts[2]);
+    return ['crear', ...(parts[0] === 'gastos' ? ['indicadores','etiquetas','edicion-masiva'] : [])].includes(parts[1]) || isUuid(parts[1]);
+}
+export function contractPayload(path, method, values) {
+    const recurring = ['periodicidad','fecha_inicio','fecha_fin','max_ocurrencias','modo_confirmacion'];
+    const income = ['fuente_id','fecha_recepcion','monto_original','moneda','retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
+    const expense = ['fecha','monto_original','moneda','categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
+    let allowed;
+    if (/\/(toggle|confirmar)$/.test(path) && !path.startsWith('/gastos/')) allowed = [];
+    else if (method === 'DELETE' || /\/toggle$/.test(path)) allowed = [];
+    else if (path.startsWith('/ingresos/fuentes')) allowed = ['nombre','tipo_fuente_id','clasificacion_tributaria','pagador_entidad'];
+    else if (path.startsWith('/gastos/categorias')) allowed = path.endsWith('/fusionar') ? ['destino_id'] : ['nombre','categoria_padre_id','naturaleza_sugerida','necesidad_sugerida','icono','color_hex'];
+    else if (path.startsWith('/ingresos')) allowed = path.includes('/recurrentes') ? [...income.filter(k=>k!=='fecha_recepcion'),...recurring] : income;
+    else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
+    else return values;
+    return Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?'COP':values[k]]));
+}
+export function showRequestError(host, error) {
+    if (!host) return;
+    host.hidden = false; host.setAttribute('role','alert'); host.textContent = safeMessage(error.message);
+    if (error.status === 419) {
+        const reload = document.createElement('button'); reload.type = 'button'; reload.className = 'ui-button ui-button--secondary'; reload.textContent = 'Recargar la página';
+        reload.addEventListener('click',()=>window.location.reload()); host.append(reload);
+    }
+}
 export async function request(url, { method = 'GET', data, signal } = {}) {
     const target = new URL(url, window.location.origin);
+    if (!validResourcePath(target.pathname)) throw new ApiError(404, 'Recurso no encontrado');
+    if (data) data = contractPayload(target.pathname, method.toUpperCase(), data);
     if (target.origin !== window.location.origin) throw new ApiError(0, 'No fue posible completar la operación.');
     let response;
     try {
@@ -45,12 +76,13 @@ export async function request(url, { method = 'GET', data, signal } = {}) {
     }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const messages = { 403: 'Acceso denegado', 404: 'Recurso no encontrado', 419: 'Tu sesión expiró por inactividad' };
+        const messages = { 403: 'Acceso denegado', 404: 'Recurso no encontrado', 419: 'Tu sesión expiró. Recarga la página para continuar' };
         const errors = {};
         if (response.status === 422 && payload.errors && typeof payload.errors === 'object') {
             for (const [field, values] of Object.entries(payload.errors)) errors[field] = (Array.isArray(values) ? values : [values]).map((value) => safeMessage(value, 'Revisa la regla de validación de este campo.'));
         }
-        throw new ApiError(response.status, messages[response.status] ?? (response.status === 422 ? 'Revisa los campos indicados.' : safeMessage(null)), errors);
+        const reference = typeof payload.error_id === 'string' && /^[a-z0-9-]{1,80}$/i.test(payload.error_id) ? ' Referencia: ' + payload.error_id : '';
+        throw new ApiError(response.status, (messages[response.status] ?? (response.status === 422 ? 'Revisa los campos indicados.' : safeMessage(null))) + reference, errors);
     }
     return payload;
 }

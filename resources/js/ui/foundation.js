@@ -1,7 +1,7 @@
 import { validateProfilePresentation } from '../auth/rules.js';
 import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
-import { safeMessage } from '../api/index.js';
+import { safeMessage, validResourcePath } from '../api/index.js';
 import { renderIllustration } from './illustrations/index.js';
 import { renderIcon } from './icons/Icon.js';
 import { getCategoryVisual } from './icons/categoryIcons.js';
@@ -93,6 +93,10 @@ export function registerFoundation(Alpine) {
 }
 
 export function mountFoundation() {
+    for (const link of document.querySelectorAll('a[href]')) {
+        const url = new URL(link.href, window.location.origin);
+        if (url.origin === window.location.origin && !validResourcePath(url.pathname)) {link.removeAttribute('href'); link.setAttribute('aria-disabled','true'); link.title = 'Recurso no encontrado';}
+    }
     document.querySelectorAll('[data-profile-form]').forEach((form) => {
         const validate = () => validateProfilePresentation(Object.fromEntries(new FormData(form)));
         bindErrorRevalidation(form, validate);

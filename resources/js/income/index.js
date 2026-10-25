@@ -1,5 +1,5 @@
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
-import { request, safeMessage } from '../api/index.js';
+import { request, safeMessage, showRequestError } from '../api/index.js';
 import { formatMoney } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
 import { catalogVisual, categoryPalette, legacyIcons } from './catalog.js';
@@ -131,7 +131,7 @@ export function mountIncome() {
             window.location.assign(form.dataset.returnUrl || window.location.href);
         } catch (error) {
             mapFieldErrors(form, normalizedErrors(error.errors || {}));
-            if (status) { status.hidden = false; status.textContent = safeMessage(error.message); status.setAttribute('role', 'alert'); }
+            showRequestError(status, error);
         } finally {
             if (succeeded) return;
             submit?.removeAttribute('disabled'); submit?.removeAttribute('aria-busy'); form.setAttribute('aria-busy', 'false');

@@ -1,4 +1,4 @@
-import { request, safeMessage } from '../api/index.js';
+import { request, safeMessage, showRequestError } from '../api/index.js';
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { renderIcon } from '../ui/icons/Icon.js';
 import { catalogVisual, categoryPalette } from '../income/catalog.js';
@@ -144,7 +144,7 @@ export function mountExpenses() {
             window.location.assign(form.dataset.returnUrl || window.location.href);
         } catch (error) {
             mapFieldErrors(form, errorMessages(error.errors || {}));
-            if (status) { status.hidden = false; status.textContent = safeMessage(error.message); }
+            showRequestError(status, error);
         } finally {
             if (!success) { submit?.removeAttribute('disabled'); form.setAttribute('aria-busy', 'false'); if (loading) loading.hidden = true; }
         }
