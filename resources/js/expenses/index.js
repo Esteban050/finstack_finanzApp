@@ -19,6 +19,10 @@ function errorMessages(errors) {
     return Object.fromEntries(Object.entries(errors).map(([key, messages]) => [key.replace(/^etiquetas\.\d+$/, 'etiquetas'), (Array.isArray(messages) ? messages : [messages]).map((value) => String(value).replace(/\s*\((?:RF|RN|RNG|CA)-\d+(?:\.\d+)?\)/g, '').replace(/^Alcanzaste el máximo de 50 categorías\.$/, 'Alcanzaste el máximo de 50 categorías'))]));
 }
 export function mountExpenses() {
+    document.querySelectorAll('[data-expense-form]').forEach((form) => bindErrorRevalidation(form, () => {
+        const recurrence = form.querySelector('[data-recurrence-fields]');
+        return {...validateExpense(valuesOf(form), catalogOf(form), {recurrent: Boolean(recurrence), limit: recurrence?.dataset.limit, frozen: recurrence ? {fecha_inicio: recurrence.querySelector('[name=fecha_inicio]').value, periodicidad: recurrence.querySelector('[name=periodicidad]').value} : {}}), ...moneyInputErrors(form)};
+    }));
     const palette = categoryPalette(getComputedStyle(document.documentElement));
     document.querySelectorAll('[data-expense-categories]').forEach((root) => {
         const categories = JSON.parse(root.dataset.catalog), category = root.querySelector('[data-expense-category]'), sub = root.querySelector('[data-expense-subcategory]'), form = root.closest('form');

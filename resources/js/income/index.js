@@ -1,4 +1,4 @@
-import { mapFieldErrors } from '../ui/foundation.js';
+import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { request, safeMessage } from '../api/index.js';
 import { formatMoney } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
@@ -25,7 +25,24 @@ function normalizedErrors(errors) {
     });
     return result;
 }
+function incomeFormErrors(form, values = valuesOf(form)) {
+    let errors = {};
+    const editor = form.querySelector('[data-income-editor]');
+    if (editor) {
+        const recurrence = form.querySelector('[data-recurrence-fields]');
+        errors = validateIncome(values, Boolean(recurrence));
+        if (recurrence) errors = { ...errors, ...validateRecurrence({ ...values, periodicidad: values.periodicidad || recurrence.querySelector('[name=periodicidad]').value, fecha_inicio: values.fecha_inicio || recurrence.querySelector('[name=fecha_inicio]').value }, recurrence.dataset.limit) };
+    }
+    if (form.hasAttribute('data-source-form')) {
+        const catalog = JSON.parse(document.querySelector('[data-source-catalog]')?.dataset.sourceCatalog || '[]');
+        errors = validateSource(values, catalog, form.dataset.sourceId || null);
+    }
+    errors = { ...errors, ...moneyInputErrors(form) };
+    return errors;
+}
 export function mountIncome() {
+    document.querySelectorAll('[data-income-form], [data-source-form]').forEach((form) => bindErrorRevalidation(form, () => incomeFormErrors(form)));
+
     document.querySelectorAll('[data-icon-picker]').forEach((select) => {
         const group = document.createElement('div'); group.className = 'ui-icon-picker';
         const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Buscar ícono por nombre'; search.setAttribute('aria-label', 'Buscar ícono por nombre');
@@ -97,18 +114,7 @@ export function mountIncome() {
         if (form.getAttribute('aria-busy') === 'true') return;
         const values = valuesOf(form);
         if (!ENABLE_FOREIGN_CURRENCY && Object.hasOwn(values, 'moneda')) values.moneda = 'COP';
-        let errors = {};
-        const editor = form.querySelector('[data-income-editor]');
-        if (editor) {
-            const recurrence = form.querySelector('[data-recurrence-fields]');
-            errors = validateIncome(values, Boolean(recurrence));
-            if (recurrence) errors = { ...errors, ...validateRecurrence({ ...values, periodicidad: values.periodicidad || recurrence.querySelector('[name=periodicidad]').value, fecha_inicio: values.fecha_inicio || recurrence.querySelector('[name=fecha_inicio]').value }, recurrence.dataset.limit) };
-        }
-        if (form.hasAttribute('data-source-form')) {
-            const catalog = JSON.parse(document.querySelector('[data-source-catalog]')?.dataset.sourceCatalog || '[]');
-            errors = validateSource(values, catalog, form.dataset.sourceId || null);
-        }
-        errors = { ...errors, ...moneyInputErrors(form) };
+        const errors = incomeFormErrors(form, values);
         mapFieldErrors(form, errors);
         if (Object.keys(errors).length) return;
         const status = form.querySelector('[data-form-status]');

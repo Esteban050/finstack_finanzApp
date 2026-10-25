@@ -80,3 +80,16 @@ test('G-05: hermanas del inventario usan claves existentes y distintas', async()
     for(let i=0;i<icons.length;i+=2) assert.notEqual(icons[i],icons[i+1]);
     assert.equal(catalogVisual({nombre:'Arriendo',icono:'home'},{}).iconName,'src-arrendamientos');
 });
+
+test('QA-008: revalidación compartida sincroniza error y ARIA en 0→1 y 361→360',async()=>{
+    const {mapFieldErrors,bindErrorRevalidation}=await import('../ui/foundation.js');
+    for(const [bad,good] of [['0','1'],['361','360']]) {
+        const attributes={},error={hidden:true,textContent:''}, input={id:'count',setAttribute:(k,v)=>attributes[k]=v,focus:()=>{}};
+        const field={dataset:{field:'max_ocurrencias'},querySelector:s=>s==='[data-field-error]'?error:input,querySelectorAll:()=>[input]};
+        const listeners={}; const form={querySelectorAll:()=>[field],querySelector:()=>input,addEventListener:(name,fn)=>listeners[name]=fn};
+        let value=bad; const validate=()=>validateRecurrence({fecha_inicio:'2030-01-01',periodicidad:'MENSUAL',modo_confirmacion:'REQUIERE_CONFIRMACION',max_ocurrencias:value},'count');
+        mapFieldErrors(form,validate()); assert.equal(attributes['aria-invalid'],'true');
+        bindErrorRevalidation(form,validate); value=good; listeners.input();
+        assert.equal(error.hidden,true); assert.equal(error.textContent,''); assert.equal(attributes['aria-invalid'],'false');
+    }
+});
