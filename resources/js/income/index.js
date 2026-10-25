@@ -27,15 +27,20 @@ function normalizedErrors(errors) {
 }
 export function mountIncome() {
     document.querySelectorAll('[data-icon-picker]').forEach((select) => {
-        const group = document.createElement('div'); group.className = 'ui-icon-picker'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Ícono de la categoría');
+        const group = document.createElement('div'); group.className = 'ui-icon-picker';
+        const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Buscar ícono por nombre'; search.setAttribute('aria-label', 'Buscar ícono por nombre');
+        group.append(search);
         for (const option of select.options) {
-            const button = document.createElement('button'); button.type = 'button';
             const label = option.value ? (legacyIcons[option.value]?.[1] ?? option.textContent) : 'Ninguno';
+            const theme = document.createElement('fieldset'), legend = document.createElement('legend'); legend.textContent = label; theme.append(legend);
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--secondary';
             button.setAttribute('aria-label', label); button.title = label; button.setAttribute('aria-pressed', String(option.selected));
-            if (option.value) button.append(renderIcon(catalogVisual({icono: option.value}, {}).iconName, {size: 22})); else button.append(renderIcon('ui-cerrar', {size: 20}));
-            button.addEventListener('click', () => { select.value = option.value; select.dispatchEvent(new Event('change', {bubbles:true})); for (const item of group.children) item.setAttribute('aria-pressed', String(item === button)); });
-            group.append(button);
+            button.append(renderIcon(option.value ? catalogVisual({icono: option.value}, {}).iconName : 'ui-cerrar', {size: 22}));
+            const text = document.createElement('span'); text.textContent = label; button.append(text);
+            button.addEventListener('click', () => { select.value = option.value; select.dispatchEvent(new Event('change', {bubbles:true})); for (const item of group.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button)); });
+            theme.append(button); group.append(theme);
         }
+        search.addEventListener('input', () => { const term = search.value.toLocaleLowerCase('es-CO'); for (const item of group.querySelectorAll('fieldset')) item.hidden = !item.textContent.toLocaleLowerCase('es-CO').includes(term); });
         select.hidden = true; select.after(group);
     });
     const palette = categoryPalette(getComputedStyle(document.documentElement));

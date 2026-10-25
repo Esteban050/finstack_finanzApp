@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { catalogVisual } from '../income/catalog.js';
+import { catalogVisual, subcategoryIcons } from '../income/catalog.js';
 import { ENABLE_FOREIGN_CURRENCY } from '../config/currency.js';
 import { incomeSummary, validateIncome, validateSource, validateRecurrence, suggestClassification, validateIncomeFilters } from '../income/rules.js';
 
@@ -71,4 +71,12 @@ test('los filtros preservan límites exactos sin sumar la página', () => {
 test('G-04: neto cero válido y descuentos conjuntos sobre bruto rechazados',()=>{
     assert.deepEqual(validateIncome({...valid,retencion_fuente:'5000000',aportes_descontados:'0'}),{});
     assert.ok(validateIncome({...valid,retencion_fuente:'3000000',aportes_descontados:'2500000'}).aportes_descontados);
+});
+
+test('G-05: hermanas del inventario usan claves existentes y distintas', async()=>{
+    const {ICONS}=await import('../ui/icons/icons.js');
+    for(const icon of Object.values(subcategoryIcons)) assert.ok(Object.hasOwn(ICONS,icon));
+    const icons=Object.values(subcategoryIcons);
+    for(let i=0;i<icons.length;i+=2) assert.notEqual(icons[i],icons[i+1]);
+    assert.equal(catalogVisual({nombre:'Arriendo',icono:'home'},{}).iconName,'src-arrendamientos');
 });
