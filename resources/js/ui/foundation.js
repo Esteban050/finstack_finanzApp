@@ -1,45 +1,75 @@
-import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney } from '../utils/money.js';
+import { validateProfilePresentation } from '../auth/rules.js';
+import { formatMoney, parseMoneyInput, validateAmount, decimal, MAX_AMOUNT, percentageOf, percentageFrom, subtractMoney, parsePercentage, deductionMode, normalizeMoneyInput } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
-import { safeMessage } from '../api/index.js';
+import { safeMessage, validResourcePath } from '../api/index.js';
 import { renderIllustration } from './illustrations/index.js';
 import { renderIcon } from './icons/Icon.js';
 import { getCategoryVisual } from './icons/categoryIcons.js';
 
-export function mapFieldErrors(form, errors) {
+export function mapFieldErrors(form, errors, { focus = true, onlyErrored = false } = {}) {
     for (const field of form.querySelectorAll('[data-field]')) {
         const raw = errors[field.dataset.field] ?? [];
         const messages = Array.isArray(raw) ? raw : [raw];
         const error = field.querySelector('[data-field-error]');
-        if (!error) continue;
+        if (!error || (onlyErrored && error.hidden)) continue;
         error.textContent = messages.map((message) => safeMessage(message, 'Revisa la regla de validación de este campo.')).join(' ');
         error.hidden = messages.length === 0;
         const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
         input?.setAttribute('aria-invalid', String(messages.length > 0));
     }
-    form.querySelector('[aria-invalid=true]')?.focus();
+    if (focus) form.querySelector('[aria-invalid=true]:not([disabled])')?.focus();
+}
+
+export function bindErrorRevalidation(form, validate) {
+    const update = () => {
+        if (form.querySelector('[aria-invalid=true]')) mapFieldErrors(form, validate(), {focus: false, onlyErrored: true});
+    };
+    form.addEventListener('input', update); form.addEventListener('change', update);
 }
 
 export function registerFoundation(Alpine) {
     Alpine.data('moneyInput', () => ({
-        display: '', canonical: '', invalid: false,
+        display: '', canonical: '', invalid: false, mode: 'money', preview: '—',
         init() {
             this.canonical = this.$root.dataset.value;
+            if (this.$root.dataset.deduction === 'true') {
+                queueMicrotask(() => {
+                    const state = this.$root.dataset.editing === 'true' ? deductionMode(this.canonical || '0', this.gross()) : {mode:'percent',display:'0'};
+                    this.mode = state.mode; this.display = state.mode === 'money' ? formatMoney(this.canonical || '0').replace(/^\$\s/, '') : state.display;
+                    this.validate();
+                });
+                this.$root.closest('form')?.addEventListener('money-change', (event) => { if (event.detail.name === 'monto_original' && this.mode === 'percent') this.validate(); });
+            }
             if (this.canonical) {
-                try { this.display = formatMoney(this.canonical).replace(/^\$ /, ''); }
+                try { this.display = formatMoney(this.canonical).replace(/^\$\s/, ''); }
                 catch { this.display = this.canonical; this.validate(); }
             }
+        },
+        gross() { return this.$root.closest('form')?.querySelector('[name=monto_original]')?.value || ''; },
+        setMode(mode) {
+            const amount = this.canonical;
+            this.mode = mode;
+            if (mode === 'percent') this.display = deductionMode(amount || '0', this.gross()).mode === 'percent' ? deductionMode(amount || '0', this.gross()).display : '0';
+            else this.display = amount ? formatMoney(amount).replace(/^\$\s/, '') : '';
+            this.validate();
         },
         validate() {
             const field = this.$root.closest('[data-field]');
             const input = field.querySelector('input[type=text]');
             let message = '';
             try {
-                this.canonical = this.display === '' ? '' : parseMoneyInput(this.display);
+                if (this.mode === 'percent') {
+                    const percent = parsePercentage(this.display);
+                    this.canonical = this.gross() ? percentageOf(this.gross(), percent) : '';
+                } else { this.display = normalizeMoneyInput(this.display); this.canonical = this.display === '' ? '' : parseMoneyInput(this.display); }
                 const allowedZero = this.$root.dataset.allowZero === 'true';
                 const inRange = this.canonical && (allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
                 if (this.canonical && !inRange) message = allowedZero ? 'El valor debe ser mayor o igual a $ 0.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';
                 if (!this.canonical && input.required) message = 'Este campo es obligatorio.';
             } catch (error) { this.canonical = ''; message = error.message; }
+            const hidden = this.$root.querySelector('input[type=hidden][name]');
+            if (hidden) hidden.value = this.canonical;
+            this.preview = this.mode === 'percent' && this.canonical && !message ? '= ' + formatMoney(this.canonical) : '—';
             this.invalid = Boolean(message);
             input.setAttribute('aria-invalid', String(this.invalid));
             input.setCustomValidity(message);
@@ -63,6 +93,15 @@ export function registerFoundation(Alpine) {
 }
 
 export function mountFoundation() {
+    for (const link of document.querySelectorAll('a[href]')) {
+        const url = new URL(link.href, window.location.origin);
+        if (url.origin === window.location.origin && !validResourcePath(url.pathname)) {link.removeAttribute('href'); link.setAttribute('aria-disabled','true'); link.title = 'Recurso no encontrado';}
+    }
+    document.querySelectorAll('[data-profile-form]').forEach((form) => {
+        const validate = () => validateProfilePresentation(Object.fromEntries(new FormData(form)));
+        bindErrorRevalidation(form, validate);
+        form.addEventListener('submit', (event) => { const errors = validate(); if (Object.keys(errors).length) {event.preventDefault(); mapFieldErrors(form, errors);} });
+    });
     // Adaptador para las vistas existentes: conserva sus nombres de campo y contrato.
     window.scfpPreviewIncome = (prefix = '') => {
         const get = (name) => document.getElementById(prefix + name);
@@ -101,6 +140,11 @@ export function mountFoundation() {
     // Mejora tablas existentes con etiquetas de columna para su presentación como tarjetas.
     document.querySelectorAll('.ui-content table').forEach((table) => {
         table.classList.add('ui-table');
+        if (!table.parentElement.classList.contains('ui-table-scroll')) {
+            const region = document.createElement('div'); region.className = 'ui-table-scroll'; region.tabIndex = 0;
+            region.setAttribute('role', 'region'); region.setAttribute('aria-label', table.caption?.textContent || 'Tabla de registros');
+            table.before(region); region.append(table);
+        }
         table.setAttribute('role', 'table');
         table.querySelectorAll('thead, tbody').forEach((group) => group.setAttribute('role', 'rowgroup'));
         table.querySelectorAll('tr').forEach((row) => row.setAttribute('role', 'row'));
@@ -108,13 +152,26 @@ export function mountFoundation() {
         table.querySelectorAll('td').forEach((cell) => cell.setAttribute('role', 'cell'));
         const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent.trim());
         table.querySelectorAll('tbody tr').forEach((row) => [...row.children].forEach((cell, index) => { cell.dataset.label ||= headers[index] || ''; }));
+        const actions = {Editar:'ui-editar', Eliminar:'ui-eliminar', Confirmar:'act-confirmar', Descartar:'act-descartar'};
+        for (const cell of table.querySelectorAll('td[data-label=Acciones]')) for (const button of cell.querySelectorAll('a,button')) {
+            const label = button.textContent.trim(), icon = actions[label];
+            if (!icon) continue;
+            button.setAttribute('aria-label',label); button.title=label;
+            button.classList.add('ui-button','ui-button--ghost'); button.replaceChildren(renderIcon(icon,{size:20}));
+        }
     });
     // Vincula también los errores iniciales de Blade y los campos de las vistas heredadas.
     document.querySelectorAll('[data-field]').forEach((field) => {
         const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
         const error = field.querySelector('[data-field-error]');
-        if (input && error && !error.hidden) input.setAttribute('aria-invalid', 'true');
+        if (input && error) {
+            input.id ||= field.querySelector('label')?.htmlFor || field.dataset.field;
+            const described = new Set((input.getAttribute('aria-describedby') || '').split(' ').filter(Boolean)); described.add(error.id);
+            input.setAttribute('aria-describedby', [...described].join(' '));
+            input.setAttribute('aria-invalid', String(!error.hidden));
+        }
     });
+    document.querySelector('[aria-invalid=true]:not([disabled])')?.focus();
     document.querySelectorAll('label:not([for])').forEach((label, index) => {
         // Las etiquetas envolventes pertenecen a su propio control, nunca al primero del grupo.
         const ownInput = label.querySelector('input:not([type=hidden]), select, textarea');

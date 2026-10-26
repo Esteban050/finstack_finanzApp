@@ -7,7 +7,6 @@
 // TODO(contrato: mensajes auth: login bloqueado no es genérico; registro duplicado, reutilización y mensajes MFA difieren en puntuación. Mantener los mensajes recibidos literalmente.)
 // TODO(contrato: registro: apellidos no tiene validación de letras/espacios en servidor; PasswordPolicyRule también prohíbe la parte local del correo de longitud >= 3.)
 // TODO(contrato: auth.verify-email y auth.confirm-password no tienen ruta de vista activa: la verificación redirige al login y la confirmación no está registrada.)
-// TODO(contrato: RN-027.4: CategoriaGastoService todavía valida 16 colores antiguos y claves legacy. Actualizar su contrato a las 87 claves del kit y los 12 hex --cat-*; el front no traduce silenciosamente los valores elegidos al enviar.)
 // TODO(contrato: RN-027: no existe operación de reorganización/reparentado ni campo de orden; no ofrecer arrastre que no se guarde.)
 // TODO(contrato: RN-025: subcategoria_id sigue nullable en registro/recurrencia del backend; el front exige subcategoría activa y bloquea categorías sin hijas.)
 // TODO(contrato: RN-025: no hay cotización por fecha; ENABLE_FOREIGN_CURRENCY permanece false sin tasas simuladas.)
@@ -19,11 +18,43 @@ export class ApiError extends Error {
 }
 
 export function safeMessage(value, fallback = 'No fue posible completar la operación. Intenta nuevamente.') {
-    return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|trace|exception|stack|server|servidor|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
+    if (typeof value === 'string' && (/^validation\./i.test(value) || /^[a-z][a-z_-]*(?:\.[a-z_\d-]+)+$/.test(value))) return 'Revisa este campo';
+    return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|select\s|trace|exception|stack|server|servidor|[A-Z]:\\|\/var\/|\/home\/|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
 }
 
+export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+export function validResourcePath(path) {
+    const parts = path.split('/').filter(Boolean);
+    if (!['ingresos','gastos'].includes(parts[0]) || parts.length < 2) return true;
+    if (['fuentes','categorias','recurrentes'].includes(parts[1])) return parts.length < 3 || isUuid(parts[2]);
+    return ['crear', ...(parts[0] === 'gastos' ? ['indicadores','etiquetas','edicion-masiva'] : [])].includes(parts[1]) || isUuid(parts[1]);
+}
+export function contractPayload(path, method, values) {
+    const recurring = ['periodicidad','fecha_inicio','fecha_fin','max_ocurrencias','modo_confirmacion'];
+    const income = ['fuente_id','fecha_recepcion','monto_original','moneda','retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
+    const expense = ['fecha','monto_original','moneda','categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
+    let allowed;
+    if (/\/(toggle|confirmar)$/.test(path) && !path.startsWith('/gastos/')) allowed = [];
+    else if (method === 'DELETE' || /\/toggle$/.test(path)) allowed = [];
+    else if (path.startsWith('/ingresos/fuentes')) allowed = ['nombre','tipo_fuente_id','clasificacion_tributaria','pagador_entidad'];
+    else if (path.startsWith('/gastos/categorias')) allowed = path.endsWith('/fusionar') ? ['destino_id'] : ['nombre','categoria_padre_id','naturaleza_sugerida','necesidad_sugerida','icono','color_hex'];
+    else if (path.startsWith('/ingresos')) allowed = path.includes('/recurrentes') ? [...income.filter(k=>k!=='fecha_recepcion'),...recurring] : income;
+    else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
+    else return values;
+    return Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?'COP':values[k]]));
+}
+export function showRequestError(host, error) {
+    if (!host) return;
+    host.hidden = false; host.setAttribute('role','alert'); host.textContent = safeMessage(error.message);
+    if (error.status === 419) {
+        const reload = document.createElement('button'); reload.type = 'button'; reload.className = 'ui-button ui-button--secondary'; reload.textContent = 'Recargar la página';
+        reload.addEventListener('click',()=>window.location.reload()); host.append(reload);
+    }
+}
 export async function request(url, { method = 'GET', data, signal } = {}) {
     const target = new URL(url, window.location.origin);
+    if (!validResourcePath(target.pathname)) throw new ApiError(404, 'Recurso no encontrado');
+    if (data) data = contractPayload(target.pathname, method.toUpperCase(), data);
     if (target.origin !== window.location.origin) throw new ApiError(0, 'No fue posible completar la operación.');
     let response;
     try {
@@ -44,20 +75,19 @@ export async function request(url, { method = 'GET', data, signal } = {}) {
     }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const messages = { 403: 'Acceso denegado', 404: 'Recurso no encontrado', 419: 'Tu sesión expiró por inactividad' };
+        const messages = { 403: 'Acceso denegado', 404: 'Recurso no encontrado', 419: 'Tu sesión expiró. Recarga la página para continuar' };
         const errors = {};
         if (response.status === 422 && payload.errors && typeof payload.errors === 'object') {
             for (const [field, values] of Object.entries(payload.errors)) errors[field] = (Array.isArray(values) ? values : [values]).map((value) => safeMessage(value, 'Revisa la regla de validación de este campo.'));
         }
-        throw new ApiError(response.status, messages[response.status] ?? (response.status === 422 ? 'Revisa los campos indicados.' : safeMessage(null)), errors);
+        const reference = typeof payload.error_id === 'string' && /^[a-z0-9-]{1,80}$/i.test(payload.error_id) ? ' Referencia: ' + payload.error_id : '';
+        throw new ApiError(response.status, (messages[response.status] ?? (response.status === 422 ? 'Revisa los campos indicados.' : safeMessage(null))) + reference, errors);
     }
     return payload;
 }
 
 
 // TODO(contrato: RNG-10: fuentes y categorías se entregan como colecciones sin paginación; confirmar meta y filtros antes de conectarlas a Pagination.)
-// TODO(contrato: resumen financiero: falta endpoint o variables Blade de indicadores; no calcular totales ni insertar valores simulados.)
-// TODO(contrato: RN-027.4: extender a las pantallas de categorías la adaptación visual del catálogo usada por fuentes, sin modificar el kit.)
 // TODO(contrato: el backend debe confirmar el alcance exclusivo en COP y la política para registros históricos en otra moneda; el front ya envía COP en los formularios que lo exigen.)
 // TODO(contrato: RN-021: falta ranking de fuentes más usadas; no presentar el orden alfabético como popularidad ni fabricar frecuencias.)
 // TODO(contrato: RN-022: falta operación de terminación distinta de pausar; solo existe activa y DELETE elimina la plantilla conservando ocurrencias. La UI ofrece Pausar/Reanudar y Eliminar plantilla, sin estado terminado. El ancla de las plantillas con ocurrencias es inmutable en el servidor.)

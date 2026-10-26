@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { catalogVisual } from '../income/catalog.js';
+import { catalogVisual, subcategoryIcons } from '../income/catalog.js';
 import { ENABLE_FOREIGN_CURRENCY } from '../config/currency.js';
 import { incomeSummary, validateIncome, validateSource, validateRecurrence, suggestClassification, validateIncomeFilters } from '../income/rules.js';
 
@@ -66,4 +66,37 @@ test('los filtros preservan límites exactos sin sumar la página', () => {
     assert.ok(list.includes('No hay ingresos para los filtros seleccionados'));
     assert.doesNotMatch(list, /number_format|parseFloat|\.reduce\(/);
     assert.ok(fs.readFileSync('resources/views/ingresos/fuentes/index.blade.php', 'utf8').includes('tieneIngresos()'));
+});
+
+test('G-04: neto cero válido y descuentos conjuntos sobre bruto rechazados',()=>{
+    assert.deepEqual(validateIncome({...valid,retencion_fuente:'5000000',aportes_descontados:'0'}),{});
+    assert.ok(validateIncome({...valid,retencion_fuente:'3000000',aportes_descontados:'2500000'}).aportes_descontados);
+});
+
+test('G-05: hermanas del inventario usan claves existentes y distintas', async()=>{
+    const {ICONS}=await import('../ui/icons/icons.js');
+    for(const icon of Object.values(subcategoryIcons)) assert.ok(Object.hasOwn(ICONS,icon));
+    const icons=Object.values(subcategoryIcons);
+    for(let i=0;i<icons.length;i+=2) assert.notEqual(icons[i],icons[i+1]);
+    assert.equal(catalogVisual({nombre:'Arriendo',icono:'home'},{}).iconName,'src-arrendamientos');
+    assert.equal(catalogVisual({nombre:'Impuestos',icono:'credit-card'},{}).iconName,'cat-impuestos');
+});
+
+test('QA-008: revalidación compartida sincroniza error y ARIA en 0→1 y 361→360',async()=>{
+    const {mapFieldErrors,bindErrorRevalidation}=await import('../ui/foundation.js');
+    for(const [bad,good] of [['0','1'],['361','360']]) {
+        const attributes={},error={hidden:true,textContent:''}, input={id:'count',setAttribute:(k,v)=>attributes[k]=v,focus:()=>{}};
+        const field={dataset:{field:'max_ocurrencias'},querySelector:s=>s==='[data-field-error]'?error:input,querySelectorAll:()=>[input]};
+        const listeners={}; const form={querySelectorAll:()=>[field],querySelector:()=>input,addEventListener:(name,fn)=>listeners[name]=fn};
+        let value=bad; const validate=()=>validateRecurrence({fecha_inicio:'2030-01-01',periodicidad:'MENSUAL',modo_confirmacion:'REQUIERE_CONFIRMACION',max_ocurrencias:value},'count');
+        mapFieldErrors(form,validate()); assert.equal(attributes['aria-invalid'],'true');
+        bindErrorRevalidation(form,validate); value=good; listeners.input();
+        assert.equal(error.hidden,true); assert.equal(error.textContent,''); assert.equal(attributes['aria-invalid'],'false');
+    }
+});
+
+test('QA-007: balance resta totales confirmados, admite negativo y no usa filas',async()=>{
+    const {dashboardTotals}=await import('../ui/movements.js');
+    assert.equal(dashboardTotals({bruto:'5000000',retencion:'150000',aportes:'400000',neto:'4450000'},{monto:'4500000'}).balance,'-50000.00');
+    assert.throws(()=>dashboardTotals({bruto:100,retencion:'0',aportes:'0',neto:'100'},{monto:'0'}));
 });

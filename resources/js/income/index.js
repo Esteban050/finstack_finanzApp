@@ -1,5 +1,5 @@
-import { mapFieldErrors } from '../ui/foundation.js';
-import { request, safeMessage } from '../api/index.js';
+import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
+import { request, safeMessage, showRequestError } from '../api/index.js';
 import { formatMoney } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
 import { catalogVisual, categoryPalette, legacyIcons } from './catalog.js';
@@ -25,17 +25,39 @@ function normalizedErrors(errors) {
     });
     return result;
 }
+function incomeFormErrors(form, values = valuesOf(form)) {
+    let errors = {};
+    const editor = form.querySelector('[data-income-editor]');
+    if (editor) {
+        const recurrence = form.querySelector('[data-recurrence-fields]');
+        errors = validateIncome(values, Boolean(recurrence));
+        if (recurrence) errors = { ...errors, ...validateRecurrence({ ...values, periodicidad: values.periodicidad || recurrence.querySelector('[name=periodicidad]').value, fecha_inicio: values.fecha_inicio || recurrence.querySelector('[name=fecha_inicio]').value }, recurrence.dataset.limit) };
+    }
+    if (form.hasAttribute('data-source-form')) {
+        const catalog = JSON.parse(document.querySelector('[data-source-catalog]')?.dataset.sourceCatalog || '[]');
+        errors = validateSource(values, catalog, form.dataset.sourceId || null);
+    }
+    errors = { ...errors, ...moneyInputErrors(form) };
+    return errors;
+}
 export function mountIncome() {
+    document.querySelectorAll('[data-income-form], [data-source-form]').forEach((form) => bindErrorRevalidation(form, () => incomeFormErrors(form)));
+
     document.querySelectorAll('[data-icon-picker]').forEach((select) => {
-        const group = document.createElement('div'); group.className = 'ui-icon-picker'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Ícono de la categoría');
+        const group = document.createElement('div'); group.className = 'ui-icon-picker';
+        const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Buscar ícono por nombre'; search.setAttribute('aria-label', 'Buscar ícono por nombre');
+        group.append(search);
         for (const option of select.options) {
-            const button = document.createElement('button'); button.type = 'button';
             const label = option.value ? (legacyIcons[option.value]?.[1] ?? option.textContent) : 'Ninguno';
+            const theme = document.createElement('fieldset'), legend = document.createElement('legend'); legend.textContent = label; theme.append(legend);
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--secondary';
             button.setAttribute('aria-label', label); button.title = label; button.setAttribute('aria-pressed', String(option.selected));
-            if (option.value) button.append(renderIcon(catalogVisual({icono: option.value}, {}).iconName, {size: 22})); else button.append(renderIcon('ui-cerrar', {size: 20}));
-            button.addEventListener('click', () => { select.value = option.value; select.dispatchEvent(new Event('change', {bubbles:true})); for (const item of group.children) item.setAttribute('aria-pressed', String(item === button)); });
-            group.append(button);
+            button.append(renderIcon(option.value ? catalogVisual({icono: option.value}, {}).iconName : 'ui-cerrar', {size: 22}));
+            const text = document.createElement('span'); text.textContent = label; button.append(text);
+            button.addEventListener('click', () => { select.value = option.value; select.dispatchEvent(new Event('change', {bubbles:true})); for (const item of group.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button)); });
+            theme.append(button); group.append(theme);
         }
+        search.addEventListener('input', () => { const term = search.value.toLocaleLowerCase('es-CO'); for (const item of group.querySelectorAll('fieldset')) item.hidden = !item.textContent.toLocaleLowerCase('es-CO').includes(term); });
         select.hidden = true; select.after(group);
     });
     const palette = categoryPalette(getComputedStyle(document.documentElement));
@@ -60,7 +82,7 @@ export function mountIncome() {
         const date = editor.querySelector('[data-income-date]');
         if (date && !date.value) date.value = todayBogota();
         const summary = (override = {}) => {
-            try { const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatMoney(result[output.dataset.incomeSummary]); }
+            try { if (!(override.monto_original ?? valuesOf(form).monto_original)) throw new Error(); const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatMoney(result[output.dataset.incomeSummary]); }
             catch { for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = '—'; }
         };
         editor.addEventListener('money-change', (event) => {
@@ -92,18 +114,7 @@ export function mountIncome() {
         if (form.getAttribute('aria-busy') === 'true') return;
         const values = valuesOf(form);
         if (!ENABLE_FOREIGN_CURRENCY && Object.hasOwn(values, 'moneda')) values.moneda = 'COP';
-        let errors = {};
-        const editor = form.querySelector('[data-income-editor]');
-        if (editor) {
-            const recurrence = form.querySelector('[data-recurrence-fields]');
-            errors = validateIncome(values, Boolean(recurrence));
-            if (recurrence) errors = { ...errors, ...validateRecurrence({ ...values, periodicidad: values.periodicidad || recurrence.querySelector('[name=periodicidad]').value, fecha_inicio: values.fecha_inicio || recurrence.querySelector('[name=fecha_inicio]').value }, recurrence.dataset.limit) };
-        }
-        if (form.hasAttribute('data-source-form')) {
-            const catalog = JSON.parse(document.querySelector('[data-source-catalog]')?.dataset.sourceCatalog || '[]');
-            errors = validateSource(values, catalog, form.dataset.sourceId || null);
-        }
-        errors = { ...errors, ...moneyInputErrors(form) };
+        const errors = incomeFormErrors(form, values);
         mapFieldErrors(form, errors);
         if (Object.keys(errors).length) return;
         const status = form.querySelector('[data-form-status]');
@@ -120,7 +131,7 @@ export function mountIncome() {
             window.location.assign(form.dataset.returnUrl || window.location.href);
         } catch (error) {
             mapFieldErrors(form, normalizedErrors(error.errors || {}));
-            if (status) { status.hidden = false; status.textContent = safeMessage(error.message); status.setAttribute('role', 'alert'); }
+            showRequestError(status, error);
         } finally {
             if (succeeded) return;
             submit?.removeAttribute('disabled'); submit?.removeAttribute('aria-busy'); form.setAttribute('aria-busy', 'false');

@@ -30,3 +30,10 @@ export function validateAuth(kind, values, context = {}) {
     return errors;
 }
 export function secondsRemaining(deadline, now = Date.now()) { return Number.isFinite(deadline) && Number.isFinite(now) ? Math.max(0, Math.ceil((deadline - now) / 1000)) : 0; }
+
+export function validateProfilePresentation(values) {
+    const errors = {};
+    for (const name of ['nombres','apellidos']) if (!/^[\p{L} ]{2,60}$/u.test((values[name] ?? '').trim())) errors[name] = ['Debe tener entre 2 y 60 caracteres, solo letras y espacios.'];
+    if (values.telefono && !/^\d{10}$/.test(values.telefono)) errors.telefono = ['El teléfono debe tener exactamente 10 dígitos.'];
+    return errors;
+}

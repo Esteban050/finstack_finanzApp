@@ -13,8 +13,8 @@
                 <div class="p-4 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg">
                     <p class="font-bold mb-1">Se encontraron los siguientes problemas:</p>
                     <ul class="list-disc list-inside space-y-1">
-                        @foreach ($errors->all() as $err)
-                            <li>{{ $err }}</li>
+                        @foreach ($errors->messages() as $fieldName => $messages)
+                            <li><a href="#{{ $fieldName }}">{{ preg_match('/validation\.|SQL|trace|exception|\.php\b/i', (string) $messages[0]) ? 'Revisa este campo' : $messages[0] }}</a></li>
                         @endforeach
                     </ul>
                 </div>
@@ -27,67 +27,57 @@
                     <p class="text-xs text-gray-500">De este perfil dependen los cálculos automáticos de seguridad social y renta.</p>
                 </div>
 
-                <form method="POST" action="{{ route('profile.update') }}" class="space-y-6">
+                <form method="POST" action="{{ route('profile.update') }}" data-profile-form class="space-y-6">
                     @csrf
                     @method('PATCH')
 
                     <!-- Datos básicos -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <x-input-label for="nombres" value="Nombres *" />
+                        <x-ui.field name="nombres" label="Nombres" :required="true">
                             <x-text-input id="nombres" type="text" name="nombres" :value="old('nombres', $usuario->nombres)" required class="w-full mt-1" />
-                        </div>
-                        <div>
-                            <x-input-label for="apellidos" value="Apellidos *" />
+                        </x-ui.field>
+                        <x-ui.field name="apellidos" label="Apellidos" :required="true">
                             <x-text-input id="apellidos" type="text" name="apellidos" :value="old('apellidos', $usuario->apellidos)" required class="w-full mt-1" />
-                        </div>
+                        </x-ui.field>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <x-input-label for="correo_no_editable" value="Correo Electrónico (No editable)" />
-                            <input type="text" disabled value="{{ $usuario->correo }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
-                        </div>
-                        <div>
-                            <x-input-label for="doc_no_editable" value="Documento (No editable)" />
-                            <input type="text" disabled value="{{ $usuario->tipo_documento }} - {{ $usuario->numero_documento }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
-                        </div>
-                        <div>
-                            <x-input-label for="fecha_nacimiento" value="Fecha de Nacimiento (Mayor de 18) *" />
+                        <x-ui.field name="correo_no_editable" label="Correo Electrónico (No editable)">
+                            <input type="text" id="correo_no_editable" disabled value="{{ $usuario->correo }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
+                        </x-ui.field>
+                        <x-ui.field name="doc_no_editable" label="Documento (No editable)">
+                            <input type="text" id="doc_no_editable" disabled value="{{ $usuario->tipo_documento }} - {{ $usuario->numero_documento }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
+                        </x-ui.field>
+                        <x-ui.field name="fecha_nacimiento" label="Fecha de Nacimiento (Mayor de 18)" :required="true">
                             <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('Y-m-d'))" required class="w-full mt-1" />
-                        </div>
+                        </x-ui.field>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <x-input-label for="ciudad_residencia" value="Ciudad de Residencia *" />
+                        <x-ui.field name="ciudad_residencia" label="Ciudad de Residencia" :required="true">
                             <x-text-input id="ciudad_residencia" type="text" name="ciudad_residencia" :value="old('ciudad_residencia', $perfilActivo?->ciudad_residencia)" required class="w-full mt-1" />
-                        </div>
-                        <div>
-                            <x-input-label for="telefono" value="Teléfono (10 dígitos)" />
+                        </x-ui.field>
+                        <x-ui.field name="telefono" label="Teléfono (10 dígitos)">
                             <x-text-input id="telefono" type="text" name="telefono" maxlength="10" :value="old('telefono', $perfilActivo?->telefono)" class="w-full mt-1" />
-                        </div>
+                        </x-ui.field>
                         <input type="hidden" name="ultimos_digitos_nit" value="{{ substr(preg_replace('/\D/', '', (string) $usuario->numero_documento), -2) }}">
                     </div>
 
                     <!-- Personas a cargo y Responsable IVA -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <x-input-label for="personas_a_cargo" value="Número de Personas a Cargo (0 - 10) *" />
+                        <x-ui.field name="personas_a_cargo" label="Número de Personas a Cargo (0 - 10)" :required="true">
                             <x-text-input id="personas_a_cargo" type="number" min="0" max="10" name="personas_a_cargo" :value="old('personas_a_cargo', $perfilActivo?->personas_a_cargo ?? 0)" required class="w-full mt-1" />
-                        </div>
-                        <div>
-                            <x-input-label for="responsable_iva" value="¿Responsable de IVA? *" />
+                        </x-ui.field>
+                        <x-ui.field name="responsable_iva" label="¿Responsable de IVA?" :required="true">
                             <select id="responsable_iva" name="responsable_iva" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="0" {{ old('responsable_iva', $perfilActivo?->responsable_iva) ? '' : 'selected' }}>No</option>
-                                <option value="1" {{ old('responsable_iva', $perfilActivo?->responsable_iva) ? 'selected' : '' }}>Sí (Obliga a declarar renta automáticamente)</option>
+                                <option value="0" @selected(!in_array(old('responsable_iva', $perfilActivo?->responsable_iva), [1, '1', true], true))>No</option>
+                                <option value="1" @selected(in_array(old('responsable_iva', $perfilActivo?->responsable_iva), [1, '1', true], true))>Sí (Obliga a declarar renta automáticamente)</option>
                             </select>
-                        </div>
+                        </x-ui.field>
                     </div>
 
                     <!-- Perfil de Ocupación RN-008.2 -->
-                    <div>
-                        <p class="font-medium">Perfil de ocupación (puedes seleccionar varias) *</p>
+                    <x-ui.field name="ocupaciones" label="Perfil de ocupación (puedes seleccionar varias)" :required="true">
                         @php
                             $ocupacionesActuales = old('ocupaciones', $perfilActivo?->ocupaciones ?? []);
                         @endphp
@@ -99,33 +89,30 @@
                                 </label>
                             @endforeach
                         </div>
-                    </div>
+                    </x-ui.field>
 
                     <!-- Opciones para Asalariado y Contratistas -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                        <div>
-                            <x-input-label for="es_salario_integral" value="¿Tiene Salario Integral? (Asalariado)" />
+                        <x-ui.field name="es_salario_integral" label="¿Tiene Salario Integral? (Asalariado)">
                             <select id="es_salario_integral" name="es_salario_integral" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="0" {{ old('es_salario_integral', $perfilActivo?->es_salario_integral) ? '' : 'selected' }}>No</option>
-                                <option value="1" {{ old('es_salario_integral', $perfilActivo?->es_salario_integral) ? 'selected' : '' }}>Sí</option>
+                                <option value="0" @selected(!in_array(old('es_salario_integral', $perfilActivo?->es_salario_integral), [1, '1', true], true))>No</option>
+                                <option value="1" @selected(in_array(old('es_salario_integral', $perfilActivo?->es_salario_integral), [1, '1', true], true))>Sí</option>
                             </select>
-                        </div>
-                        <div>
-                            <x-input-label for="clase_riesgo_arl" value="Clase de Riesgo ARL (Indep./Contratista)" />
+                        </x-ui.field>
+                        <x-ui.field name="clase_riesgo_arl" label="Clase de Riesgo ARL (Indep./Contratista)">
                             <select id="clase_riesgo_arl" name="clase_riesgo_arl" class="w-full mt-1 border-gray-300 rounded-md text-sm">
                                 <option value="">-- No aplica / Sin ARL --</option>
                                 @foreach ([1 => 'Clase I (0.522%)', 2 => 'Clase II (1.044%)', 3 => 'Clase III (2.436%)', 4 => 'Clase IV (4.350%)', 5 => 'Clase V (6.960%)'] as $k => $v)
                                     <option value="{{ $k }}" {{ old('clase_riesgo_arl', $perfilActivo?->clase_riesgo_arl) == $k ? 'selected' : '' }}>{{ $v }}</option>
                                 @endforeach
                             </select>
-                        </div>
-                        <div>
-                            <x-input-label for="arl_obligatoria" value="Afiliación ARL" />
+                        </x-ui.field>
+                        <x-ui.field name="arl_obligatoria" label="Afiliación ARL">
                             <select id="arl_obligatoria" name="arl_obligatoria" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="1" {{ old('arl_obligatoria', $perfilActivo?->arl_obligatoria) ? 'selected' : '' }}>Obligatoria</option>
-                                <option value="0" {{ old('arl_obligatoria', $perfilActivo?->arl_obligatoria) === false ? 'selected' : '' }}>Voluntaria</option>
+                                <option value="1" @selected(in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Obligatoria</option>
+                                <option value="0" @selected(!in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Voluntaria</option>
                             </select>
-                        </div>
+                        </x-ui.field>
                     </div>
 
                     <div class="flex items-center justify-end">
@@ -230,4 +217,12 @@
             </div>
         </div>
     </div>
+    @if(isset($historialPerfiles))
+    <x-ui.card title="Historial del perfil tributario">
+        <p class="ui-help">Versiones disponibles para consultar la vigencia de tus datos.</p>
+        <table class="ui-table"><thead><tr><th>Desde</th><th>Hasta</th><th>Ocupaciones</th><th>Ciudad</th></tr></thead><tbody>
+            @forelse($historialPerfiles as $version)<tr><td>{{ $version->vigente_desde?->format('d/m/Y') }}</td><td>{{ $version->vigente_hasta?->format('d/m/Y') ?? 'Vigente' }}</td><td>{{ implode(', ', $version->ocupaciones ?? []) }}</td><td>{{ $version->ciudad_residencia }}</td></tr>@empty<tr><td colspan="4">No hay versiones del perfil disponibles.</td></tr>@endforelse
+        </tbody></table>
+    </x-ui.card>
+    @endif
 </x-app-layout>

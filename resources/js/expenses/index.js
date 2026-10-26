@@ -1,12 +1,12 @@
-import { request, safeMessage } from '../api/index.js';
-import { mapFieldErrors } from '../ui/foundation.js';
+import { request, safeMessage, showRequestError } from '../api/index.js';
+import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { renderIcon } from '../ui/icons/Icon.js';
 import { catalogVisual, categoryPalette } from '../income/catalog.js';
 import { moneyInputErrors } from '../income/index.js';
 import { formatMoney, validateAmount } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
 import { ENABLE_FOREIGN_CURRENCY } from '../config/currency.js';
-import { validateExpense, validateExpenseFilters, validateBulk, validateCategory, selectionWith, validateTagDraft } from './rules.js';
+import { validateExpense, validateExpenseFilters, validateBulk, validateCategory, selectionWith, validateTagDraft, categoryPayload } from './rules.js';
 
 const valuesOf = (form) => {
     const data = new FormData(form), values = Object.fromEntries(data);
@@ -19,6 +19,10 @@ function errorMessages(errors) {
     return Object.fromEntries(Object.entries(errors).map(([key, messages]) => [key.replace(/^etiquetas\.\d+$/, 'etiquetas'), (Array.isArray(messages) ? messages : [messages]).map((value) => String(value).replace(/\s*\((?:RF|RN|RNG|CA)-\d+(?:\.\d+)?\)/g, '').replace(/^Alcanzaste el máximo de 50 categorías\.$/, 'Alcanzaste el máximo de 50 categorías'))]));
 }
 export function mountExpenses() {
+    document.querySelectorAll('[data-expense-form]').forEach((form) => bindErrorRevalidation(form, () => {
+        const recurrence = form.querySelector('[data-recurrence-fields]');
+        return {...validateExpense(valuesOf(form), catalogOf(form), {recurrent: Boolean(recurrence), limit: recurrence?.dataset.limit, frozen: recurrence ? {fecha_inicio: recurrence.querySelector('[name=fecha_inicio]').value, periodicidad: recurrence.querySelector('[name=periodicidad]').value} : {}}), ...moneyInputErrors(form)};
+    }));
     const palette = categoryPalette(getComputedStyle(document.documentElement));
     document.querySelectorAll('[data-expense-categories]').forEach((root) => {
         const categories = JSON.parse(root.dataset.catalog), category = root.querySelector('[data-expense-category]'), sub = root.querySelector('[data-expense-subcategory]'), form = root.closest('form');
@@ -100,7 +104,7 @@ export function mountExpenses() {
     }));
     document.querySelectorAll('[data-expense-form], [data-expense-action], [data-expense-confirm], [data-expense-bulk], [data-expense-category-form], [data-expense-merge]').forEach((form) => form.addEventListener('submit', async (event) => {
         event.preventDefault(); if (form.getAttribute('aria-busy') === 'true') return;
-        const values = valuesOf(form), catalog = catalogOf(form); let errors = {};
+        let values = valuesOf(form); const catalog = catalogOf(form); let errors = {}, optionalWarnings = [];
         if ('moneda' in values && !ENABLE_FOREIGN_CURRENCY) values.moneda = 'COP';
         if (form.hasAttribute('data-expense-form')) {
             const recurrence = form.querySelector('[data-recurrence-fields]');
@@ -116,20 +120,20 @@ export function mountExpenses() {
             for (const key of ['categoria_id','subcategoria_id','naturaleza','necesidad']) if (!values[key]) delete values[key];
         }
         if (form.hasAttribute('data-expense-category-form')) {
-            if (!values.icono && form.dataset.originalIcon) values.icono = form.dataset.originalIcon;
-            if (!values.color_hex && form.dataset.originalColor) values.color_hex = form.dataset.originalColor;
             errors = validateCategory(values, catalog, {id: form.dataset.categoryId || null, parentId: values.categoria_padre_id || form.dataset.parentId || null});
-            const allowedIcons = JSON.parse(form.dataset.allowedIcons), allowedColors = JSON.parse(form.dataset.allowedColors);
-            if (values.icono && !allowedIcons.includes(values.icono)) errors.icono = ['Este ícono todavía no está disponible para guardar. Puedes conservar el ícono actual o dejarlo sin seleccionar.'];
-            if (values.color_hex && !allowedColors.includes(values.color_hex)) errors.color_hex = ['Este color todavía no está disponible para guardar. Puedes conservar el color actual o dejarlo sin seleccionar.'];
-            if (!form.dataset.parentId && !values.categoria_padre_id) { delete values.naturaleza_sugerida; delete values.necesidad_sugerida; }
+            const prepared = categoryPayload(values, JSON.parse(form.dataset.allowedIcons), JSON.parse(form.dataset.allowedColors), {parentId: values.categoria_padre_id || form.dataset.parentId || null, originalIcon: form.dataset.originalIcon, originalColor: form.dataset.originalColor, editing: Boolean(form.dataset.categoryId)});
+            optionalWarnings = prepared.warnings;
+            values = {...prepared.data, _method: values._method};
+            const notice = form.querySelector('[data-expense-status]');
+            if (notice && prepared.warnings.length) { notice.hidden = false; notice.textContent = prepared.warnings.join(' '); notice.setAttribute('role','status'); }
+
         }
         if (form.hasAttribute('data-expense-merge') && !values.destino_id) errors.destino_id = ['Selecciona el destino de la fusión.'];
         const tagDraft = form.querySelector('.ui-tags input:not([type=hidden])');
         if (tagDraft && !tagDraft.disabled) { const message = validateTagDraft(tagDraft.value, values.etiquetas ?? []); if (message) errors.etiquetas = [message]; }
         errors = {...errors, ...moneyInputErrors(form)}; mapFieldErrors(form, errors);
-        const status = form.querySelector('[data-expense-status]'); if (status) status.hidden = true;
-        if (Object.keys(errors).length) { if (status) { status.hidden = false; status.textContent = Object.values(errors).flat().join(' '); } return; }
+        const status = form.querySelector('[data-expense-status]'); if (status) {status.hidden = !optionalWarnings.length; status.textContent = optionalWarnings.join(' ');}
+        if (Object.keys(errors).length) return;
         // Solo el envío válido convierte las etiquetas en la lista del contrato.
         if (values.relevancia_tributaria === 'NO_DEDUCIBLE') delete values.subtipo_deduccion;
         const submit = event.submitter; submit?.setAttribute('disabled', ''); form.setAttribute('aria-busy', 'true');
@@ -141,7 +145,7 @@ export function mountExpenses() {
             window.location.assign(form.dataset.returnUrl || window.location.href);
         } catch (error) {
             mapFieldErrors(form, errorMessages(error.errors || {}));
-            if (status) { status.hidden = false; status.textContent = safeMessage(error.message); }
+            showRequestError(status, error);
         } finally {
             if (!success) { submit?.removeAttribute('disabled'); form.setAttribute('aria-busy', 'false'); if (loading) loading.hidden = true; }
         }
@@ -149,6 +153,7 @@ export function mountExpenses() {
     document.querySelectorAll('[data-open-expense-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.openExpenseDialog).showModal()));
     document.querySelectorAll('[data-close-expense-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
     document.querySelectorAll('[data-expense-category-form]').forEach((form) => {
+        bindErrorRevalidation(form, () => validateCategory(valuesOf(form), catalogOf(form), {id: form.dataset.categoryId || null, parentId: form.querySelector('[name=categoria_padre_id]')?.value || form.dataset.parentId || null}));
         const parent = form.querySelector('[data-category-parent]'), panel = form.querySelector('[data-category-suggestions]');
         const update = () => { const hasParent = Boolean(parent?.value || form.dataset.parentId); panel.hidden = !hasParent; for (const input of panel.querySelectorAll('select')) { input.disabled = !hasParent; input.required = hasParent; } };
         parent?.addEventListener('change', update); update();
