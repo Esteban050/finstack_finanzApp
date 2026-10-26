@@ -71,7 +71,7 @@ class SecurityTokenService
     /**
      * Verificar token de correo (RF-002, CA-002.1, CA-002.2)
      */
-    public static function validarTokenVerificacion(string $tokenPlano): ?Usuario
+    public static function validarTokenVerificacion(string $tokenPlano): array
     {
         $tokens = TokenSeguridad::where('tipo', 'VERIFICACION_CORREO')
             ->whereNull('usado_en')
@@ -87,11 +87,38 @@ class SecurityTokenService
                     'intentos_fallidos' => 0,
                     'bloqueado_hasta' => null,
                 ]);
-                return $usuario;
+                return [
+                    'valido' => true,
+                    'usuario' => $usuario,
+                    'error' => null,
+                    'token_usado' => false,
+                ];
             }
         }
 
-        return null;
+        // Si no está entre los vigentes y no usados, verificar si ya fue utilizado
+        $tokensUsados = TokenSeguridad::where('tipo', 'VERIFICACION_CORREO')
+            ->whereNotNull('usado_en')
+            ->orderByDesc('usado_en')
+            ->get();
+
+        foreach ($tokensUsados as $token) {
+            if (Hash::check($tokenPlano, $token->token_hash)) {
+                return [
+                    'valido' => false,
+                    'usuario' => $token->usuario,
+                    'error' => 'El token ya se usó',
+                    'token_usado' => true,
+                ];
+            }
+        }
+
+        return [
+            'valido' => false,
+            'usuario' => null,
+            'error' => 'El enlace no es válido o expiró',
+            'token_usado' => false,
+        ];
     }
 
     /**
