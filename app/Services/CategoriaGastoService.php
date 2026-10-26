@@ -211,10 +211,11 @@ class CategoriaGastoService
         }
 
         return DB::transaction(function () use ($origen, $destino) {
-            $reclasificados = $origen->categoria_padre_id === null
-                ? self::fusionarRaiz($origen, $destino)
-                : self::moverGastosDeSubcategoria($origen, $destino);
+            if ($origen->categoria_padre_id === null) {
+                return self::fusionarRaiz($origen, $destino);
+            }
 
+            $reclasificados = self::moverGastosDeSubcategoria($origen, $destino);
             $origen->delete();
 
             return $reclasificados;
@@ -222,47 +223,91 @@ class CategoriaGastoService
     }
 
     /**
-     * RN-027.2: Fusión entre categorías de primer nivel. Las subcategorías de
-     * origen pasan al destino; las que ya existen allí con el mismo nombre se
-     * fusionan con su homónima.
+     * Fusión de una categoría de primer nivel a otra categoría de primer nivel:
+     * La categoría de origen pasa a ser una subcategoría de la categoría destino,
+     * y todos los gastos asociados a la categoría de origen pasan a pertenecer
+     * a la categoría destino (teniendo como subcategoría a la categoría de origen).
+     *
+     * @return int Gastos reclasificados.
      */
     private static function fusionarRaiz(Categoria $origen, Categoria $destino): int
     {
         $reclasificados = 0;
 
-        $subcategoriasDestino = Categoria::where('categoria_padre_id', $destino->id)
-            ->where('tipo', 'GASTO')
-            ->get()
-            ->keyBy(fn (Categoria $sub) => mb_strtolower($sub->nombre));
+        // Validar cupo de subcategorías en el destino (RN-027.1: máx 30 subcategorías propias)
+        if ($origen->usuario_id !== null) {
+            self::validarCupoSubcategoria($origen->usuario_id, $destino->id);
+        }
 
+        // Subcategorías previas que tenía la categoría de origen
         $subcategoriasOrigen = Categoria::where('categoria_padre_id', $origen->id)
             ->where('tipo', 'GASTO')
             ->get();
 
-        foreach ($subcategoriasOrigen as $sub) {
-            $homonima = $subcategoriasDestino->get(mb_strtolower($sub->nombre));
+        // Verificar si en el destino ya existe una subcategoría con el mismo nombre
+        $homonima = Categoria::where('categoria_padre_id', $destino->id)
+            ->where('tipo', 'GASTO')
+            ->whereRaw('LOWER(nombre) = ?', [mb_strtolower(trim($origen->nombre))])
+            ->first();
 
-            if ($homonima !== null) {
-                $reclasificados += self::moverGastosDeSubcategoria($sub, $homonima);
+        if ($homonima !== null) {
+            // Si ya existe una subcategoría con el mismo nombre en el destino,
+            // se fusiona directamente con esa subcategoría existente para no violar el índice único.
+            $subDestinoId = $homonima->id;
+
+            // Reclasificar gastos de las subcategorías previas del origen
+            foreach ($subcategoriasOrigen as $sub) {
+                $subHomonima = Categoria::where('categoria_padre_id', $destino->id)
+                    ->where('tipo', 'GASTO')
+                    ->whereRaw('LOWER(nombre) = ?', [mb_strtolower(trim($sub->nombre))])
+                    ->first();
+
+                $targetSubId = $subHomonima?->id ?? $subDestinoId;
+                $reclasificados += Gasto::withoutGlobalScopes()->withTrashed()
+                    ->where('subcategoria_id', $sub->id)
+                    ->update([
+                        'categoria_id' => $destino->id,
+                        'subcategoria_id' => $targetSubId,
+                    ]);
                 $sub->delete();
-
-                continue;
             }
 
-            // Se reparenta: los gastos ya apuntan a esta subcategoría, solo
-            // cambia la categoría de primer nivel que los agrupa.
+            // Reclasificar todos los gastos asociados a la categoría origen
             $reclasificados += Gasto::withoutGlobalScopes()->withTrashed()
-                ->where('subcategoria_id', $sub->id)
-                ->update(['categoria_id' => $destino->id]);
+                ->where('categoria_id', $origen->id)
+                ->update([
+                    'categoria_id' => $destino->id,
+                    'subcategoria_id' => $subDestinoId,
+                ]);
 
-            $sub->update(['categoria_padre_id' => $destino->id]);
+            $origen->delete();
+        } else {
+            // Si el origen tenía subcategorías previas, consolidamos sus gastos en $origen
+            // (puesto que en una jerarquía de 2 niveles no puede tener sub-subcategorías)
+            foreach ($subcategoriasOrigen as $sub) {
+                $reclasificados += Gasto::withoutGlobalScopes()->withTrashed()
+                    ->where('subcategoria_id', $sub->id)
+                    ->update([
+                        'categoria_id' => $destino->id,
+                        'subcategoria_id' => $origen->id,
+                    ]);
+                $sub->delete();
+            }
+
+            // Todos los gastos de la categoría de origen pasan a ser de la categoría destino,
+            // asignando la subcategoría al origen (que ahora es subcategoría del destino).
+            $reclasificados += Gasto::withoutGlobalScopes()->withTrashed()
+                ->where('categoria_id', $origen->id)
+                ->update([
+                    'categoria_id' => $destino->id,
+                    'subcategoria_id' => $origen->id,
+                ]);
+
+            // La categoría de origen pasa a ser una subcategoría de la categoría destino
+            $origen->update([
+                'categoria_padre_id' => $destino->id,
+            ]);
         }
-
-        // Gastos que apuntaban a la categoría de origen por una subcategoría ya
-        // movida arriba quedan cubiertos; este update recoge cualquier resto.
-        Gasto::withoutGlobalScopes()->withTrashed()
-            ->where('categoria_id', $origen->id)
-            ->update(['categoria_id' => $destino->id]);
 
         return $reclasificados;
     }

@@ -125,13 +125,15 @@ class ScfpAuthController extends Controller
 
     public function verifyEmail(string $token): RedirectResponse
     {
-        $usuario = SecurityTokenService::validarTokenVerificacion($token);
+        $resultado = SecurityTokenService::validarTokenVerificacion($token);
 
-        if (!$usuario) {
+        if (!$resultado['valido']) {
             return redirect()->route('login')->withErrors([
-                'verificacion_error' => 'El enlace no es válido o expiró',
+                'verificacion_error' => $resultado['error'] ?? 'El enlace no es válido o expiró',
             ]);
         }
+
+        $usuario = $resultado['usuario'];
 
         BitacoraService::registrar(
             accion: 'VERIFICACION_CORREO_EXITOSA',
@@ -213,7 +215,7 @@ class ScfpAuthController extends Controller
         // RN-003.1: Solo cuentas en estado ACTIVA
         if ($usuario->estado !== 'ACTIVA') {
             return back()->withInput($request->only('correo'))->withErrors([
-                'correo' => 'Correo o contraseña incorrectos',
+                'correo' => 'Pendiente de verificación, bloqueada o inactivada',
             ]);
         }
 
