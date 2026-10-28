@@ -117,7 +117,8 @@ class IngresoController extends Controller
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
+        // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha de recepción.
+        $montos = IngresoService::prepararMontos($validated, $fuente, $validated['fecha_recepcion']);
 
         $ingreso = Ingreso::create(array_merge($montos, [
             'usuario_id' => Auth::id(),
@@ -184,7 +185,8 @@ class IngresoController extends Controller
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
+        // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha de recepción.
+        $montos = IngresoService::prepararMontos($validated, $fuente, $validated['fecha_recepcion']);
 
         $anterior = $ingreso->toArray();
 

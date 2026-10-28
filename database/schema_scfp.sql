@@ -415,6 +415,31 @@ CREATE TABLE public.tarifas_escalonadas (
 
 
 --
+-- Name: tasas_cambio; Type: TABLE; Schema: public; Owner: -
+-- RF-017 (TRM). Creada por la migración 2026_10_27_000001_create_tasas_cambio_table.
+--
+
+CREATE TABLE public.tasas_cambio (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    moneda character(3) DEFAULT 'USD'::bpchar NOT NULL,
+    valor numeric(18,4) NOT NULL,
+    vigencia_desde date NOT NULL,
+    vigencia_hasta date NOT NULL,
+    fuente character varying(20) NOT NULL,
+    justificacion text,
+    registrado_por uuid,
+    consultado_en timestamp with time zone NOT NULL,
+    creado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT tasas_cambio_moneda_check CHECK (((moneda ~ '^[A-Z]{3}$'::text) AND (moneda <> 'COP'::bpchar))),
+    CONSTRAINT tasas_cambio_valor_check CHECK ((valor > (0)::numeric)),
+    CONSTRAINT chk_tasas_cambio_vigencia CHECK ((vigencia_hasta >= vigencia_desde)),
+    CONSTRAINT tasas_cambio_fuente_check CHECK (((fuente)::text = ANY ((ARRAY['DATOS_ABIERTOS'::character varying, 'MANUAL'::character varying])::text[]))),
+    CONSTRAINT chk_tasas_cambio_justificacion CHECK ((((fuente)::text <> 'MANUAL'::text) OR (char_length(TRIM(BOTH FROM justificacion)) >= 20)))
+);
+
+
+--
 -- Name: tokens_seguridad; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -584,6 +609,22 @@ ALTER TABLE ONLY public.sesiones_usuario
 
 ALTER TABLE ONLY public.tarifas_escalonadas
     ADD CONSTRAINT tarifas_escalonadas_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tasas_cambio tasas_cambio_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_cambio
+    ADD CONSTRAINT tasas_cambio_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tasas_cambio uq_tasas_cambio_moneda_desde; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_cambio
+    ADD CONSTRAINT uq_tasas_cambio_moneda_desde UNIQUE (moneda, vigencia_desde);
 
 
 --
@@ -937,6 +978,14 @@ ALTER TABLE ONLY public.sesiones_usuario
 
 ALTER TABLE ONLY public.tarifas_escalonadas
     ADD CONSTRAINT tarifas_escalonadas_parametro_normativo_id_fkey FOREIGN KEY (parametro_normativo_id) REFERENCES public.parametros_normativos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tasas_cambio tasas_cambio_registrado_por_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_cambio
+    ADD CONSTRAINT tasas_cambio_registrado_por_foreign FOREIGN KEY (registrado_por) REFERENCES public.usuarios(id) ON DELETE SET NULL;
 
 
 --

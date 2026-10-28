@@ -1,0 +1,1445 @@
+{
+  "info": {
+    "_postman_id": "c3510921-feb9-402d-808c-22cea11a15db",
+    "name": "SCFP · RF-017 TRM y conversión COP ⇄ USD",
+    "description": "Peticiones de verificación de RF-017 (TRM) y del soporte de USD.\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan migrate --path=database/migrations/2026_10_27_000001_create_tasas_cambio_table.php` (una sola vez).\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\TrmDemoSeeder\"`.\n3. `php artisan serve` (o Herd) y ajustar `base_url`.\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 inicia sesión como Usuario (`correo_trm`). La carpeta 40 cierra esa sesión y entra como Administrador (`correo_trm_admin`), porque RN-017.3 es del Administrador. Las carpetas 50 y 60 dependen de la 40.\n\n## Datos\n\nLas peticiones 10.x y 20.x consultan la fuente oficial (datos.gov.co) si la base no tiene la TRM de la fecha. La 50.x registra y corrige una TRM manual del 02/01/2001, una fecha lejana a propósito para no alterar la TRM de fechas en uso. La 60.1 sale a internet: sin conexión responde 503 y la prueba lo admite.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 · Autenticación (Usuario)",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_trm}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_trm}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-017 Consulta de la TRM",
+      "item": [
+        {
+          "name": "10.1 GET /tasas-cambio/trm · TRM de hoy y su última actualización (RF-017)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const d = new Date();",
+                  "pm.collectionVariables.set('fecha_hoy', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · la TRM de hoy está disponible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RF-017 · trae valor, vigencia, fuente y última actualización', function () {",
+                  "    pm.expect(d.moneda).to.eql('USD');",
+                  "    pm.expect(Number(d.valor)).to.be.above(0);",
+                  "    pm.expect(d.fecha_consultada).to.eql(pm.collectionVariables.get('fecha_hoy'));",
+                  "    pm.expect(d).to.have.property('vigencia_desde');",
+                  "    pm.expect(d).to.have.property('vigencia_hasta');",
+                  "    pm.expect(['DATOS_ABIERTOS', 'MANUAL']).to.include(d.fuente);",
+                  "    pm.expect(Date.parse(d.ultima_actualizacion), 'ultima_actualizacion debe ser ISO 8601').to.not.be.NaN;",
+                  "});",
+                  "",
+                  "pm.test('RN-017.2 · la vigencia empieza en la fecha consultada o antes', function () {",
+                  "    pm.expect(d.vigencia_desde <= d.fecha_consultada).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "trm"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.2 GET /tasas-cambio/trm · domingo 15/03/2026 (RN-017.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.2 · un domingo también tiene TRM', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-017.2 · se usa la TRM vigente más reciente anterior o igual a la fecha', function () {",
+                  "    pm.expect(d.vigencia_desde <= '2026-03-15').to.be.true;",
+                  "    pm.expect(d.vigencia_hasta >= '2026-03-15' || d.es_tasa_anterior).to.be.true;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('trm_marzo', d.valor);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/trm?fecha=2026-03-15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "trm"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-03-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.3 GET /tasas-cambio/trm · fecha inválida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-05 · una fecha inválida se rechaza junto al campo', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.fecha[0]).to.include('AAAA-MM-DD');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/trm?fecha=no-es-fecha",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "trm"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "no-es-fecha"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-017 Conversión COP ⇄ USD",
+      "item": [
+        {
+          "name": "20.1 GET /tasas-cambio/convertir · USD 100 a COP (CA-017.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · conversión calculada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const trm = Number(pm.collectionVariables.get('trm_marzo'));",
+                  "",
+                  "pm.test('CA-017.1 · usa la TRM vigente en la fecha', function () {",
+                  "    pm.expect(Number(d.trm.valor)).to.eql(trm);",
+                  "});",
+                  "",
+                  "pm.test('RNG-02 · USD 100 × TRM, a 2 decimales', function () {",
+                  "    pm.expect(d.resultado).to.eql((100 * trm).toFixed(2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/convertir?monto=100&de=USD&a=COP&fecha=2026-03-15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "convertir"
+              ],
+              "query": [
+                {
+                  "key": "monto",
+                  "value": "100"
+                },
+                {
+                  "key": "de",
+                  "value": "USD"
+                },
+                {
+                  "key": "a",
+                  "value": "COP"
+                },
+                {
+                  "key": "fecha",
+                  "value": "2026-03-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.2 GET /tasas-cambio/convertir · COP 1.000.000 a USD",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · conversión calculada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const trm = Number(pm.collectionVariables.get('trm_marzo'));",
+                  "",
+                  "pm.test('RNG-02 · COP ÷ TRM, redondeado a 2 decimales', function () {",
+                  "    pm.expect(Math.abs(Number(d.resultado) - 1000000 / trm)).to.be.at.most(0.005);",
+                  "    pm.expect(d.resultado).to.match(/^\\d+\\.\\d{2}$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/convertir?monto=1000000&de=COP&a=USD&fecha=2026-03-15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "convertir"
+              ],
+              "query": [
+                {
+                  "key": "monto",
+                  "value": "1000000"
+                },
+                {
+                  "key": "de",
+                  "value": "COP"
+                },
+                {
+                  "key": "a",
+                  "value": "USD"
+                },
+                {
+                  "key": "fecha",
+                  "value": "2026-03-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.3 GET /tasas-cambio/convertir · misma moneda",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · origen y destino deben ser distintos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.a[0]).to.include('distinta');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/convertir?monto=100&de=USD&a=USD",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "convertir"
+              ],
+              "query": [
+                {
+                  "key": "monto",
+                  "value": "100"
+                },
+                {
+                  "key": "de",
+                  "value": "USD"
+                },
+                {
+                  "key": "a",
+                  "value": "USD"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.4 GET /tasas-cambio/convertir · moneda no soportada (RN-017.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.4 · solo COP y USD en la v1.0', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.de[0]).to.include('COP o USD');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/convertir?monto=100&de=EUR&a=COP",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "convertir"
+              ],
+              "query": [
+                {
+                  "key": "monto",
+                  "value": "100"
+                },
+                {
+                  "key": "de",
+                  "value": "EUR"
+                },
+                {
+                  "key": "a",
+                  "value": "COP"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.5 GET /tasas-cambio/convertir · monto cero (RNG-09)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-09 · el monto debe ser mayor que cero', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.monto[0]).to.include('mayor que cero');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/convertir?monto=0&de=USD&a=COP",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "convertir"
+              ],
+              "query": [
+                {
+                  "key": "monto",
+                  "value": "0"
+                },
+                {
+                  "key": "de",
+                  "value": "USD"
+                },
+                {
+                  "key": "a",
+                  "value": "COP"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · CA-003.2 Acceso a la administración de la TRM",
+      "item": [
+        {
+          "name": "30.1 GET /admin/trm · como Usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-003.2 · un Usuario no administra la TRM', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.2 POST /admin/trm · como Usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-003.2 · un Usuario no registra TRM', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2001-01-02\",\n  \"valor\": \"2000.0000\",\n  \"justificacion\": \"Intento de un usuario sin permisos de administración.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · Cambio a la sesión del Administrador",
+      "item": [
+        {
+          "name": "40.1 POST /logout · cerrar la sesión del Usuario (RF-006)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-006 · la sesión se cierra', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "40.2 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.3 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /admin/dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/admin/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_trm_admin}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_trm}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "40.4 GET /admin/dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · RN-017.3 Registro y corrección manual",
+      "item": [
+        {
+          "name": "50.1 GET /admin/trm · histórico paginado (RNG-10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · histórico consultado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RNG-10 · 20 por página por defecto', function () {",
+                  "    pm.expect(d.meta.por_pagina).to.eql(20);",
+                  "});",
+                  "",
+                  "pm.test('RNG-10 · de la más reciente a la más antigua', function () {",
+                  "    for (let i = 1; i < d.tasas.length; i++) {",
+                  "        pm.expect(d.tasas[i - 1].vigencia_desde >= d.tasas[i].vigencia_desde).to.be.true;",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.2 POST /admin/trm · sin justificación (RN-017.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.3 · la justificación es obligatoria', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.justificacion[0]).to.include('obligatoria');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2001-01-02\",\n  \"valor\": \"2000.1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.3 POST /admin/trm · justificación corta (RN-017.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.3 · la justificación tiene al menos 20 caracteres', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.justificacion[0]).to.include('20 caracteres');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2001-01-02\",\n  \"valor\": \"2000.1234\",\n  \"justificacion\": \"corta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.4 POST /admin/trm · registrar TRM manual (RN-017.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.3 · TRM registrada (201) o, si ya existía de otra corrida, corregida (200)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-017.3 · queda como fuente MANUAL con su justificación', function () {",
+                  "    pm.expect(d.fuente).to.eql('MANUAL');",
+                  "    pm.expect(d.valor).to.eql('2000.1234');",
+                  "    pm.expect(d.justificacion).to.include('Postman');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2001-01-02\",\n  \"valor\": \"2000.1234\",\n  \"justificacion\": \"Registro manual de verificación desde Postman (RN-017.3).\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.5 POST /admin/trm · corregir la misma fecha (RN-017.3 / CA-017.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.3 · una TRM existente se corrige (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('CA-017.2 · el mensaje aclara que los registros anteriores no cambian', function () {",
+                  "    pm.expect(pm.response.json().mensaje).to.include('no cambian');",
+                  "    pm.expect(pm.response.json().data.valor).to.eql('2000.5678');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2001-01-02\",\n  \"valor\": \"2000.5678\",\n  \"justificacion\": \"Corrección de verificación desde Postman (RN-017.3).\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.6 GET /tasas-cambio/trm · la corrección aplica a la fecha",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-017.3 · la consulta devuelve el valor corregido', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.valor).to.eql('2000.5678');",
+                  "    pm.expect(d.fuente).to.eql('MANUAL');",
+                  "    pm.expect(d.es_tasa_anterior).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasas-cambio/trm?fecha=2001-01-02",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasas-cambio",
+                "trm"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2001-01-02"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.7 POST /admin/trm · fecha más allá de mañana",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = (n) => String(n).padStart(2, '0');",
+                  "const d = new Date();",
+                  "d.setDate(d.getDate() + 2);",
+                  "pm.collectionVariables.set('fecha_en_2_dias', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-017 · solo se registra la TRM hasta el día de mañana', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.fecha[0]).to.include('mañana');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"{{fecha_en_2_dias}}\",\n  \"valor\": \"4000\",\n  \"justificacion\": \"Intento de registrar una TRM a dos días vista.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · RN-017.1 Sincronización con la fuente oficial",
+      "item": [
+        {
+          "name": "60.1 POST /admin/trm/sincronizar · forzar la consulta (RN-017.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Sale a datos.gov.co: con internet responde 200; sin internet, o si la",
+                  "// fuente aún no publica la TRM de hoy, 503 y el intento queda en bitácora.",
+                  "pm.test('RN-017.1 · responde 200 (sincronizada) o 503 (fuente no disponible)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 503]);",
+                  "    pm.expect(pm.response.json()).to.have.property('mensaje');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('RN-017.1 · la TRM obtenida cubre el día de hoy', function () {",
+                  "        const d = pm.response.json().data;",
+                  "        pm.expect(d.es_tasa_anterior).to.be.false;",
+                  "        pm.expect(d.vigencia_desde <= d.fecha_consultada, 'no debe guardar la TRM de mañana como la de hoy').to.be.true;",
+                  "        pm.expect(d.vigencia_hasta >= d.fecha_consultada).to.be.true;",
+                  "        pm.expect(Number(d.valor)).to.be.above(0);",
+                  "    });",
+                  "} else {",
+                  "    pm.test('RN-017.1 · el fallo informa el número de intento del día', function () {",
+                  "        pm.expect(pm.response.json().mensaje).to.include('intento');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/trm/sincronizar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "trm",
+                "sincronizar"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "correo_trm",
+      "value": "trm@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "correo_trm_admin",
+      "value": "trm.admin@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "password_trm",
+      "value": "Scfp#Demo2026",
+      "type": "string"
+    },
+    {
+      "key": "csrf",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_hoy",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_en_2_dias",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "trm_marzo",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

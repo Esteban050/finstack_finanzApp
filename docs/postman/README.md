@@ -1,9 +1,9 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **dos colecciones** en esta carpeta. Esta primera parte documenta la de
-> MOD-03; la de MOD-04 (gastos) está al final del archivo.
+> Hay **tres colecciones** en esta carpeta. Esta primera parte documenta la de
+> MOD-03; la de MOD-04 (gastos) y la de RF-017 (TRM) están al final del archivo.
 
-Verificación de los RF-020 a RF-024 por HTTP. **32 peticiones**, cada una con
+Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
 comprueba.
 
@@ -11,7 +11,8 @@ comprueba.
 | :---- | :---- |
 | `SCFP-MOD-03.postman_collection.json` | La colección de MOD-03 (ingresos) |
 | `SCFP-MOD-04.postman_collection.json` | La colección de MOD-04 (gastos) |
-| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales), común a las dos |
+| `SCFP-TRM.postman_collection.json` | La colección de RF-017 (TRM y conversión COP ⇄ USD) |
+| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales), común a las tres |
 
 ## Antes de importar
 
@@ -69,7 +70,7 @@ resuelve `fuente_id`.
 | :---- | :---- |
 | 00 · Autenticación | Login por el formulario real, token CSRF |
 | 10 · RF-020 Fuentes de ingreso | CA-020.1, CA-020.2, RN-020.1, RN-020.3 |
-| 20 · RF-021 Registro de ingreso | CA-021.1, CA-021.2, CA-021.3, RN-021.3, RN-021.4 |
+| 20 · RF-021 Registro de ingreso | CA-021.1, CA-021.2, CA-021.3, RN-021.3, RN-021.4, CA-017.1 (20.7: USD sin tasa usa la TRM) |
 | 30 · RF-024 Consulta y filtrado | CA-024.1, CA-024.2, RN-024.1, RN-024.3, RNG-10 |
 | 40 · RF-023 Edición y eliminación | RN-023.1, RN-023.2, RNG-07 |
 | 50 · RF-022 Ingresos recurrentes | RN-022.1, RN-022.3, CA-022.2 |
@@ -144,7 +145,10 @@ regla sin mensaje propio saldría como la clave cruda `validation.required`.
 
 Comprobado:
 
-- El JSON está bien formado: 7 carpetas, 32 peticiones.
+- El JSON está bien formado: 7 carpetas, 33 peticiones. La `20.7` (CA-017.1) se
+  agregó con RF-017 y se ejecutó contra la app corriendo: el ingreso de USD 1.200
+  del 20/04/2026 quedó con la TRM oficial de esa fecha (3.593,14) y su valor en
+  COP exacto.
 - Las 17 rutas existen (`php artisan route:list --path=ingresos`).
 - Los endpoints responden los códigos y payloads que la colección afirma: 92
   pruebas automatizadas con 250 aserciones, todas en verde
@@ -175,7 +179,7 @@ y borra las fuentes sobrantes.
 
 # Postman — MOD-04 Gestión de gastos
 
-Verificación de los RF-025 a RF-029 por HTTP. **67 peticiones en 10 carpetas**,
+Verificación de los RF-025 a RF-029 por HTTP. **68 peticiones en 10 carpetas**,
 cada una con aserciones referenciadas al criterio de aceptación o la regla de
 negocio que comprueba.
 
@@ -221,7 +225,7 @@ las categorías: si no corre primero, las carpetas 20 a 80 se quedan sin
 | :---- | :---- | :---- |
 | 00 · Autenticación | 3 | Login por el formulario real, token CSRF |
 | 10 · RF-027 Categorías y subcategorías | 12 | RN-027.1, RN-027.2, RN-027.3, RN-027.4, RN-026.2, CA-027.2 |
-| 20 · RF-025 Registro de gasto | 7 | RN-025.1, CA-025.1, RNG-09 |
+| 20 · RF-025 Registro de gasto | 8 | RN-025.1, CA-025.1, RNG-09, CA-017.1 (20.8: USD sin tasa usa la TRM) |
 | 30 · RF-026 Clasificación multidimensional | 12 | RN-026.1, RN-026.2, CA-026.1, CA-026.2, CA-026.3 |
 | 40 · RN-025.2 Indicadores anuales | 3 | RN-025.2, CA-025.2, RN-026.3, RNG-08 |
 | 50 · RF-029 Consulta y filtrado | 6 | RN-029.1, CA-029.1, RNG-10 |
@@ -301,7 +305,10 @@ php artisan db:seed --class="Database\Seeders\Test\Mod04DemoSeeder"
 
 Comprobado:
 
-- El JSON está bien formado: 10 carpetas, 67 peticiones.
+- El JSON está bien formado: 10 carpetas, 68 peticiones. La `20.8` (CA-017.1) se
+  agregó con RF-017 y se ejecutó contra la app corriendo: el gasto de USD 120 del
+  06/03/2026 quedó con la TRM oficial de esa fecha (3.767,94). El resto del
+  recorrido de abajo es el de la versión de 67 peticiones.
 - Las 21 rutas existen (`php artisan route:list --path=gastos`).
 - **Las 67 peticiones se ejecutaron contra la aplicación corriendo**, en orden y
   en una sola sesión, reproduciendo la cookie de sesión, el token CSRF por
@@ -312,6 +319,102 @@ Comprobado:
   CA-026.1, los totales de CA-029.1 exceden la página).
 - 120 pruebas automatizadas con 385 aserciones sobre los mismos endpoints
   (`composer test:dominio`, que corre MOD-03 y MOD-04: 215 pruebas en total).
+
+Lo que **no** está comprobado es la corrida desde el Collection Runner de
+Postman, que es lo único que ejecuta el JavaScript de los scripts `test` tal como
+está escrito. El recorrido HTTP sí se verificó por completo.
+
+# Postman — RF-017 TRM y conversión COP ⇄ USD
+
+Verificación de RF-017 por HTTP: consulta de la TRM, conversión, administración
+manual y sincronización con la fuente oficial. **25 peticiones en 7 carpetas.**
+El registro de ingresos y gastos en USD sin tasa (CA-017.1) se verifica en las
+colecciones de MOD-03 (`20.7`) y MOD-04 (`20.8`).
+
+La TRM oficial sale de los datos abiertos de la Superintendencia Financiera
+(`https://www.datos.gov.co/resource/32sa-8pi3.json`). Es pública y no necesita
+clave: no hay que tocar el `.env`.
+
+## Antes de importar
+
+**1. Crear la tabla `tasas_cambio`, una sola vez.** Va con `--path` a propósito:
+la base no tiene tabla `migrations` (la crea esta misma orden), así que un
+`php artisan migrate` a secas intentaría correr también las migraciones base de
+Laravel.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_27_000001_create_tasas_cambio_table.php
+```
+
+**2. Crear las cuentas de demostración.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\TrmDemoSeeder"
+```
+
+Crea `trm@scfp.test` (Usuario) y `trm.admin@scfp.test` (Administrador), las dos
+ACTIVA, sin MFA y con la política vigente aceptada. No siembra ninguna TRM: la
+colección la obtiene de la fuente oficial o la registra a mano.
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_trm`, `correo_trm_admin`, `password_trm`), así que convive con el
+entorno `SCFP · Local` sin tocarlo.
+
+La carpeta `40` **cierra la sesión del Usuario y entra como Administrador**,
+porque RN-017.3 es del Administrador. Las carpetas `50` y `60` dependen de ella.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación (Usuario) | 3 | Login por el formulario real, token CSRF |
+| 10 · RF-017 Consulta de la TRM | 3 | RF-017 (valor, vigencia, fuente, última actualización), RN-017.2, RNG-05 |
+| 20 · RF-017 Conversión COP ⇄ USD | 5 | CA-017.1, RN-017.4, RNG-02, RNG-09 |
+| 30 · CA-003.2 Acceso a la administración | 2 | CA-003.2 (403 para el Usuario) |
+| 40 · Cambio a la sesión del Administrador | 4 | RF-006 (logout), login del Administrador |
+| 50 · RN-017.3 Registro y corrección manual | 7 | RN-017.3, CA-017.2, RNG-10 |
+| 60 · RN-017.1 Sincronización | 1 | RN-017.1 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `GET /tasas-cambio/trm?fecha=` | `moneda`, `valor`, `fecha_consultada`, `vigencia_desde`, `vigencia_hasta`, `es_tasa_anterior`, `fuente`, `ultima_actualizacion` |
+| `GET /tasas-cambio/convertir?monto=&de=&a=&fecha=` | `monto`, `de`, `a`, `resultado` y la `trm` usada, con la forma de arriba |
+| `GET /admin/trm` | `tasas`, `meta` |
+| `POST /admin/trm` | la TRM registrada (201) o corregida (200) |
+| `POST /admin/trm/sincronizar` | la TRM vigente hoy, con la forma de `GET /tasas-cambio/trm` |
+
+`es_tasa_anterior` en `true` significa que la fecha no tiene TRM propia y se usó
+la más reciente anterior (RN-017.2). Cuando no hay TRM en ninguna parte (fuente
+caída y base vacía), las consultas responden **503** con un `mensaje`.
+
+## Datos y conexión
+
+- `10.x` y `20.x` consultan la fuente oficial si la base no tiene la TRM de la
+  fecha, y la guardan: la segunda corrida ya no sale a internet.
+- `50.x` registra y corrige una TRM manual del **02/01/2001**, una fecha lejana a
+  propósito para no alterar la TRM de fechas en uso. En una segunda corrida,
+  `50.4` responde 200 en vez de 201 porque esa TRM ya existe; la prueba admite las
+  dos respuestas.
+- `60.1` sale siempre a internet. Sin conexión, o si la fuente aún no publica la
+  TRM de hoy, responde 503 y el intento queda en bitácora como
+  `FALLO_SINCRONIZACION_TRM`; la prueba admite las dos respuestas.
+
+## Estado de verificación
+
+Comprobado:
+
+- **Las 25 peticiones se ejecutaron contra la aplicación corriendo**
+  (`http://localhost:8000`), en orden y en una sola sesión, reproduciendo la
+  cookie de sesión, el token CSRF por cabecera, el cambio de sesión de la carpeta
+  40 y el encadenamiento de variables: **28 comprobaciones, 0 fallos**. Con la
+  fuente oficial real: TRM del 27/10/2026 = 3.157,94, y el domingo 15/03/2026
+  resuelto con el rango del 14 al 16 de marzo (3.685,53). USD 100 → $ 368.553,00.
+- 27 pruebas automatizadas con 123 aserciones en `tests/Feature/Dominio/Trm/`,
+  con la fuente simulada (`Http::fake`) y sin salir a internet.
 
 Lo que **no** está comprobado es la corrida desde el Collection Runner de
 Postman, que es lo único que ejecuta el JavaScript de los scripts `test` tal como

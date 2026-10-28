@@ -9,6 +9,7 @@ use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
 use App\Services\IngresoService;
 use App\Services\RecurrenciaService;
+use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -75,9 +76,8 @@ class IngresoRecurrenteController extends Controller
         $this->validarTope($validated);
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
-
         $fechaInicio = CarbonImmutable::parse($validated['fecha_inicio']);
+        $montos = IngresoService::prepararMontos($validated, $fuente, $fechaInicio->toDateString());
 
         $plantilla = PlantillaRecurrencia::create([
             'usuario_id' => Auth::id(),
@@ -94,7 +94,7 @@ class IngresoRecurrenteController extends Controller
             'datos_plantilla' => array_merge($montos, [
                 'fuente_id' => $fuente->id,
                 'descripcion' => $validated['descripcion'] ?? null,
-            ]),
+            ], $this->datosTrm($validated)),
             // RN-022.2: la primera ocurrencia cae en la fecha de inicio.
             'proxima_ejecucion' => $fechaInicio->toDateString(),
             'activa' => true,
@@ -153,7 +153,13 @@ class IngresoRecurrenteController extends Controller
         $this->validarTope($validated);
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
+        // CA-017.1: la tasa se busca para la próxima ocurrencia, que es la
+        // primera a la que aplica el cambio (RN-022.4).
+        $montos = IngresoService::prepararMontos(
+            $validated,
+            $fuente,
+            $validated['fecha_inicio'] ?? $plantilla->proxima_ejecucion->toDateString()
+        );
 
         $anterior = $plantilla->toArray();
 
@@ -164,7 +170,7 @@ class IngresoRecurrenteController extends Controller
             'datos_plantilla' => array_merge($montos, [
                 'fuente_id' => $fuente->id,
                 'descripcion' => $validated['descripcion'] ?? null,
-            ]),
+            ], $this->datosTrm($validated)),
         ];
 
         if (! $yaGenero) {
@@ -344,6 +350,24 @@ class IngresoRecurrenteController extends Controller
             'clasificacion_tributaria.in' => 'La clasificación tributaria debe ser una de las cinco cédulas del artículo 330 del Estatuto Tributario.',
             'descripcion.string' => 'La descripción debe ser texto.',
             'descripcion.max' => 'La descripción no puede superar los 255 caracteres.',
+        ];
+    }
+
+    /**
+     * CA-017.1: Un ingreso recurrente en USD sin tasa propia convierte cada
+     * ocurrencia con la TRM de su fecha. Para poder reconvertir la retención y
+     * los aportes se guardan también en la moneda original.
+     */
+    private function datosTrm(array $validated): array
+    {
+        if (! TrmService::usaTrmAutomatica($validated)) {
+            return ['tasa_automatica' => false];
+        }
+
+        return [
+            'tasa_automatica' => true,
+            'retencion_fuente_original' => (string) ($validated['retencion_fuente'] ?? '0'),
+            'aportes_descontados_original' => (string) ($validated['aportes_descontados'] ?? '0'),
         ];
     }
 

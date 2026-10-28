@@ -1220,6 +1220,69 @@
               }
             }
           }
+        },
+        {
+          "name": "20.8 POST /gastos · USD sin tasa usa la TRM (CA-017.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-017.1 · registro en USD sin tasa aceptado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const tasa = Number(d.tasa_cambio_usada);",
+                  "",
+                  "pm.test('CA-017.1 · la tasa usada es la TRM de la fecha, no 1', function () {",
+                  "    pm.expect(d.moneda.trim()).to.eql('USD');",
+                  "    pm.expect(tasa).to.be.above(1);",
+                  "});",
+                  "",
+                  "pm.test('CA-017.1 · el valor en COP queda guardado con la TRM usada', function () {",
+                  "    pm.expect(d.monto_cop).to.eql((120 * tasa).toFixed(2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_restaurantes_id}}\",\n  \"fecha\": \"2026-03-06\",\n  \"moneda\": \"USD\",\n  \"monto_original\": \"120.00\",\n  \"medio_pago\": \"TARJETA_DEBITO\",\n  \"descripcion\": \"Verificación CA-017.1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         }
       ]
     },

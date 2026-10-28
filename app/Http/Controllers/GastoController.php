@@ -291,7 +291,7 @@ class GastoController extends Controller
                 'moneda' => $validated['moneda'] ?? $gasto->moneda,
                 'monto_original' => $validated['monto_original'],
                 'tasa_cambio_usada' => $validated['tasa_cambio_usada'] ?? $gasto->tasa_cambio_usada,
-            ]));
+            ], $gasto->fecha->toDateString()));
         }
 
         $anterior = $gasto->toArray();
@@ -484,7 +484,8 @@ class GastoController extends Controller
         }
 
         return array_merge(
-            GastoService::prepararMontos($validated),
+            // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha del gasto.
+            GastoService::prepararMontos($validated, $validated['fecha']),
             $sugerencias,
             GastoService::validarRelevancia($validated),
             [

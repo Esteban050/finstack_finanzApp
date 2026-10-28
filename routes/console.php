@@ -3,6 +3,8 @@
 use App\Models\BitacoraAuditoria;
 use App\Models\Usuario;
 use App\Services\RecurrenciaService;
+use App\Services\TrmService;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -64,9 +66,39 @@ Artisan::command('scfp:generar-recurrencias', function () {
     $this->info("Se generaron {$gastos} ocurrencias de gastos recurrentes (RN-028.1).");
 })->purpose('Generar las ocurrencias programadas de los ingresos y gastos recurrentes');
 
+// RN-017.1: Traer la TRM del día de la fuente oficial (RF-017). Si ya está
+// guardada no hace nada; si falla, el intento queda en bitácora y al sexto del
+// día se avisa a los Administradores.
+Artisan::command('scfp:sincronizar-trm', function () {
+    $hoy = CarbonImmutable::today();
+
+    if (TrmService::tieneOficialPara($hoy)) {
+        $this->info("La TRM oficial del {$hoy->toDateString()} ya está registrada (RN-017.1).");
+
+        return 0;
+    }
+
+    try {
+        $trm = TrmService::sincronizar($hoy);
+    } catch (\Throwable $e) {
+        $intento = TrmService::registrarFallo($e, $hoy);
+        $this->error("No se pudo obtener la TRM (intento {$intento} de ".TrmService::INTENTOS_DIARIOS."): {$e->getMessage()}");
+
+        return 1;
+    }
+
+    $this->info("TRM sincronizada: $ {$trm->valor} por USD, vigente del {$trm->vigencia_desde->toDateString()} al {$trm->vigencia_hasta->toDateString()} (RN-017.1).");
+
+    return 0;
+})->purpose('Sincronizar la TRM del día con la fuente oficial');
+
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();
 Schedule::command('scfp:purgar-supresiones')->daily();
 
 // RN-022.2: "El Sistema genera cada ocurrencia a las 00:05 del día programado."
 Schedule::command('scfp:generar-recurrencias')->dailyAt('00:05');
+
+// RN-017.1: "consulta la fuente oficial todos los días a las 08:00 [...] Si la
+// consulta falla, la reintenta cada hora hasta 6 veces": 08:00 a 13:00.
+Schedule::command('scfp:sincronizar-trm')->hourlyAt(0)->between('08:00', '13:00');

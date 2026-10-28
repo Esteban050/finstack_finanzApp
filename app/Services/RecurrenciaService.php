@@ -7,6 +7,7 @@ use App\Models\Ingreso;
 use App\Models\PlantillaRecurrencia;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * RF-022 — Generación automática de las ocurrencias de una recurrencia.
@@ -125,7 +126,7 @@ class RecurrenciaService
             ->get();
 
         foreach ($plantillas as $plantilla) {
-            $generados += self::generarPara($plantilla, $hasta);
+            $generados += self::generarConAislamiento($plantilla, $hasta);
         }
 
         return $generados;
@@ -148,10 +149,43 @@ class RecurrenciaService
             ->get();
 
         foreach ($plantillas as $plantilla) {
-            $generados += self::generarPara($plantilla, $hasta);
+            $generados += self::generarConAislamiento($plantilla, $hasta);
         }
 
         return $generados;
+    }
+
+    /**
+     * RN-022.2 / RN-028.1: `scfp:generar-recurrencias` corre a diario para todo
+     * el sistema. Una plantilla que falle no puede impedir que se generen las
+     * ocurrencias de los demás usuarios, así que el error se registra y la
+     * corrida continúa con la siguiente.
+     *
+     * El caso conocido es la referencia colgante: una plantilla cuya fuente
+     * (RF-020) o categoría (RF-027) ya no existe. Hoy no se puede crear —los
+     * borrados que la provocaban están bloqueados— pero puede haber quedado en
+     * datos anteriores a esa validación.
+     *
+     * El otro es una plantilla en USD con TRM automática (CA-017.1) en un día
+     * en que no hay TRM ni local ni en la fuente oficial. Como la transacción
+     * se revierte, `proxima_ejecucion` no avanza y la ocurrencia se reintenta en
+     * la siguiente corrida.
+     */
+    private static function generarConAislamiento(PlantillaRecurrencia $plantilla, CarbonImmutable $hasta): int
+    {
+        try {
+            return self::generarPara($plantilla, $hasta);
+        } catch (\Throwable $e) {
+            Log::error('No se pudo generar la ocurrencia de una recurrencia (RN-022.2).', [
+                'plantilla_id' => $plantilla->id,
+                'tipo_movimiento' => $plantilla->tipo_movimiento,
+                'usuario_id' => $plantilla->usuario_id,
+                'proxima_ejecucion' => $plantilla->proxima_ejecucion,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
     }
 
     /**
@@ -232,6 +266,14 @@ class RecurrenciaService
     {
         $datos = $plantilla->datos_plantilla;
 
+        // CA-017.1: una plantilla en USD sin tasa propia se convierte con la TRM
+        // vigente en la fecha de esta ocurrencia, no con la del día de creación.
+        if ($datos['tasa_automatica'] ?? false) {
+            $tasa = TrmService::tasaPara($datos['moneda'], null, $fecha->toDateString());
+            $datos['tasa_cambio_usada'] = $tasa;
+            $datos['monto_cop'] = IngresoService::convertirACop((string) $datos['monto_original'], $tasa);
+        }
+
         return Gasto::create([
             'usuario_id' => $plantilla->usuario_id,
             'categoria_id' => $datos['categoria_id'],
@@ -262,6 +304,17 @@ class RecurrenciaService
     private static function crearIngreso(PlantillaRecurrencia $plantilla, CarbonImmutable $fecha): Ingreso
     {
         $datos = $plantilla->datos_plantilla;
+
+        // CA-017.1: una plantilla en USD sin tasa propia se convierte con la TRM
+        // vigente en la fecha de esta ocurrencia. La retención y los aportes se
+        // reconvierten desde la moneda original con la misma tasa (RN-021.3).
+        if ($datos['tasa_automatica'] ?? false) {
+            $tasa = TrmService::tasaPara($datos['moneda'], null, $fecha->toDateString());
+            $datos['tasa_cambio_usada'] = $tasa;
+            $datos['monto_bruto_cop'] = IngresoService::convertirACop((string) $datos['monto_original'], $tasa);
+            $datos['retencion_fuente_cop'] = IngresoService::convertirACop($datos['retencion_fuente_original'] ?? '0', $tasa);
+            $datos['aportes_descontados_cop'] = IngresoService::convertirACop($datos['aportes_descontados_original'] ?? '0', $tasa);
+        }
 
         return Ingreso::create([
             'usuario_id' => $plantilla->usuario_id,

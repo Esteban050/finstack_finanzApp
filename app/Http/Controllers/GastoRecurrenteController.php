@@ -9,6 +9,7 @@ use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
 use App\Services\GastoService;
 use App\Services\RecurrenciaService;
+use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -114,7 +115,7 @@ class GastoRecurrenteController extends Controller
             // RN-028.2: con monto estimado la ocurrencia nace PENDIENTE y el
             // usuario confirma el monto real (CA-028.2).
             'es_monto_estimado' => (bool) ($validated['es_monto_estimado'] ?? false),
-            'datos_plantilla' => $this->datosPlantilla($validated),
+            'datos_plantilla' => $this->datosPlantilla($validated, $fechaInicio->toDateString()),
             // RN-022.2: la primera ocurrencia cae en la fecha de inicio.
             'proxima_ejecucion' => $fechaInicio->toDateString(),
             'activa' => true,
@@ -174,7 +175,12 @@ class GastoRecurrenteController extends Controller
             'max_ocurrencias' => $validated['max_ocurrencias'] ?? null,
             'modo_confirmacion' => $validated['modo_confirmacion'],
             'es_monto_estimado' => (bool) ($validated['es_monto_estimado'] ?? false),
-            'datos_plantilla' => $this->datosPlantilla($validated),
+            // CA-017.1: la tasa se busca para la próxima ocurrencia, que es la
+            // primera a la que aplica el cambio (RN-022.4).
+            'datos_plantilla' => $this->datosPlantilla(
+                $validated,
+                $validated['fecha_inicio'] ?? $plantilla->proxima_ejecucion->toDateString()
+            ),
         ];
 
         if (! $yaGenero) {
@@ -367,8 +373,11 @@ class GastoRecurrenteController extends Controller
      * RN-028.1 / RF-026: La clasificación con la que nacerá cada ocurrencia.
      * Se valida y se normaliza igual que en un gasto manual, para que la
      * ocurrencia generada por el comando programado no pueda violar RN-026.1.
+     *
+     * CA-017.1: si es en USD y no trae tasa, la plantilla queda marcada con
+     * `tasa_automatica` y cada ocurrencia se convierte con la TRM de su fecha.
      */
-    private function datosPlantilla(array $validated): array
+    private function datosPlantilla(array $validated, string $fechaTasa): array
     {
         $subcategoria = null;
         $categoriaId = $validated['categoria_id'];
@@ -396,7 +405,7 @@ class GastoRecurrenteController extends Controller
         }
 
         return array_merge(
-            GastoService::prepararMontos($validated),
+            GastoService::prepararMontos($validated, $fechaTasa),
             $sugerencias,
             GastoService::validarRelevancia($validated),
             [
@@ -406,6 +415,7 @@ class GastoRecurrenteController extends Controller
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
+                'tasa_automatica' => TrmService::usaTrmAutomatica($validated),
             ]
         );
     }

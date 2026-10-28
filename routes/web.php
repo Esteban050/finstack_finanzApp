@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\CalendarioTributarioController;
 use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
+use App\Http\Controllers\Admin\TrmController;
 use App\Http\Controllers\FuenteIngresoController;
 use App\Http\Controllers\GastoCategoriaController;
 use App\Http\Controllers\GastoController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\GastoRecurrenteController;
 use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
 use App\Http\Controllers\PoliticaTratamientoController;
+use App\Http\Controllers\TasaCambioController;
 use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -114,6 +116,10 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
     // RN-028.2: Confirmar el monto real de una ocurrencia con monto estimado
     Route::patch('/gastos/{id}/confirmar', [GastoController::class, 'confirmar'])->name('gastos.confirmar');
+
+    // RF-017: TRM vigente en una fecha y conversión COP ⇄ USD
+    Route::get('/tasas-cambio/trm', [TasaCambioController::class, 'trm'])->name('tasas-cambio.trm');
+    Route::get('/tasas-cambio/convertir', [TasaCambioController::class, 'convertir'])->name('tasas-cambio.convertir');
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)
@@ -148,6 +154,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/calendario', [CalendarioTributarioController::class, 'index'])->name('calendario.index');
     Route::post('/calendario/importar', [CalendarioTributarioController::class, 'importarCsv'])->name('calendario.importar');
     Route::get('/calendario/consultar-nit', [CalendarioTributarioController::class, 'consultarPorNit'])->name('calendario.consultar');
+
+    // RF-017: TRM — histórico, registro o corrección manual (RN-017.3) y sincronización (RN-017.1)
+    Route::get('/trm', [TrmController::class, 'index'])->name('trm.index');
+    Route::post('/trm', [TrmController::class, 'store'])->name('trm.store');
+    Route::post('/trm/sincronizar', [TrmController::class, 'sincronizar'])->name('trm.sincronizar');
 
     // RF-018: Gestión de cuentas de usuario
     Route::get('/usuarios', [AdminUsuariosController::class, 'index'])->name('usuarios.index');

@@ -22,26 +22,20 @@ class GastoService
     public const MAX_LONGITUD_ETIQUETA = 30;
 
     /**
-     * RN-025.1: Si la moneda no es COP se exige la tasa usada y se guarda el
-     * monto convertido, que es el que alimenta todos los cálculos.
+     * RN-025.1: Si la moneda no es COP se guarda la tasa usada y el monto
+     * convertido, que es el que alimenta todos los cálculos.
+     *
+     * RN-017.4 / CA-017.1: en USD la tasa por defecto es la TRM vigente en
+     * `$fechaTasa`, la fecha del gasto; otras monedas exigen la tasa manual.
      *
      * @throws ValidationException
      */
-    public static function prepararMontos(array $validated): array
+    public static function prepararMontos(array $validated, string $fechaTasa): array
     {
         $moneda = strtoupper($validated['moneda']);
         $montoOriginal = (string) $validated['monto_original'];
 
-        if ($moneda === 'COP') {
-            $tasa = '1.0000';
-        } else {
-            if (($validated['tasa_cambio_usada'] ?? null) === null) {
-                throw ValidationException::withMessages([
-                    'tasa_cambio_usada' => 'Indique la tasa de cambio usada para convertir a pesos colombianos.',
-                ]);
-            }
-            $tasa = (string) $validated['tasa_cambio_usada'];
-        }
+        $tasa = TrmService::tasaPara($moneda, $validated['tasa_cambio_usada'] ?? null, $fechaTasa);
 
         $montoCop = self::convertirACop($montoOriginal, $tasa);
 
