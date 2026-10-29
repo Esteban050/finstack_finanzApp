@@ -26,7 +26,34 @@
       "item": [
         {
           "name": "00.1 GET /login · obtener token CSRF",
+          "protocolProfileBehavior": { "followRedirects": false },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                  "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                  "// de cuenta. Se cierra esa sesión primero.",
+                  "const base = pm.variables.get('base_url');",
+                  "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                  "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                  "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                  "    // destino del login (url.intended).",
+                  "    const html = !err && res.code === 200 ? res.text() : '';",
+                  "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "    if (!m) { return; }",
+                  "    pm.sendRequest({",
+                  "        url: base + '/logout',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                  "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                  "    }, function () {});",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {

@@ -258,6 +258,61 @@ CREATE TABLE public.ingresos (
 
 
 --
+-- Name: liquidaciones_seguridad_social; Type: TABLE; Schema: public; Owner: -
+-- RF-033 RN-033.7. Creada por la migración 2026_10_28_000001_create_seguridad_social_tables.
+--
+
+CREATE TABLE public.liquidaciones_seguridad_social (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    periodo character(7) NOT NULL,
+    origen_ingreso character varying(15) NOT NULL,
+    ingreso_base numeric(18,2) NOT NULL,
+    ibc numeric(18,2) NOT NULL,
+    salud numeric(18,2) NOT NULL,
+    pension numeric(18,2) NOT NULL,
+    fsp numeric(18,2) NOT NULL,
+    arl numeric(18,2) NOT NULL,
+    total numeric(18,2) NOT NULL,
+    parametro_normativo_id uuid NOT NULL,
+    parametros_usados jsonb NOT NULL,
+    creado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_liquidacion_periodo CHECK ((periodo ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)),
+    CONSTRAINT chk_liquidacion_origen CHECK (((origen_ingreso)::text = ANY ((ARRAY['REGISTRADO'::character varying, 'MANUAL'::character varying])::text[]))),
+    CONSTRAINT chk_liquidacion_montos CHECK (((ingreso_base >= (0)::numeric) AND (ibc > (0)::numeric) AND (salud >= (0)::numeric) AND (pension >= (0)::numeric) AND (fsp >= (0)::numeric) AND (arl >= (0)::numeric) AND (total >= (0)::numeric)))
+);
+
+
+--
+-- Name: pagos_seguridad_social; Type: TABLE; Schema: public; Owner: -
+-- RF-035. Creada por la migración 2026_10_28_000001_create_seguridad_social_tables.
+--
+
+CREATE TABLE public.pagos_seguridad_social (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    periodo character(7) NOT NULL,
+    fecha_pago date NOT NULL,
+    numero_planilla character varying(20),
+    es_correccion boolean DEFAULT false NOT NULL,
+    salud numeric(18,2) NOT NULL,
+    pension numeric(18,2) NOT NULL,
+    fsp numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    arl numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    intereses_mora numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    gasto_id uuid,
+    creado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    eliminado_en timestamp with time zone,
+    total numeric(18,2) GENERATED ALWAYS AS (((((salud + pension) + fsp) + arl) + intereses_mora)) STORED,
+    CONSTRAINT chk_pago_periodo CHECK ((periodo ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)),
+    CONSTRAINT chk_pago_montos CHECK (((salud >= (0)::numeric) AND (pension >= (0)::numeric) AND (fsp >= (0)::numeric) AND (arl >= (0)::numeric) AND (intereses_mora >= (0)::numeric))),
+    CONSTRAINT chk_pago_total CHECK ((total > (0)::numeric))
+);
+
+
+--
 -- Name: parametros_normativos; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -564,6 +619,30 @@ ALTER TABLE ONLY public.ingresos
 
 
 --
+-- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.liquidaciones_seguridad_social
+    ADD CONSTRAINT liquidaciones_seguridad_social_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: liquidaciones_seguridad_social uq_liquidacion_usuario_periodo; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.liquidaciones_seguridad_social
+    ADD CONSTRAINT uq_liquidacion_usuario_periodo UNIQUE (usuario_id, periodo);
+
+
+--
+-- Name: pagos_seguridad_social pagos_seguridad_social_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_seguridad_social
+    ADD CONSTRAINT pagos_seguridad_social_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: parametros_normativos parametros_normativos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -779,6 +858,14 @@ CREATE UNIQUE INDEX uq_parametro_normativo_activo_anio ON public.parametros_norm
 
 
 --
+-- Name: uq_pago_periodo; Type: INDEX; Schema: public; Owner: -
+-- CA-035.2: un solo pago por periodo, salvo las planillas de corrección.
+--
+
+CREATE UNIQUE INDEX uq_pago_periodo ON public.pagos_seguridad_social USING btree (usuario_id, periodo) WHERE ((es_correccion = false) AND (eliminado_en IS NULL));
+
+
+--
 -- Name: uq_perfil_tributario_vigente; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -938,6 +1025,38 @@ ALTER TABLE ONLY public.ingresos
 
 ALTER TABLE ONLY public.ingresos
     ADD CONSTRAINT ingresos_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_parametro_normativo_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.liquidaciones_seguridad_social
+    ADD CONSTRAINT liquidaciones_seguridad_social_parametro_normativo_id_foreign FOREIGN KEY (parametro_normativo_id) REFERENCES public.parametros_normativos(id);
+
+
+--
+-- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.liquidaciones_seguridad_social
+    ADD CONSTRAINT liquidaciones_seguridad_social_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pagos_seguridad_social pagos_seguridad_social_gasto_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_seguridad_social
+    ADD CONSTRAINT pagos_seguridad_social_gasto_id_foreign FOREIGN KEY (gasto_id) REFERENCES public.gastos(id) ON DELETE SET NULL;
+
+
+--
+-- Name: pagos_seguridad_social pagos_seguridad_social_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_seguridad_social
+    ADD CONSTRAINT pagos_seguridad_social_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
 
 
 --

@@ -1,7 +1,8 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **tres colecciones** en esta carpeta. Esta primera parte documenta la de
-> MOD-03; la de MOD-04 (gastos) y la de RF-017 (TRM) están al final del archivo.
+> Hay **cuatro colecciones** en esta carpeta. Esta primera parte documenta la de
+> MOD-03; las de MOD-04 (gastos), RF-017 (TRM) y MOD-05 (seguridad social) están
+> al final del archivo.
 
 Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
@@ -12,7 +13,21 @@ comprueba.
 | `SCFP-MOD-03.postman_collection.json` | La colección de MOD-03 (ingresos) |
 | `SCFP-MOD-04.postman_collection.json` | La colección de MOD-04 (gastos) |
 | `SCFP-TRM.postman_collection.json` | La colección de RF-017 (TRM y conversión COP ⇄ USD) |
-| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales), común a las tres |
+| `SCFP-MOD-05.postman_collection.json` | La colección de MOD-05 (seguridad social) |
+| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales) de MOD-03; las demás colecciones traen sus propias variables |
+
+> **Sesión de una corrida anterior (las cuatro colecciones).** La app de Postman
+> guarda las cookies entre corridas, y `/login` está bajo el middleware `guest`:
+> si quedó abierta la sesión de otra cuenta (por ejemplo, la cuenta sin perfil
+> con la que termina MOD-05, o el Administrador con el que termina TRM), el login
+> de la carpeta 00 redirigía al dashboard sin cambiar de cuenta y la colección
+> corría con la cuenta equivocada (en MOD-05, 403 desde la 10.1). Desde el
+> 28/10/2026 la 00.1 de cada colección trae un script previo que cierra esa sesión
+> antes del login (solo si la página es autenticada, es decir, trae el formulario
+> de "Cerrar sesión") y no sigue redirecciones: si no logra cerrarla, falla ahí
+> con "Formulario de login disponible". Ya no hace falta borrar las cookies a
+> mano. Newman cuenta como peticiones las que hace ese script (una o dos más que
+> las de la colección); las aserciones no cambian.
 
 ## Antes de importar
 
@@ -415,7 +430,109 @@ Comprobado:
   resuelto con el rango del 14 al 16 de marzo (3.685,53). USD 100 → $ 368.553,00.
 - 27 pruebas automatizadas con 123 aserciones en `tests/Feature/Dominio/Trm/`,
   con la fuente simulada (`Http::fake`) y sin salir a internet.
+- **28/10/2026: la colección completa se ejecutó con Newman** (el ejecutor de
+  Postman por línea de comandos, que corre los scripts `test` igual que el
+  Collection Runner) contra `http://localhost:8000`: **25 peticiones, 40
+  aserciones, 0 fallos**.
 
-Lo que **no** está comprobado es la corrida desde el Collection Runner de
-Postman, que es lo único que ejecuta el JavaScript de los scripts `test` tal como
-está escrito. El recorrido HTTP sí se verificó por completo.
+# Postman — MOD-05 Seguridad social
+
+Verificación de RF-033 a RF-036 por HTTP: liquidación del independiente,
+aportes del asalariado, pagos por PILA con su gasto y fechas límite de pago.
+**39 peticiones en 9 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-05, una sola vez.** Va con `--path` por la misma
+razón que la TRM: el esquema de dominio no tiene migraciones.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_28_000001_create_seguridad_social_tables.php
+```
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod05DemoSeeder"
+```
+
+Crea tres cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`:
+
+| Cuenta | Perfil | Datos |
+| :---- | :---- | :---- |
+| `mod05@scfp.test` | Independiente, dígitos 37, ARL clase I | Ingreso de honorarios de $ 8.000.000 en 2025-03 |
+| `mod05.asalariado@scfp.test` | Asalariado | Salario de $ 6.000.000 en 2025-06 (UUID fijo `…0005-000000000004`) |
+| `mod05.sinperfil@scfp.test` | Sin perfil tributario | (CA-008.1) |
+
+Cada ejecución deja las cuentas sin pagos ni liquidaciones, y los aportes del
+salario en cero: así la colección se puede volver a correr.
+
+Si la base no tiene calendario de seguridad social (`SEGURIDAD_SOCIAL_INDEP`)
+para el año en curso, el seeder crea uno de ejemplo (día 10, todos los dígitos).
+Si ya existe, no lo toca.
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod05`, `password_mod05`, …), así que no necesita el entorno.
+
+Las carpetas 50 y 60 cierran la sesión anterior y entran con otra cuenta: la 55
+es del Asalariado y la 65 de la cuenta sin perfil.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación (Independiente) | 3 | Login por el formulario real, token CSRF |
+| 10 · RF-033 Liquidación del independiente | 10 | RN-033.1 a RN-033.5, RN-033.7, CA-033.2, CA-033.3, CA-033.4, RNG-04, RF-034 (ocupación) |
+| 20 · RF-035 Pagos por PILA | 10 | CA-035.1, CA-035.2, RN-035.1 a RN-035.5 |
+| 30 · RF-036 Fechas límite y alertas | 1 | RF-036, RN-036.1, RN-036.2 |
+| 40 · RN-035.3 Eliminación del pago y su gasto | 3 | RN-035.3, RNG-07 |
+| 50 · Cambio a la sesión del Asalariado | 4 | RF-006, login |
+| 55 · RF-034 Aportes del asalariado | 3 | CA-034.1, RN-034.5, RF-033 (ocupación) |
+| 60 · Cambio a la cuenta sin perfil | 4 | RF-006, login |
+| 65 · CA-008.1 Módulo sin perfil financiero | 1 | CA-008.1 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `POST /seguridad-social/liquidaciones` y `…/simular` | `ingreso_base`, `ibc`, `salud`, `pension`, `fsp`, `arl`, `total`, `avisos`, `parametros_usados`, `aviso_legal` (la guardada trae también `id`, `periodo`, `origen_ingreso`) |
+| `POST /seguridad-social/asalariado/calcular` | `ibc`, `salud`, `pension`, `fsp`, `total_aportes`, `salario_neto_sin_retencion`, `parametros_usados`, `aviso_legal` |
+| `POST /seguridad-social/pagos` y `GET/PUT …/{id}` | el pago con su `total`, el `gasto`, la `comparacion` con la liquidación (RN-035.5) y el `aviso_legal` |
+| `GET /seguridad-social/resumen-anual` | `salud`, `pension`, `ingreso_no_constitutivo_pila` (solo pagos PILA; los aportes del salario los consolida RF-043), `alcance`, `cantidad_pagos` |
+| `GET /seguridad-social/alertas` | `periodos` (fecha límite y estado de cada uno) y `alertas` (por vencer o vencidos) |
+
+## Datos y conexión
+
+- La carpeta 30 usa el calendario de la base, así que no fija fechas: comprueba
+  que cada periodo tenga fecha límite y estado, que el periodo sea el mes
+  anterior al de la fecha límite (mes vencido) y que los vencidos traigan la
+  advertencia de mora.
+- El correo de las alertas lo envía el comando `scfp:alertas-seguridad-social`
+  (diario a las 07:00), no la colección. Lo cubren las pruebas automatizadas.
+
+## Estado de verificación
+
+Comprobado el 28/10/2026:
+
+- **La colección completa se ejecutó con Newman** contra `http://localhost:8000`:
+  **39 peticiones, 54 aserciones, 0 fallos**, y otra vez después de volver a
+  correr el seeder, con el mismo resultado. Con el calendario real de la base,
+  los dígitos 37 vencen el día 8 de cada mes.
+- **Otra vez el 28/10/2026, después de la revisión del módulo** (aportes del
+  asalariado solo a fuentes "Salario", peticiones simultáneas, alertas por
+  rangos y planilla de corrección como diferencia que exige el pago original):
+  **39 peticiones, 54 aserciones, 0 fallos**. La colección no necesitó cambios.
+- **Otra vez el 28/10/2026, después de la revisión frente a los criterios de
+  aceptación** (aviso legal en las respuestas de pagos; `resumen-anual` con
+  `ingreso_no_constitutivo_pila` y `alcance`, ajustados en la 20.9): **39
+  peticiones, 54 aserciones, 0 fallos**.
+- **Otra vez el 28/10/2026, con el cierre de la sesión anterior en la 00.1:**
+  sin cookies, **54 aserciones, 0 fallos**; y reutilizando las cookies de una
+  corrida que dejó abierta la sesión de `mod05.sinperfil@scfp.test` (el caso que
+  daba 403 en la 10.1), también **54 aserciones, 0 fallos**. La carpeta 00 de
+  MOD-03, MOD-04 y TRM se comprobó igual: sin cookies, con la sesión de otra
+  cuenta y, en TRM, con la del Administrador (5 de 5 en cada caso).
+- 56 pruebas automatizadas en `tests/Feature/Dominio/Mod05/`.

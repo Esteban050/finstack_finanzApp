@@ -12,7 +12,9 @@ use App\Http\Controllers\GastoController;
 use App\Http\Controllers\GastoRecurrenteController;
 use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
+use App\Http\Controllers\PagoSeguridadSocialController;
 use App\Http\Controllers\PoliticaTratamientoController;
+use App\Http\Controllers\SeguridadSocialController;
 use App\Http\Controllers\TasaCambioController;
 use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
@@ -120,6 +122,36 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     // RF-017: TRM vigente en una fecha y conversión COP ⇄ USD
     Route::get('/tasas-cambio/trm', [TasaCambioController::class, 'trm'])->name('tasas-cambio.trm');
     Route::get('/tasas-cambio/convertir', [TasaCambioController::class, 'convertir'])->name('tasas-cambio.convertir');
+
+    /*
+    | MOD-05 — Seguridad social (característica C)
+    |
+    | CA-008.1: sin el perfil de ocupación completo no se puede usar el módulo.
+    */
+    Route::middleware('perfil.completo')->prefix('seguridad-social')->name('seguridad-social.')->group(function () {
+        // RF-033: liquidación del independiente o contratista (RN-033.7)
+        Route::get('/liquidaciones', [SeguridadSocialController::class, 'liquidaciones'])->name('liquidaciones.index');
+        Route::post('/liquidaciones', [SeguridadSocialController::class, 'liquidar'])->name('liquidaciones.store');
+        // RN-033.1: simulación con un ingreso base ingresado a mano, sin guardar
+        Route::post('/liquidaciones/simular', [SeguridadSocialController::class, 'simular'])->name('liquidaciones.simular');
+        Route::get('/liquidaciones/{periodo}', [SeguridadSocialController::class, 'liquidacion'])->name('liquidaciones.show');
+
+        // RF-034: aportes del asalariado y aplicación al ingreso (RN-034.5)
+        Route::post('/asalariado/calcular', [SeguridadSocialController::class, 'calcularAsalariado'])->name('asalariado.calcular');
+        Route::post('/asalariado/aplicar', [SeguridadSocialController::class, 'aplicarAsalariado'])->name('asalariado.aplicar');
+
+        // RF-035: pagos por PILA, cada uno con su gasto (RN-035.3)
+        Route::get('/pagos', [PagoSeguridadSocialController::class, 'index'])->name('pagos.index');
+        Route::post('/pagos', [PagoSeguridadSocialController::class, 'store'])->name('pagos.store');
+        Route::get('/pagos/{id}', [PagoSeguridadSocialController::class, 'show'])->name('pagos.show');
+        Route::put('/pagos/{id}', [PagoSeguridadSocialController::class, 'update'])->name('pagos.update');
+        Route::delete('/pagos/{id}', [PagoSeguridadSocialController::class, 'destroy'])->name('pagos.destroy');
+        // RN-035.4: aportes de salud y pensión del año (ingreso no constitutivo)
+        Route::get('/resumen-anual', [PagoSeguridadSocialController::class, 'resumenAnual'])->name('resumen-anual');
+
+        // RF-036: fechas límite de pago y alertas activas
+        Route::get('/alertas', [SeguridadSocialController::class, 'alertas'])->name('alertas');
+    });
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

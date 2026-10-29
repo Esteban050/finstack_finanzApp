@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gasto;
+use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
@@ -197,6 +198,7 @@ class GastoController extends Controller
     public function update(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $gasto = $this->gastoPropio($id);
+        $this->rechazarSiEsDePagoPila($gasto);
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $atributos = $this->prepararAtributos($validated);
@@ -241,6 +243,7 @@ class GastoController extends Controller
     public function destroy(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $gasto = $this->gastoPropio($id);
+        $this->rechazarSiEsDePagoPila($gasto);
         $anterior = $gasto->toArray();
 
         $gasto->delete();
@@ -271,6 +274,7 @@ class GastoController extends Controller
     public function confirmar(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $gasto = $this->gastoPropio($id);
+        $this->rechazarSiEsDePagoPila($gasto);
 
         if (! $gasto->estaPendiente()) {
             throw ValidationException::withMessages([
@@ -369,6 +373,14 @@ class GastoController extends Controller
         if ($cambios === []) {
             throw ValidationException::withMessages([
                 'cambios' => 'Indique al menos un cambio: categoría y subcategoría, naturaleza, necesidad o etiquetas.',
+            ]);
+        }
+
+        // RN-035.3: los gastos de un pago PILA se editan desde su pago. Se rechaza
+        // la operación completa en lugar de omitirlos sin avisar.
+        if (PagoSeguridadSocial::whereIn('gasto_id', $validated['ids'])->exists()) {
+            throw ValidationException::withMessages([
+                'ids' => 'La selección incluye gastos generados por pagos de seguridad social (PILA). Quítelos de la selección: se editan desde /seguridad-social/pagos.',
             ]);
         }
 
@@ -695,5 +707,20 @@ class GastoController extends Controller
         }
 
         abort(404);
+    }
+
+    /**
+     * RN-035.3: el gasto que creó un pago PILA se edita o elimina desde su pago
+     * (/seguridad-social/pagos), para que los dos no queden con montos distintos.
+     *
+     * @throws ValidationException
+     */
+    private function rechazarSiEsDePagoPila(Gasto $gasto): void
+    {
+        if (PagoSeguridadSocial::where('gasto_id', $gasto->id)->exists()) {
+            throw ValidationException::withMessages([
+                'gasto' => 'Este gasto lo generó un pago de seguridad social (PILA). Edítelo o elimínelo desde /seguridad-social/pagos.',
+            ]);
+        }
     }
 }

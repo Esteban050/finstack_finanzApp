@@ -2,6 +2,7 @@
 
 use App\Models\BitacoraAuditoria;
 use App\Models\Usuario;
+use App\Services\AlertaSeguridadSocialService;
 use App\Services\RecurrenciaService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
@@ -92,6 +93,20 @@ Artisan::command('scfp:sincronizar-trm', function () {
     return 0;
 })->purpose('Sincronizar la TRM del día con la fuente oficial');
 
+// RF-036: Alertas de vencimiento del pago de seguridad social de los
+// Independientes y Contratistas: 5 días y 1 día antes (RN-036.1) y "Vencido" al
+// día siguiente de la fecha límite (RN-036.2). Sin calendario de la vigencia se
+// avisa al Administrador (RN-036.3).
+Artisan::command('scfp:alertas-seguridad-social', function () {
+    $resultado = AlertaSeguridadSocialService::procesar(CarbonImmutable::today());
+
+    foreach ($resultado['vigencias_sin_calendario'] as $anio) {
+        $this->warn("No hay calendario de seguridad social para {$anio}: no se generan alertas de esa vigencia (RN-036.3).");
+    }
+
+    $this->info("Se enviaron {$resultado['enviadas']} alertas de vencimiento de seguridad social (RF-036).");
+})->purpose('Enviar las alertas de vencimiento del pago de seguridad social');
+
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();
 Schedule::command('scfp:purgar-supresiones')->daily();
@@ -102,3 +117,6 @@ Schedule::command('scfp:generar-recurrencias')->dailyAt('00:05');
 // RN-017.1: "consulta la fuente oficial todos los días a las 08:00 [...] Si la
 // consulta falla, la reintenta cada hora hasta 6 veces": 08:00 a 13:00.
 Schedule::command('scfp:sincronizar-trm')->hourlyAt(0)->between('08:00', '13:00');
+
+// RF-036: una vez al día, por la mañana.
+Schedule::command('scfp:alertas-seguridad-social')->dailyAt('07:00');

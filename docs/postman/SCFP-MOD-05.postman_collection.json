@@ -1,0 +1,2175 @@
+{
+  "info": {
+    "_postman_id": "5d0f1a6e-2b7c-4e8f-9a31-0c5e7d2b4f05",
+    "name": "SCFP · MOD-05 Seguridad social",
+    "description": "Peticiones de verificación de MOD-05: liquidación del independiente (RF-033), aportes del asalariado (RF-034), pagos por PILA (RF-035) y alertas de vencimiento (RF-036).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan migrate --path=database/migrations/2026_10_28_000001_create_seguridad_social_tables.php` (una sola vez).\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\Mod05DemoSeeder\"` antes de cada corrida: deja las cuentas demo sin pagos ni liquidaciones.\n3. `php artisan serve` (o Herd) y ajustar `base_url`.\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 entra como Independiente (`correo_mod05`). La 50 cambia a la sesión del Asalariado y la 60 a la de la cuenta sin perfil (CA-008.1).\n\n## Datos\n\nEl seeder deja un ingreso de honorarios de $ 8.000.000 en 2025-03 (liquidación de 928.800 con ARL clase I) y un salario de $ 6.000.000 en 2025-06. La carpeta 40 elimina los pagos que crea la 20.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod05",
+      "value": "mod05@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod05_asalariado",
+      "value": "mod05.asalariado@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod05_sin_perfil",
+      "value": "mod05.sinperfil@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "password_mod05",
+      "value": "Scfp#Demo2026",
+      "type": "string"
+    },
+    {
+      "key": "ingreso_salario_id",
+      "value": "90000000-0000-0000-0005-000000000004",
+      "type": "string"
+    },
+    {
+      "key": "csrf",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "periodo_futuro",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pago_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pago_correccion_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gasto_pila_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Autenticación (Independiente)",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                  "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                  "// de cuenta. Se cierra esa sesión primero.",
+                  "const base = pm.variables.get('base_url');",
+                  "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                  "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                  "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                  "    // destino del login (url.intended).",
+                  "    const html = !err && res.code === 200 ? res.text() : '';",
+                  "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "    if (!m) { return; }",
+                  "    pm.sendRequest({",
+                  "        url: base + '/logout',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                  "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                  "    }, function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod05}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod05}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-033 Liquidación del independiente",
+      "item": [
+        {
+          "name": "10.1 POST /seguridad-social/liquidaciones · liquidar 2025-03 (RN-033.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-033.7 · liquidación calculada y guardada', function () {",
+                  "    // Un 200 es un recálculo (lo que prueba la 10.2): el periodo ya tenía liquidación.",
+                  "    pm.expect(pm.response.code, pm.response.code === 200",
+                  "        ? 'la liquidación de 2025-03 ya existía y se recalculó: corra Mod05DemoSeeder antes de la colección'",
+                  "        : 'se esperaba 201 al calcular el periodo por primera vez').to.eql(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RN-033.1 / RN-033.2 · ingreso base 8.000.000 e IBC del 40 %', function () {",
+                  "    pm.expect(d.ingreso_base).to.eql('8000000.00');",
+                  "    pm.expect(d.ibc).to.eql('3200000.00');",
+                  "});",
+                  "",
+                  "pm.test('RN-033.4 / RN-033.5 · aportes redondeados al múltiplo de $ 100', function () {",
+                  "    pm.expect(d.salud).to.eql('400000.00');",
+                  "    pm.expect(d.pension).to.eql('512000.00');",
+                  "    pm.expect(d.fsp).to.eql('0.00');",
+                  "    pm.expect(d.arl).to.eql('16800.00');",
+                  "    pm.expect(d.total).to.eql('928800.00');",
+                  "});",
+                  "",
+                  "pm.test('CA-033.4 · parámetros usados, vigencia y aviso de la RNG-08', function () {",
+                  "    pm.expect(d.parametros_usados.anio_vigencia).to.eql(2025);",
+                  "    pm.expect(d.parametros_usados.clase_riesgo_arl).to.eql(1);",
+                  "    pm.expect(d.aviso_legal).to.eql('Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.2 POST /seguridad-social/liquidaciones · recalcular el mismo periodo (RN-033.7)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-033.7 · se puede volver a calcular', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().mensaje).to.eql('Liquidación estimada recalculada.');",
+                  "    pm.expect(pm.response.json().data.total).to.eql('928800.00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.3 GET /seguridad-social/liquidaciones · histórico",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-033.7 · el periodo quedó guardado una sola vez', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.meta.total).to.eql(1);",
+                  "    pm.expect(d.liquidaciones[0].periodo).to.eql('2025-03');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.4 GET /seguridad-social/liquidaciones/2025-03 · detalle (CA-033.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-033.4 · desglose, parámetros y aviso legal', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.origen_ingreso).to.eql('REGISTRADO');",
+                  "    pm.expect(d.parametros_usados.valor_smmlv).to.eql('1423500.00');",
+                  "    pm.expect(d.aviso_legal).to.eql('Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones/2025-03",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones",
+                "2025-03"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.5 POST /seguridad-social/liquidaciones/simular · $ 2.000.000 (CA-033.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-033.2 · el 40 % es menor que 1 SMMLV: IBC = 1.423.500', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ibc).to.eql('1423500.00');",
+                  "    pm.expect(d.origen_ingreso).to.eql('MANUAL');",
+                  "});",
+                  "",
+                  "pm.test('RN-033.3 · el ingreso supera 1 SMMLV: sin aviso de cotización voluntaria', function () {",
+                  "    pm.expect(pm.response.json().data.avisos).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones/simular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones",
+                "simular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"ingreso_base\": \"2000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.6 POST /seguridad-social/liquidaciones/simular · $ 200.000.000 (CA-033.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-033.3 · IBC topado en 25 SMMLV y FSP del 2 %', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ibc).to.eql('35587500.00');",
+                  "    pm.expect(d.fsp).to.eql('711800.00');",
+                  "    pm.expect(Number(d.parametros_usados.tarifa_fsp)).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones/simular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones",
+                "simular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"ingreso_base\": \"200000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.7 POST /seguridad-social/liquidaciones/simular · ingreso menor que 1 SMMLV (RN-033.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-033.3 · se informa que la cotización es voluntaria', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ibc).to.eql('1423500.00');",
+                  "    pm.expect(d.avisos[0]).to.include('no existe obligación de cotizar');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones/simular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones",
+                "simular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"ingreso_base\": \"1000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.8 POST /seguridad-social/liquidaciones · vigencia sin parámetros (RNG-04)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-04 · sin parámetros de la vigencia no se calcula', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.periodo[0]).to.eql('No existen parámetros normativos para la vigencia 2001. Contacte al administrador.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2001-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.9 POST /seguridad-social/liquidaciones · periodo futuro (RN-033.7)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = new Date();",
+                  "d.setDate(1);",
+                  "d.setMonth(d.getMonth() + 1);",
+                  "pm.collectionVariables.set('periodo_futuro', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-033.7 · el periodo no puede ser posterior al mes actual', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.periodo[0]).to.include('posterior al mes actual');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"{{periodo_futuro}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.10 POST /seguridad-social/asalariado/calcular · como independiente (RF-034)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-034 · el cálculo de asalariado exige esa ocupación', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.periodo[0]).to.include('Asalariado');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/asalariado/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "asalariado",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"salario\": \"6000000\",\n  \"periodo\": \"2025-06\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-035 Pagos por PILA",
+      "item": [
+        {
+          "name": "20.1 POST /seguridad-social/pagos · pago de 2025-03 con su gasto (CA-035.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-035 · pago registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('pago_id', d.id);",
+                  "pm.collectionVariables.set('gasto_pila_id', d.gasto_id);",
+                  "",
+                  "pm.test('CA-035.1 · el gasto tiene la fecha de pago y el monto total', function () {",
+                  "    pm.expect(d.total).to.eql('931800.00');",
+                  "    pm.expect(d.gasto.id).to.eql(d.gasto_id);",
+                  "    pm.expect(d.gasto.monto_cop).to.eql('931800.00');",
+                  "    pm.expect(d.gasto.fecha).to.include('2025-04-08');",
+                  "    pm.expect(d.gasto.medio_pago).to.eql('TRANSFERENCIA');",
+                  "    pm.expect(d.gasto.descripcion).to.include('planilla 8800112233');",
+                  "});",
+                  "",
+                  "pm.test('RN-035.5 · la pensión difiere en 3.000 de la liquidación estimada', function () {",
+                  "    pm.expect(d.comparacion.hay_diferencias).to.be.true;",
+                  "    pm.expect(d.comparacion.diferencias).to.eql([{ concepto: 'pension', estimado: '512000.00', pagado: '515000.00', diferencia: '3000.00' }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"fecha_pago\": \"2025-04-08\",\n  \"numero_planilla\": \"8800112233\",\n  \"salud\": \"400000\",\n  \"pension\": \"515000\",\n  \"arl\": \"16800\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.2 POST /seguridad-social/pagos · mismo periodo sin corrección (CA-035.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-035.2 · se rechaza el segundo pago del periodo', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.periodo[0]).to.include('planilla de corrección');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"fecha_pago\": \"2025-04-09\",\n  \"salud\": \"400000\",\n  \"pension\": \"512000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.3 POST /seguridad-social/pagos · planilla de corrección (RN-035.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.2 · la planilla de corrección sí se admite', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.es_correccion).to.be.true;",
+                  "    pm.expect(pm.response.json().data.gasto.descripcion).to.include('(corrección)');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('pago_correccion_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"fecha_pago\": \"2025-04-20\",\n  \"es_correccion\": true,\n  \"salud\": \"1000\",\n  \"pension\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.4 GET /seguridad-social/pagos/{id} · detalle con la comparación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-035 · pago consultado con su gasto', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.gasto_id).to.eql(pm.collectionVariables.get('gasto_pila_id'));",
+                  "    pm.expect(d.comparacion.liquidacion_id).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos/{{pago_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos",
+                "{{pago_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.5 PUT /seguridad-social/pagos/{id} · editar actualiza el gasto (RN-035.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · pago y gasto actualizados juntos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.total).to.eql('933800.00');",
+                  "    pm.expect(d.gasto.monto_cop).to.eql('933800.00');",
+                  "    pm.expect(d.gasto.fecha).to.include('2025-04-15');",
+                  "});",
+                  "",
+                  "pm.test('RN-035.5 · ya coincide con la liquidación estimada', function () {",
+                  "    pm.expect(pm.response.json().data.comparacion.hay_diferencias).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos/{{pago_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos",
+                "{{pago_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\",\n  \"fecha_pago\": \"2025-04-15\",\n  \"numero_planilla\": \"8800112233\",\n  \"salud\": \"400000\",\n  \"pension\": \"512000\",\n  \"arl\": \"16800\",\n  \"intereses_mora\": \"5000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.6 PUT /gastos/{id} · el gasto del pago no se edita desde gastos (RN-035.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · se rechaza y remite al pago', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.gasto[0]).to.include('/seguridad-social/pagos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_pila_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_pila_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2025-04-15\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"1\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.7 DELETE /gastos/{id} · el gasto del pago no se elimina desde gastos (RN-035.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · se rechaza y remite al pago', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.gasto[0]).to.include('/seguridad-social/pagos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_pila_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_pila_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.8 PATCH /gastos/edicion-masiva · con el gasto del pago (RN-035.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · la edición masiva no incluye gastos de PILA', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.ids[0]).to.include('PILA');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/edicion-masiva",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "edicion-masiva"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{gasto_pila_id}}\"\n  ],\n  \"naturaleza\": \"VARIABLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.9 GET /seguridad-social/resumen-anual?anio=2025 · ingreso no constitutivo (RN-035.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.4 · salud y pensión pagadas en el año', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.cantidad_pagos).to.eql(2);",
+                  "    pm.expect(d.salud).to.eql('401000.00');",
+                  "    pm.expect(d.pension).to.eql('512000.00');",
+                  "    pm.expect(d.ingreso_no_constitutivo_pila).to.eql('913000.00');",
+                  "    pm.expect(d.alcance).to.include('solo los pagos por PILA');",
+                  "    pm.expect(d.aviso_legal).to.eql('Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/resumen-anual?anio=2025",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "resumen-anual"
+              ],
+              "query": [
+                {
+                  "key": "anio",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.10 POST /seguridad-social/pagos · planilla de 21 caracteres (RN-035.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.1 · el número de planilla admite máximo 20 caracteres', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.numero_planilla[0]).to.include('20 caracteres');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-04\",\n  \"fecha_pago\": \"2025-05-08\",\n  \"numero_planilla\": \"123456789012345678901\",\n  \"salud\": \"400000\",\n  \"pension\": \"512000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · RF-036 Fechas límite y alertas",
+      "item": [
+        {
+          "name": "30.1 GET /seguridad-social/alertas · fechas límite y estado de los periodos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-036 · fechas límite consultadas con los dígitos del perfil', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ultimos_digitos).to.eql('37');",
+                  "    pm.expect(d.periodos).to.have.lengthOf(4);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('RF-036 · cada periodo tiene fecha límite y estado, o explica por qué no', function () {",
+                  "    d.periodos.forEach(function (p) {",
+                  "        pm.expect(p.periodo).to.match(/^\\d{4}-\\d{2}$/);",
+                  "        if (p.fecha_limite === null) {",
+                  "            pm.expect(p.mensaje).to.be.a('string');",
+                  "        } else {",
+                  "            pm.expect(p.fecha_limite).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "            pm.expect(['PAGADO', 'PENDIENTE', 'POR_VENCER', 'VENCIDO']).to.include(p.estado);",
+                  "            // Mes vencido: el periodo es el mes anterior al de la fecha límite.",
+                  "            const limite = new Date(p.fecha_limite + \"T00:00:00\");",
+                  "            limite.setDate(1);",
+                  "            limite.setMonth(limite.getMonth() - 1);",
+                  "            pm.expect(p.periodo).to.eql(`${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}`);",
+                  "        }",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RN-036.1 / RN-036.2 · las alertas activas son los periodos por vencer o vencidos', function () {",
+                  "    d.alertas.forEach(function (a) {",
+                  "        pm.expect(['POR_VENCER', 'VENCIDO']).to.include(a.estado);",
+                  "        if (a.estado === 'VENCIDO') {",
+                  "            pm.expect(a.advertencia).to.include('intereses de mora');",
+                  "        }",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/alertas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "alertas"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · RN-035.3 Eliminación del pago y su gasto",
+      "item": [
+        {
+          "name": "40.1 DELETE /seguridad-social/pagos/{id} · planilla de corrección",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · pago eliminado junto con su gasto', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos/{{pago_correccion_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos",
+                "{{pago_correccion_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.2 DELETE /seguridad-social/pagos/{id} · pago del periodo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-035.3 · pago eliminado junto con su gasto', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().mensaje).to.eql('Pago eliminado junto con su gasto.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/pagos/{{pago_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "pagos",
+                "{{pago_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.3 GET /gastos/{id}/editar · el gasto ya no existe (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el gasto quedó eliminado lógicamente con su pago', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_pila_id}}/editar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_pila_id}}",
+                "editar"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · RF-034 Cambio a la sesión del Asalariado",
+      "item": [
+        {
+          "name": "50.1 POST /logout · cerrar la sesión anterior (RF-006)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-006 · la sesión se cierra', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "50.2 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "50.3 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod05_asalariado}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod05}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "50.4 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "55 · RF-034 Aportes del asalariado",
+      "item": [
+        {
+          "name": "55.1 POST /seguridad-social/asalariado/calcular · salario de $ 6.000.000 (CA-034.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-034.1 · salud 240.000, pensión 240.000, FSP 60.000, neto 5.460.000', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.salud).to.eql('240000.00');",
+                  "    pm.expect(d.pension).to.eql('240000.00');",
+                  "    pm.expect(d.fsp).to.eql('60000.00');",
+                  "    pm.expect(d.salario_neto_sin_retencion).to.eql('5460000.00');",
+                  "    pm.expect(d.aviso_legal).to.eql('Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/asalariado/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "asalariado",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"salario\": \"6000000\",\n  \"periodo\": \"2025-06\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "55.2 POST /seguridad-social/asalariado/aplicar · llenar aportes del ingreso (RN-034.5)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-034.5 · los aportes quedan en el ingreso registrado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const i = pm.response.json().data.ingreso;",
+                  "    pm.expect(i.aportes_descontados_cop).to.eql('540000.00');",
+                  "    pm.expect(i.monto_neto_cop).to.eql('5460000.00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/asalariado/aplicar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "asalariado",
+                "aplicar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ingreso_id\": \"{{ingreso_salario_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "55.3 POST /seguridad-social/liquidaciones · como asalariado (RF-033)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-033 · la liquidación es para independientes y contratistas', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.periodo[0]).to.include('Independiente');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-06\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · CA-008.1 Cambio a la cuenta sin perfil",
+      "item": [
+        {
+          "name": "60.1 POST /logout · cerrar la sesión anterior (RF-006)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-006 · la sesión se cierra', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "60.2 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.3 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod05_sin_perfil}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod05}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "60.4 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "65 · CA-008.1 Módulo sin perfil financiero",
+      "item": [
+        {
+          "name": "65.1 POST /seguridad-social/liquidaciones · sin perfil (CA-008.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-008.1 · no deja usar MOD-05 sin el perfil completo', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().mensaje).to.eql('Completa tu perfil financiero para usar este módulo');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/seguridad-social/liquidaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "seguridad-social",
+                "liquidaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodo\": \"2025-03\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
