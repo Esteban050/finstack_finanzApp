@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -75,5 +76,11 @@ class PagoSeguridadSocial extends Model
     public function gasto(): BelongsTo
     {
         return $this->belongsTo(Gasto::class, 'gasto_id');
+    }
+
+    /** RN-035.1: el soporte del pago (RF-030). */
+    public function soporte(): HasOne
+    {
+        return $this->hasOne(SoportePagoSeguridadSocial::class, 'pago_id');
     }
 }

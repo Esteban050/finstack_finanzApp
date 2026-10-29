@@ -185,12 +185,12 @@ class SeguridadSocialService
 
     /**
      * RF-034: aportes que el empleador descuenta del salario de un Asalariado y
-     * salario neto sin retención.
+     * salario neto, con la retención informada si la hay (RN-034.4).
      *
      * RN-033.5 (múltiplos de $ 100) es una regla de la PILA del independiente:
      * acá los valores se redondean a 2 decimales (RNG-02), como en CA-034.1.
      */
-    public static function calcularAsalariado(string $salario, bool $esIntegral, ParametroNormativo $parametro): array
+    public static function calcularAsalariado(string $salario, bool $esIntegral, ParametroNormativo $parametro, ?string $retencion = null): array
     {
         $smmlv = (string) $parametro->valor_smmlv;
 
@@ -212,6 +212,10 @@ class SeguridadSocialService
         ];
 
         $total = array_reduce($aportes, fn ($suma, $aporte) => bcadd($suma, $aporte, 2), '0.00');
+        $netoSinRetencion = bcsub(bcadd($salario, '0', 2), $total, 2);
+
+        // RN-034.4: la retención en la fuente la informa el usuario y es opcional.
+        $retencion = bcadd($retencion ?? '0', '0', 2);
 
         return [
             'salario' => bcadd($salario, '0', 2),
@@ -220,7 +224,10 @@ class SeguridadSocialService
             ...$aportes,
             'total_aportes' => $total,
             // CA-034.1: "neto sin retención".
-            'salario_neto_sin_retencion' => bcsub(bcadd($salario, '0', 2), $total, 2),
+            'salario_neto_sin_retencion' => $netoSinRetencion,
+            'retencion_fuente' => $retencion,
+            // RN-034.4: salario − salud − pensión − FSP − retención informada.
+            'salario_neto_estimado' => bcsub($netoSinRetencion, $retencion, 2),
             'parametros_usados' => self::parametrosUsados($parametro, $ibc, [
                 'porc_ibc' => $esIntegral ? (string) $parametro->porc_ibc_integral : '100.00',
                 'tarifa_salud' => (string) $parametro->tarifa_salud_emp,

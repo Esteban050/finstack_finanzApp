@@ -1,8 +1,8 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **cuatro colecciones** en esta carpeta. Esta primera parte documenta la de
-> MOD-03; las de MOD-04 (gastos), RF-017 (TRM) y MOD-05 (seguridad social) están
-> al final del archivo.
+> Hay **cinco colecciones** en esta carpeta. Esta primera parte documenta la de
+> MOD-03; las de MOD-04 (gastos), RF-017 (TRM), MOD-05 (seguridad social) y
+> MOD-06 (inversiones) están al final del archivo.
 
 Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
@@ -14,9 +14,10 @@ comprueba.
 | `SCFP-MOD-04.postman_collection.json` | La colección de MOD-04 (gastos) |
 | `SCFP-TRM.postman_collection.json` | La colección de RF-017 (TRM y conversión COP ⇄ USD) |
 | `SCFP-MOD-05.postman_collection.json` | La colección de MOD-05 (seguridad social) |
+| `SCFP-MOD-06.postman_collection.json` | La colección de MOD-06 (inversiones y rentabilidad) |
 | `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales) de MOD-03; las demás colecciones traen sus propias variables |
 
-> **Sesión de una corrida anterior (las cuatro colecciones).** La app de Postman
+> **Sesión de una corrida anterior (todas las colecciones).** La app de Postman
 > guarda las cookies entre corridas, y `/login` está bajo el middleware `guest`:
 > si quedó abierta la sesión de otra cuenta (por ejemplo, la cuenta sin perfil
 > con la que termina MOD-05, o el Administrador con el que termina TRM), el login
@@ -468,6 +469,12 @@ contraseña `Scfp#Demo2026`:
 Cada ejecución deja las cuentas sin pagos ni liquidaciones, y los aportes del
 salario en cero: así la colección se puede volver a correr.
 
+Si se corre la colección sin volver a sembrar, la liquidación de 2025-03 ya
+existe y la 10.1 recibe un 200 (recálculo) en lugar del 201: la prueba falla
+con el mensaje "la liquidación de 2025-03 ya existía y se recalculó: corra
+Mod05DemoSeeder antes de la colección". La carpeta 40 elimina los pagos, pero
+no las liquidaciones.
+
 Si la base no tiene calendario de seguridad social (`SEGURIDAD_SOCIAL_INDEP`)
 para el año en curso, el seeder crea uno de ejemplo (día 10, todos los dígitos).
 Si ya existe, no lo toca.
@@ -499,8 +506,9 @@ es del Asalariado y la 65 de la cuenta sin perfil.
 | Petición | Qué hay dentro de `data` |
 | :---- | :---- |
 | `POST /seguridad-social/liquidaciones` y `…/simular` | `ingreso_base`, `ibc`, `salud`, `pension`, `fsp`, `arl`, `total`, `avisos`, `parametros_usados`, `aviso_legal` (la guardada trae también `id`, `periodo`, `origen_ingreso`) |
-| `POST /seguridad-social/asalariado/calcular` | `ibc`, `salud`, `pension`, `fsp`, `total_aportes`, `salario_neto_sin_retencion`, `parametros_usados`, `aviso_legal` |
-| `POST /seguridad-social/pagos` y `GET/PUT …/{id}` | el pago con su `total`, el `gasto`, la `comparacion` con la liquidación (RN-035.5) y el `aviso_legal` |
+| `POST /seguridad-social/asalariado/calcular` | `ibc`, `salud`, `pension`, `fsp`, `total_aportes`, `salario_neto_sin_retencion`, `retencion_fuente`, `salario_neto_estimado` (RN-034.4), `parametros_usados`, `aviso_legal` |
+| `POST /seguridad-social/pagos` y `GET/PUT …/{id}` | el pago con su `total`, el `gasto`, el `soporte` (o `null`), la `comparacion` con la liquidación (RN-035.5) y el `aviso_legal` |
+| `POST /seguridad-social/pagos/{id}/soporte` (multipart, campo `soporte`) y `DELETE …/soporte` | el pago, con `soporte`: `nombre_original`, `tipo_mime`, `tamano_bytes`, `url_descarga` (enlace firmado de 5 minutos, RN-030.3) y `url_vence_en` |
 | `GET /seguridad-social/resumen-anual` | `salud`, `pension`, `ingreso_no_constitutivo_pila` (solo pagos PILA; los aportes del salario los consolida RF-043), `alcance`, `cantidad_pagos` |
 | `GET /seguridad-social/alertas` | `periodos` (fecha límite y estado de cada uno) y `alertas` (por vencer o vencidos) |
 
@@ -536,3 +544,101 @@ Comprobado el 28/10/2026:
   MOD-03, MOD-04 y TRM se comprobó igual: sin cookies, con la sesión de otra
   cuenta y, en TRM, con la del Administrador (5 de 5 en cada caso).
 - 56 pruebas automatizadas en `tests/Feature/Dominio/Mod05/`.
+
+# Postman — MOD-06 Inversiones y rentabilidad
+
+Verificación de RF-037 a RF-042 por HTTP: registro de inversiones y sus
+movimientos, valoraciones de mercado, rentabilidad (ROI, XIRR), portafolio y
+simulación de alternativas. **40 peticiones en 8 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-06, una sola vez.** Va con `--path` por la misma
+razón que la TRM y MOD-05: el esquema de dominio no tiene migraciones.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_29_000001_create_inversiones_tables.php
+```
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod06DemoSeeder"
+```
+
+Crea dos cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`:
+
+| Cuenta | Datos |
+| :---- | :---- |
+| `mod06@scfp.test` | Sin inversiones: la colección registra las suyas |
+| `mod06.otro@scfp.test` | Un fondo de UUID fijo `…0006-000000000001` (RNG-01) |
+
+Cada ejecución deja las dos cuentas sin inversiones (salvo la de RNG-01),
+movimientos, valoraciones, simulaciones ni los ingresos de sus rendimientos. La
+fuente "Rendimientos de inversiones" se conserva.
+
+La colección también se puede volver a correr sin sembrar: registra
+inversiones nuevas en cada corrida (se acumulan en el portafolio) y la 60.6
+elimina la simulación que guarda la 60.4. Si una corrida se corta entre esas dos,
+la 60.4 falla con "ya existe una simulación con ese nombre: corra
+Mod06DemoSeeder antes de la colección".
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod06`, `password_mod06`, …), así que no necesita el entorno. Las
+peticiones guardan los ids que usan las siguientes (`cdt_id`, `fondo_id`, …).
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación | 3 | Login por el formulario real, cierre de la sesión anterior |
+| 10 · RF-037 Registro de inversión | 9 | CA-037.1, CA-037.2, RN-037.2 (ajustar vencimiento), RN-037.3, RN-037.4, RNG-10, RNG-01 |
+| 20 · RF-038 Movimientos | 7 | CA-038.1, CA-038.2, RN-038.3, RN-038.4 (retención y bloqueo del ingreso en `/ingresos`) |
+| 30 · RF-039 Valoraciones | 7 | CA-039.1, CA-039.2, RN-039.1 (precio × unidades, fecha no futura), RN-039.2, RN-039.3 |
+| 40 · RF-040 Rentabilidad | 3 | CA-040.1, CA-040.2, RNG-08, fecha de corte |
+| 50 · RF-041 Portafolio | 1 | CA-041.1, CA-041.2, RNG-01 |
+| 60 · RF-042 Simulaciones | 6 | CA-042.1, CA-042.2, máximo 4 alternativas, RN-042.4 |
+| 70 · Liquidación y eliminación | 4 | RN-038.3 (Liquidada con valor 0, sin movimientos nuevos), RNG-07 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `POST /inversiones` y `GET/PUT …/{id}` | la inversión con `valor_actual`, `fecha_ultima_valoracion`, `valoracion_desactualizada` (RN-039.4), `unidades_actuales` y `rendimiento_estimado` (CDT y bonos); el detalle trae también `movimientos` |
+| `POST /inversiones/{id}/movimientos` | `movimiento`, `retencion` (si el rendimiento la trae), `ingreso` (si es rendimiento) e `inversion` |
+| `POST /inversiones/{id}/valoraciones` | `valoracion` e `inversion` |
+| `GET /inversiones/{id}/valoraciones` | `valoraciones` y `serie` (`[{fecha, valor}]`, para el gráfico de CA-039.2) |
+| `GET /inversiones/{id}/valor-causado` | `capital`, `tasa_ea`, `dias_transcurridos`, `valor_causado` |
+| `GET /inversiones/{id}/rentabilidad` | totales por tipo, `capital_aportado_neto`, `valor_actual`, `ganancia`, `roi`, `xirr`, `rentabilidad_real`, `resultado` (GANANCIA, PERDIDA o NEUTRO), `mensajes`, `aviso_legal` |
+| `GET /inversiones/portafolio` | `valor_total`, `capital_aportado_neto`, `ganancia`, `roi`, `xirr`, `distribucion` (por tipo, riesgo y moneda), `detalle`, `trm`, `aviso_legal` |
+| `POST /inversiones/simulaciones/calcular` | `alternativas` (con `evolucion` mes a mes y `es_mejor`), `mejores`, `inflacion_vigencia`, `mensajes`, `aviso_legal` |
+
+Los porcentajes van en texto con 2 decimales y signo (`"10.00"`, `"-100.00"`).
+Si la XIRR o la rentabilidad real no se pueden calcular, el valor es
+`"No calculable"` y `mensajes` explica por qué (RN-040.2, RNG-04).
+
+## Datos y conexión
+
+- La colección no usa inversiones en USD: el portafolio las convierte con la
+  TRM real a la fecha de corte (RN-041.4), que cambia cada día. Ese caso lo
+  cubre una prueba automatizada con una TRM fija.
+- Solo existe la vigencia 2025 en `parametros_normativos`: con fecha de corte en
+  2026 la rentabilidad real y el valor en pesos de hoy de las simulaciones
+  salen "No calculable" (RNG-04) hasta que el Administrador cargue la vigencia.
+- La marca de inversiones vencidas la hace el comando
+  `scfp:marcar-inversiones-vencidas` (diario a las 00:10), no la colección. Lo
+  cubren las pruebas automatizadas.
+
+## Estado de verificación
+
+Comprobado el 28/10/2026:
+
+- **La colección completa se ejecutó con Newman** contra `http://localhost:8000`:
+  **40 peticiones, 48 aserciones, 0 fallos** sin cookies; otra vez después de
+  volver a sembrar, reutilizando las cookies de una sesión abierta de
+  `mod05.sinperfil@scfp.test`, con el mismo resultado; y una tercera vez sin
+  volver a sembrar, también sin fallos.
+- 52 pruebas automatizadas en `tests/Feature/Dominio/Mod06/`.

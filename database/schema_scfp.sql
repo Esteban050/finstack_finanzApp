@@ -258,6 +258,47 @@ CREATE TABLE public.ingresos (
 
 
 --
+-- Name: inversiones; Type: TABLE; Schema: public; Owner: -
+-- RF-037. MOD-06. Creada por la migración 2026_10_29_000001_create_inversiones_tables.
+--
+
+CREATE TABLE public.inversiones (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    nombre character varying(60) NOT NULL,
+    tipo character varying(30) NOT NULL,
+    entidad character varying(80),
+    moneda character(3) NOT NULL,
+    fecha_apertura date NOT NULL,
+    monto_inicial numeric(18,2) NOT NULL,
+    nivel_riesgo character varying(5),
+    tasa_ea numeric(7,4),
+    plazo_dias integer,
+    periodicidad_intereses character varying(15),
+    fecha_vencimiento date,
+    simbolo character varying(15),
+    unidades_iniciales numeric(24,8),
+    precio_unitario_compra numeric(24,8),
+    estado character varying(10) DEFAULT 'ACTIVA'::character varying NOT NULL,
+    liquidada_en date,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    eliminado_en timestamp(0) with time zone,
+    CONSTRAINT chk_inversion_estado CHECK (((estado)::text = ANY ((ARRAY['ACTIVA'::character varying, 'VENCIDA'::character varying, 'LIQUIDADA'::character varying])::text[]))),
+    CONSTRAINT chk_inversion_moneda CHECK ((moneda = ANY (ARRAY['COP'::bpchar, 'USD'::bpchar]))),
+    CONSTRAINT chk_inversion_monto_inicial CHECK (((monto_inicial > (0)::numeric) AND (monto_inicial <= 999999999999.99))),
+    CONSTRAINT chk_inversion_nombre CHECK (((char_length(TRIM(BOTH FROM nombre)) >= 3) AND (char_length(TRIM(BOTH FROM nombre)) <= 60))),
+    CONSTRAINT chk_inversion_periodicidad CHECK (((periodicidad_intereses IS NULL) OR ((periodicidad_intereses)::text = ANY ((ARRAY['AL_VENCIMIENTO'::character varying, 'MENSUAL'::character varying, 'TRIMESTRAL'::character varying, 'SEMESTRAL'::character varying, 'ANUAL'::character varying])::text[])))),
+    CONSTRAINT chk_inversion_plazo CHECK (((plazo_dias IS NULL) OR ((plazo_dias >= 1) AND (plazo_dias <= 3650)))),
+    CONSTRAINT chk_inversion_riesgo CHECK (((nivel_riesgo IS NULL) OR ((nivel_riesgo)::text = ANY ((ARRAY['BAJO'::character varying, 'MEDIO'::character varying, 'ALTO'::character varying])::text[])))),
+    CONSTRAINT chk_inversion_tasa CHECK (((tasa_ea IS NULL) OR ((tasa_ea >= (0)::numeric) AND (tasa_ea <= (100)::numeric)))),
+    CONSTRAINT chk_inversion_tipo CHECK (((tipo)::text = ANY ((ARRAY['CDT'::character varying, 'CUENTA_AHORRO_ALTO_RENDIMIENTO'::character varying, 'FONDO_INVERSION_COLECTIVA'::character varying, 'ACCIONES'::character varying, 'ETF'::character varying, 'BONOS_TES'::character varying, 'FONDO_VOLUNTARIO_PENSION'::character varying, 'CRIPTOACTIVO'::character varying, 'INMUEBLE_RENTA'::character varying, 'NEGOCIO_PARTICIPACION'::character varying, 'OTRO'::character varying])::text[]))),
+    CONSTRAINT chk_inversion_unidades CHECK ((((unidades_iniciales IS NULL) OR (unidades_iniciales > (0)::numeric)) AND ((precio_unitario_compra IS NULL) OR (precio_unitario_compra > (0)::numeric)))),
+    CONSTRAINT chk_inversion_vencimiento CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento > fecha_apertura)))
+);
+
+
+--
 -- Name: liquidaciones_seguridad_social; Type: TABLE; Schema: public; Owner: -
 -- RF-033 RN-033.7. Creada por la migración 2026_10_28_000001_create_seguridad_social_tables.
 --
@@ -281,6 +322,34 @@ CREATE TABLE public.liquidaciones_seguridad_social (
     CONSTRAINT chk_liquidacion_periodo CHECK ((periodo ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)),
     CONSTRAINT chk_liquidacion_origen CHECK (((origen_ingreso)::text = ANY ((ARRAY['REGISTRADO'::character varying, 'MANUAL'::character varying])::text[]))),
     CONSTRAINT chk_liquidacion_montos CHECK (((ingreso_base >= (0)::numeric) AND (ibc > (0)::numeric) AND (salud >= (0)::numeric) AND (pension >= (0)::numeric) AND (fsp >= (0)::numeric) AND (arl >= (0)::numeric) AND (total >= (0)::numeric)))
+);
+
+
+--
+-- Name: movimientos_inversion; Type: TABLE; Schema: public; Owner: -
+-- RF-038. MOD-06. Creada por la migración 2026_10_29_000001_create_inversiones_tables.
+--
+
+CREATE TABLE public.movimientos_inversion (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    inversion_id uuid NOT NULL,
+    tipo character varying(20) NOT NULL,
+    fecha date NOT NULL,
+    monto numeric(18,2) NOT NULL,
+    tasa_cambio_usada numeric(18,4) DEFAULT '1'::numeric NOT NULL,
+    monto_cop numeric(18,2) NOT NULL,
+    unidades numeric(24,8),
+    nota character varying(255),
+    es_inicial boolean DEFAULT false NOT NULL,
+    ingreso_id uuid,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    eliminado_en timestamp(0) with time zone,
+    CONSTRAINT chk_movimiento_monto CHECK (((monto <= 999999999999.99) AND (monto_cop >= (0)::numeric) AND ((monto > (0)::numeric) OR (((tipo)::text = 'LIQUIDACION_TOTAL'::text) AND (monto = (0)::numeric))))),
+    CONSTRAINT chk_movimiento_tasa CHECK ((tasa_cambio_usada > (0)::numeric)),
+    CONSTRAINT chk_movimiento_tipo CHECK (((tipo)::text = ANY ((ARRAY['APORTE'::character varying, 'RETIRO_PARCIAL'::character varying, 'RENDIMIENTO'::character varying, 'COMISION'::character varying, 'RETENCION'::character varying, 'LIQUIDACION_TOTAL'::character varying])::text[]))),
+    CONSTRAINT chk_movimiento_unidades CHECK (((unidades IS NULL) OR (unidades > (0)::numeric)))
 );
 
 
@@ -450,6 +519,42 @@ CREATE TABLE public.sesiones_usuario (
 
 
 --
+-- Name: simulaciones_inversion; Type: TABLE; Schema: public; Owner: -
+-- RF-042. MOD-06. Creada por la migración 2026_10_29_000001_create_inversiones_tables.
+--
+
+CREATE TABLE public.simulaciones_inversion (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    nombre character varying(60) NOT NULL,
+    alternativas jsonb NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_simulacion_nombre CHECK (((char_length(TRIM(BOTH FROM nombre)) >= 3) AND (char_length(TRIM(BOTH FROM nombre)) <= 60)))
+);
+
+
+--
+-- Name: soportes_pago_seguridad_social; Type: TABLE; Schema: public; Owner: -
+-- RN-035.1 (reglas de RF-030). MOD-05. Creada por la migración 2026_10_29_000002_create_soportes_pago_seguridad_social_table.
+--
+
+CREATE TABLE public.soportes_pago_seguridad_social (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    pago_id uuid NOT NULL,
+    nombre_original character varying(255) NOT NULL,
+    tipo_mime character varying(20) NOT NULL,
+    tamano_bytes integer NOT NULL,
+    ruta character varying(255) NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_soporte_tipo CHECK (((tipo_mime)::text = ANY ((ARRAY['application/pdf'::character varying, 'image/jpeg'::character varying, 'image/png'::character varying])::text[]))),
+    CONSTRAINT chk_soporte_tamano CHECK (((tamano_bytes > 0) AND (tamano_bytes <= 5242880)))
+);
+
+
+--
 -- Name: tarifas_escalonadas; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -555,6 +660,27 @@ ALTER TABLE ONLY public.bitacora_auditoria ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: valoraciones_inversion; Type: TABLE; Schema: public; Owner: -
+-- RF-039. MOD-06. Creada por la migración 2026_10_29_000001_create_inversiones_tables.
+--
+
+CREATE TABLE public.valoraciones_inversion (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    inversion_id uuid NOT NULL,
+    fecha date NOT NULL,
+    valor numeric(18,2) NOT NULL,
+    precio_unitario numeric(24,8),
+    unidades numeric(24,8),
+    origen character varying(12) NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_valoracion_origen CHECK (((origen)::text = ANY ((ARRAY['INICIAL'::character varying, 'MANUAL'::character varying, 'CAUSADO'::character varying, 'LIQUIDACION'::character varying])::text[]))),
+    CONSTRAINT chk_valoracion_valor CHECK (((valor >= (0)::numeric) AND (valor <= 999999999999.99)))
+);
+
+
+--
 -- Name: aceptaciones_politica aceptaciones_politica_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -619,6 +745,14 @@ ALTER TABLE ONLY public.ingresos
 
 
 --
+-- Name: inversiones inversiones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inversiones
+    ADD CONSTRAINT inversiones_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -632,6 +766,14 @@ ALTER TABLE ONLY public.liquidaciones_seguridad_social
 
 ALTER TABLE ONLY public.liquidaciones_seguridad_social
     ADD CONSTRAINT uq_liquidacion_usuario_periodo UNIQUE (usuario_id, periodo);
+
+
+--
+-- Name: movimientos_inversion movimientos_inversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.movimientos_inversion
+    ADD CONSTRAINT movimientos_inversion_pkey PRIMARY KEY (id);
 
 
 --
@@ -680,6 +822,38 @@ ALTER TABLE ONLY public.sesiones_usuario
 
 ALTER TABLE ONLY public.sesiones_usuario
     ADD CONSTRAINT sesiones_usuario_token_jti_key UNIQUE (token_jti);
+
+
+--
+-- Name: simulaciones_inversion simulaciones_inversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.simulaciones_inversion
+    ADD CONSTRAINT simulaciones_inversion_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: simulaciones_inversion uq_simulacion_usuario_nombre; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.simulaciones_inversion
+    ADD CONSTRAINT uq_simulacion_usuario_nombre UNIQUE (usuario_id, nombre);
+
+
+--
+-- Name: soportes_pago_seguridad_social soportes_pago_seguridad_social_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.soportes_pago_seguridad_social
+    ADD CONSTRAINT soportes_pago_seguridad_social_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: soportes_pago_seguridad_social uq_soporte_pago; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.soportes_pago_seguridad_social
+    ADD CONSTRAINT uq_soporte_pago UNIQUE (pago_id);
 
 
 --
@@ -736,6 +910,22 @@ ALTER TABLE ONLY public.usuarios
 
 ALTER TABLE ONLY public.usuarios
     ADD CONSTRAINT usuarios_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: valoraciones_inversion uq_valoracion_inversion_fecha; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.valoraciones_inversion
+    ADD CONSTRAINT uq_valoracion_inversion_fecha UNIQUE (inversion_id, fecha);
+
+
+--
+-- Name: valoraciones_inversion valoraciones_inversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.valoraciones_inversion
+    ADD CONSTRAINT valoraciones_inversion_pkey PRIMARY KEY (id);
 
 
 --
@@ -834,6 +1024,20 @@ CREATE INDEX idx_tarifas_escalonadas_param ON public.tarifas_escalonadas USING b
 --
 
 CREATE INDEX idx_tokens_usuario_tipo ON public.tokens_seguridad USING btree (usuario_id, tipo) WHERE (usado_en IS NULL);
+
+
+--
+-- Name: ix_inversiones_usuario_estado; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inversiones_usuario_estado ON public.inversiones USING btree (usuario_id, estado);
+
+
+--
+-- Name: ix_movimientos_inversion_fecha; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_movimientos_inversion_fecha ON public.movimientos_inversion USING btree (inversion_id, fecha);
 
 
 --
@@ -1028,6 +1232,14 @@ ALTER TABLE ONLY public.ingresos
 
 
 --
+-- Name: inversiones inversiones_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inversiones
+    ADD CONSTRAINT inversiones_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
 -- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_parametro_normativo_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1041,6 +1253,30 @@ ALTER TABLE ONLY public.liquidaciones_seguridad_social
 
 ALTER TABLE ONLY public.liquidaciones_seguridad_social
     ADD CONSTRAINT liquidaciones_seguridad_social_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: movimientos_inversion movimientos_inversion_ingreso_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.movimientos_inversion
+    ADD CONSTRAINT movimientos_inversion_ingreso_id_foreign FOREIGN KEY (ingreso_id) REFERENCES public.ingresos(id) ON DELETE SET NULL;
+
+
+--
+-- Name: movimientos_inversion movimientos_inversion_inversion_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.movimientos_inversion
+    ADD CONSTRAINT movimientos_inversion_inversion_id_foreign FOREIGN KEY (inversion_id) REFERENCES public.inversiones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: movimientos_inversion movimientos_inversion_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.movimientos_inversion
+    ADD CONSTRAINT movimientos_inversion_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
 
 
 --
@@ -1092,6 +1328,30 @@ ALTER TABLE ONLY public.sesiones_usuario
 
 
 --
+-- Name: simulaciones_inversion simulaciones_inversion_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.simulaciones_inversion
+    ADD CONSTRAINT simulaciones_inversion_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: soportes_pago_seguridad_social soportes_pago_seguridad_social_pago_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.soportes_pago_seguridad_social
+    ADD CONSTRAINT soportes_pago_seguridad_social_pago_id_foreign FOREIGN KEY (pago_id) REFERENCES public.pagos_seguridad_social(id) ON DELETE CASCADE;
+
+
+--
+-- Name: soportes_pago_seguridad_social soportes_pago_seguridad_social_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.soportes_pago_seguridad_social
+    ADD CONSTRAINT soportes_pago_seguridad_social_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
 -- Name: tarifas_escalonadas tarifas_escalonadas_parametro_normativo_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1113,6 +1373,22 @@ ALTER TABLE ONLY public.tasas_cambio
 
 ALTER TABLE ONLY public.tokens_seguridad
     ADD CONSTRAINT tokens_seguridad_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: valoraciones_inversion valoraciones_inversion_inversion_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.valoraciones_inversion
+    ADD CONSTRAINT valoraciones_inversion_inversion_id_foreign FOREIGN KEY (inversion_id) REFERENCES public.inversiones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: valoraciones_inversion valoraciones_inversion_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.valoraciones_inversion
+    ADD CONSTRAINT valoraciones_inversion_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
 
 
 --

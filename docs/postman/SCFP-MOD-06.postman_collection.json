@@ -1,0 +1,2244 @@
+{
+  "info": {
+    "_postman_id": "6e1f2a7b-3c8d-4f9e-8a42-1d6f8e3c5a06",
+    "name": "SCFP · MOD-06 Inversiones y rentabilidad",
+    "description": "Peticiones de verificación de MOD-06: registro de inversiones (RF-037), movimientos (RF-038), valoraciones (RF-039), rentabilidad (RF-040), portafolio (RF-041) y simulaciones (RF-042).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan migrate --path=database/migrations/2026_10_29_000001_create_inversiones_tables.php` (una sola vez).\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\Mod06DemoSeeder\"` antes de cada corrida: deja la cuenta demo sin inversiones.\n3. `php artisan serve` (o Herd) y ajustar `base_url`.\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 entra con `correo_mod06`. Si quedó abierta la sesión de otra cuenta, la 00.1 la cierra antes del login.\n\n## Datos\n\nLa colección registra sus propias inversiones (fechas de 2025 y 2026 para los criterios de RF-040). La inversión de `inversion_ajena_id` es de otra cuenta (RNG-01).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod06",
+      "value": "mod06@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "password_mod06",
+      "value": "Scfp#Demo2026",
+      "type": "string"
+    },
+    {
+      "key": "inversion_ajena_id",
+      "value": "90000000-0000-0000-0006-000000000001",
+      "type": "string"
+    },
+    {
+      "key": "csrf",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cdt_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "acciones_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fondo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fondo2_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ingreso_dividendo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "valor_causado",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_futura",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "simulacion_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Autenticación",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                  "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                  "// de cuenta. Se cierra esa sesión primero.",
+                  "const base = pm.variables.get('base_url');",
+                  "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                  "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                  "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                  "    // destino del login (url.intended).",
+                  "    const html = !err && res.code === 200 ? res.text() : '';",
+                  "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "    if (!m) { return; }",
+                  "    pm.sendRequest({",
+                  "        url: base + '/logout',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                  "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                  "    }, function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod06}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod06}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-037 Registro de inversión",
+      "item": [
+        {
+          "name": "10.1 POST /inversiones · CDT de $ 10.000.000 al 10 % EA a 365 días (CA-037.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-037 · inversión registrada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "",
+                  "pm.test('CA-037.1 · vence el 01/02/2027 con rendimiento estimado de $ 1.000.000', function () {",
+                  "    pm.expect(d.fecha_vencimiento).to.eql('2027-02-01');",
+                  "    pm.expect(d.rendimiento_estimado).to.eql('1000000.00');",
+                  "    pm.expect(d.estado).to.eql('ACTIVA');",
+                  "});",
+                  "",
+                  "pm.test('RN-037.4 · el monto inicial es el valor actual (valoración inicial)', function () {",
+                  "    pm.expect(d.valor_actual).to.eql('10000000.00');",
+                  "    pm.expect(d.fecha_ultima_valoracion).to.eql('2026-02-01');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('cdt_id', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"CDT Banco Demo\",\n  \"tipo\": \"CDT\",\n  \"entidad\": \"Banco Demo\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-02-01\",\n  \"monto_inicial\": \"10000000\",\n  \"nivel_riesgo\": \"BAJO\",\n  \"tasa_ea\": \"10\",\n  \"plazo_dias\": 365,\n  \"periodicidad_intereses\": \"AL_VENCIMIENTO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.2 POST /inversiones · acciones sin unidades (CA-037.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-037.2 · acciones sin cantidad de unidades se rechazan', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('unidades');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCIONES\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"precio_unitario_compra\": \"19979.45\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.3 POST /inversiones · acciones con unidades de 8 decimales (RN-037.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-037.3 · guarda unidades y precio de compra', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.unidades_actuales).to.eql('120.12345678');",
+                  "    pm.expect(d.simbolo).to.eql('ECOPETROL');",
+                  "    pm.collectionVariables.set('acciones_id', d.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCIONES\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"unidades\": \"120.12345678\",\n  \"precio_unitario_compra\": \"19979.45\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.4 POST /inversiones · fondo de $ 1.000.000 el 01/01/2025 (para CA-040.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-037 · fondo registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('fondo_id', pm.response.json().data.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Fondo CA-040.1\",\n  \"tipo\": \"FONDO_INVERSION_COLECTIVA\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.5 POST /inversiones · fondo de $ 1.000.000 el 01/01/2025 (para CA-040.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-037 · fondo registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('fondo2_id', pm.response.json().data.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Fondo CA-040.2\",\n  \"tipo\": \"FONDO_INVERSION_COLECTIVA\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.6 GET /inversiones · listado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-10 · listado paginado con el valor actual de cada inversión', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.meta.por_pagina).to.eql(20);",
+                  "    pm.expect(d.meta.total).to.be.at.least(4);",
+                  "    d.inversiones.forEach(function (i) { pm.expect(i).to.have.property('valor_actual'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.7 GET /inversiones/{id} · detalle con el aporte inicial (RN-037.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-037.4 · el primer movimiento es el aporte inicial', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const m = pm.response.json().data.movimientos;",
+                  "    pm.expect(m).to.have.lengthOf(1);",
+                  "    pm.expect(m[0].tipo).to.eql('APORTE');",
+                  "    pm.expect(m[0].es_inicial).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10.8 PUT /inversiones/{id} · ajustar el vencimiento (RN-037.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-037.2 · el vencimiento se calcula, pero el usuario puede ajustarlo', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.fecha_vencimiento).to.eql('2027-02-03');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha_vencimiento\": \"2027-02-03\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.9 GET /inversiones/{id} · inversión de otra cuenta (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · la inversión de otro usuario responde 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{inversion_ajena_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{inversion_ajena_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-038 Movimientos",
+      "item": [
+        {
+          "name": "20.1 POST /inversiones/{id}/movimientos · dividendo de $ 300.000 (CA-038.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-038.1 · la inversión suma un movimiento Rendimiento', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.movimiento.tipo).to.eql('RENDIMIENTO');",
+                  "});",
+                  "",
+                  "const i = pm.response.json().data.ingreso;",
+                  "",
+                  "pm.test('CA-038.1 / RN-038.4 · se crea un ingreso de $ 300.000 en rentas de capital', function () {",
+                  "    pm.expect(i.monto_bruto_cop).to.eql('300000.00');",
+                  "    pm.expect(i.clasificacion_tributaria).to.eql('RENTAS_CAPITAL');",
+                  "    pm.expect(i.estado).to.eql('CONFIRMADO');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('ingreso_dividendo_id', i.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{acciones_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{acciones_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"RENDIMIENTO\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"300000\",\n  \"nota\": \"Dividendo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.2 POST /inversiones/{id}/movimientos · rendimiento con retención (RN-038.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.4 · el ingreso lleva la retención informada y queda el movimiento Retención', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ingreso.retencion_fuente_cop).to.eql('35000.00');",
+                  "    pm.expect(d.ingreso.monto_neto_cop).to.eql('465000.00');",
+                  "    pm.expect(d.retencion.tipo).to.eql('RETENCION');",
+                  "    pm.expect(d.retencion.ingreso_id).to.eql(d.ingreso.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"RENDIMIENTO\",\n  \"fecha\": \"2026-03-01\",\n  \"monto\": \"500000\",\n  \"retencion\": \"35000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.3 POST /inversiones/{id}/movimientos · retiro anterior a la apertura (CA-038.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-038.2 · un retiro con fecha anterior a la apertura se rechaza', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('fecha');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"RETIRO_PARCIAL\",\n  \"fecha\": \"2026-01-31\",\n  \"monto\": \"100000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.4 POST /inversiones/{id}/movimientos · retiro mayor que el valor actual (RN-038.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.3 · un retiro no puede superar el último valor de mercado', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.monto[0]).to.include('RN-038.3');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"RETIRO_PARCIAL\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"10000000.01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.5 PUT /ingresos/{id} · el ingreso del dividendo no se edita desde ingresos (RN-038.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.4 · el ingreso de un rendimiento se maneja desde su movimiento', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('ingreso');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ingresos/{{ingreso_dividendo_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ingresos",
+                "{{ingreso_dividendo_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto_original\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.6 POST /inversiones/{id}/movimientos · segundo aporte el 01/07/2025 (para CA-040.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.1 · aporte registrado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.movimiento.tipo).to.eql('APORTE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo2_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo2_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"APORTE\",\n  \"fecha\": \"2025-07-01\",\n  \"monto\": \"1000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.7 GET /inversiones/{id}/movimientos · movimientos de las acciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-038 · aporte inicial y dividendo', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.meta.total).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{acciones_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{acciones_id}}",
+                "movimientos"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · RF-039 Valoraciones",
+      "item": [
+        {
+          "name": "30.1 GET /inversiones/{id}/valor-causado · CDT a los 182 días (CA-039.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-039.1 · valor causado de $ 10.486.719 ± $ 1 a los 182 días', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.dias_transcurridos).to.eql(182);",
+                  "    pm.expect(Math.abs(parseFloat(d.valor_causado) - 10486719)).to.be.at.most(1);",
+                  "    pm.collectionVariables.set('valor_causado', d.valor_causado);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/valor-causado?fecha=2026-08-02",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "valor-causado"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-08-02"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.2 POST /inversiones/{id}/valoraciones · aceptar el valor causado (RN-039.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-039.2 / RN-039.3 · el valor causado aceptado es el valor actual', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.valoracion.origen).to.eql('CAUSADO');",
+                  "    pm.expect(d.inversion.valor_actual).to.eql(pm.collectionVariables.get('valor_causado'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "valoraciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-08-02\",\n  \"usar_valor_causado\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.3 POST /inversiones/{id}/valoraciones · precio unitario × unidades (RN-039.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-039.1 · valor = precio unitario × unidades', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.valoracion.valor).to.eql('2522592.59');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{acciones_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{acciones_id}}",
+                "valoraciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-03-01\",\n  \"precio_unitario\": \"21000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.4 POST /inversiones/{id}/valoraciones · $ 1.100.000 el 01/01/2026 (para CA-040.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-039.1 · valoración registrada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo_id}}",
+                "valoraciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-01-01\",\n  \"valor\": \"1100000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.5 POST /inversiones/{id}/valoraciones · $ 2.100.000 el 01/01/2026 (para CA-040.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-039.1 · valoración registrada', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo2_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo2_id}}",
+                "valoraciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-01-01\",\n  \"valor\": \"2100000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.6 GET /inversiones/{id}/valoraciones · histórico y serie (CA-039.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-039.2 · serie por fecha para el gráfico de línea', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const s = pm.response.json().data.serie;",
+                  "    pm.expect(s).to.eql([",
+                  "        { fecha: '2025-01-01', valor: '1000000.00' },",
+                  "        { fecha: '2026-01-01', valor: '1100000.00' }",
+                  "    ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo_id}}",
+                "valoraciones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.7 POST /inversiones/{id}/valoraciones · fecha futura (RN-039.1)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const manana = new Date();",
+                  "manana.setDate(manana.getDate() + 1);",
+                  "pm.collectionVariables.set('fecha_futura', manana.toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-039.1 · la fecha de valoración no puede ser futura', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('fecha');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo_id}}/valoraciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo_id}}",
+                "valoraciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"{{fecha_futura}}\",\n  \"valor\": \"1200000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · RF-040 Rentabilidad",
+      "item": [
+        {
+          "name": "40.1 GET /inversiones/{id}/rentabilidad · un aporte a un año (CA-040.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-040.1 · ganancia $ 100.000, ROI 10,00 % y XIRR 10,00 %', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.ganancia).to.eql('100000.00');",
+                  "    pm.expect(d.roi).to.eql('10.00');",
+                  "    pm.expect(d.xirr).to.eql('10.00');",
+                  "    pm.expect(d.resultado).to.eql('GANANCIA');",
+                  "});",
+                  "",
+                  "pm.test('RNG-08 · aviso legal', function () {",
+                  "    pm.expect(pm.response.json().data.aviso_legal).to.eql('Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo_id}}/rentabilidad?fecha_corte=2026-01-01",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo_id}}",
+                "rentabilidad"
+              ],
+              "query": [
+                {
+                  "key": "fecha_corte",
+                  "value": "2026-01-01"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.2 GET /inversiones/{id}/rentabilidad · dos aportes (CA-040.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-040.2 · ROI 5,00 % y XIRR mayor que 5 % (6,68 % ± 0,01 %)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.roi).to.eql('5.00');",
+                  "    const xirr = parseFloat(d.xirr);",
+                  "    pm.expect(xirr).to.be.above(5);",
+                  "    pm.expect(Math.abs(xirr - 6.68439351)).to.be.at.most(0.01);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo2_id}}/rentabilidad?fecha_corte=2026-01-01",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo2_id}}",
+                "rentabilidad"
+              ],
+              "query": [
+                {
+                  "key": "fecha_corte",
+                  "value": "2026-01-01"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.3 GET /inversiones/{id}/rentabilidad · corte anterior a la apertura",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-040 · la fecha de corte no puede ser anterior a la apertura', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('fecha_corte');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo_id}}/rentabilidad?fecha_corte=2024-12-31",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo_id}}",
+                "rentabilidad"
+              ],
+              "query": [
+                {
+                  "key": "fecha_corte",
+                  "value": "2024-12-31"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · RF-041 Portafolio",
+      "item": [
+        {
+          "name": "50.1 GET /inversiones/portafolio · consolidado a hoy (CA-041.1, CA-041.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "const centavos = function (v) { return Math.round(parseFloat(v) * 100); };",
+                  "",
+                  "pm.test('RF-041 · consolidado de las inversiones de la cuenta', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(d.cantidad_inversiones).to.be.at.least(4);",
+                  "    pm.expect(d.detalle.map(function (i) { return i.id; })).to.not.include(pm.collectionVariables.get('inversion_ajena_id'));",
+                  "});",
+                  "",
+                  "pm.test('CA-041.1 · la suma de los valores del detalle es el total del portafolio', function () {",
+                  "    const suma = d.detalle.reduce(function (t, i) { return t + centavos(i.valor_actual_cop); }, 0);",
+                  "    pm.expect(suma).to.eql(centavos(d.valor_total));",
+                  "});",
+                  "",
+                  "pm.test('CA-041.2 · cada distribución suma 100 %', function () {",
+                  "    ['por_tipo', 'por_riesgo', 'por_moneda'].forEach(function (clave) {",
+                  "        const total = d.distribucion[clave].reduce(function (t, g) { return t + centavos(g.porcentaje); }, 0);",
+                  "        pm.expect(total, clave).to.eql(10000);",
+                  "    });",
+                  "    const detalle = d.detalle.reduce(function (t, i) { return t + centavos(i.porcentaje_portafolio); }, 0);",
+                  "    pm.expect(detalle).to.eql(10000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/portafolio",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "portafolio"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · RF-042 Simulaciones",
+      "item": [
+        {
+          "name": "60.1 POST /inversiones/simulaciones/calcular · $ 10.000.000 al 12 % EA a 12 meses (CA-042.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-042.1 · valor final de $ 11.200.000 ± $ 1', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const a = pm.response.json().data.alternativas[0];",
+                  "    pm.expect(Math.abs(parseFloat(a.valor_final_neto) - 11200000)).to.be.at.most(1);",
+                  "    pm.expect(a.evolucion).to.have.lengthOf(13);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alternativas\": [\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.2 POST /inversiones/simulaciones/calcular · tres alternativas (CA-042.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-042.2 · se resalta la alternativa con mayor valor final neto', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.mejores).to.eql([1]);",
+                  "    pm.expect(d.alternativas.map(function (a) { return a.es_mejor; })).to.eql([false, true, false]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alternativas\": [\n    {\n      \"nombre\": \"CDT\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"10\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"Fondo\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"14\",\n      \"plazo_meses\": 12,\n      \"retencion_porc\": \"7\"\n    },\n    {\n      \"nombre\": \"Acciones\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"15\",\n      \"plazo_meses\": 12,\n      \"retencion_porc\": \"20\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.3 POST /inversiones/simulaciones/calcular · cinco alternativas (RF-042)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-042 · se comparan hasta 4 alternativas', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('alternativas');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alternativas\": [\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"CDT 12 %\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"12\",\n      \"plazo_meses\": 12\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.4 POST /inversiones/simulaciones · guardar con un nombre (RN-042.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-042.4 · simulación guardada', function () {",
+                  "    pm.expect(pm.response.code, pm.response.code === 422",
+                  "        ? 'ya existe una simulación con ese nombre: corra Mod06DemoSeeder antes de la colección'",
+                  "        : 'se esperaba 201 al guardar la simulación').to.eql(201);",
+                  "    pm.collectionVariables.set('simulacion_id', pm.response.json().data.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Simulación demo MOD-06\",\n  \"alternativas\": [\n    {\n      \"nombre\": \"CDT\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"10\",\n      \"plazo_meses\": 12\n    },\n    {\n      \"nombre\": \"Fondo\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"14\",\n      \"plazo_meses\": 12,\n      \"retencion_porc\": \"7\"\n    },\n    {\n      \"nombre\": \"Acciones\",\n      \"monto_inicial\": \"10000000\",\n      \"tasa_ea\": \"15\",\n      \"plazo_meses\": 12,\n      \"retencion_porc\": \"20\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.5 GET /inversiones/simulaciones/{id} · resultados recalculados (RN-042.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-042.4 · la simulación guardada trae sus resultados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.resultados.mejores).to.eql([1]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones/{{simulacion_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones",
+                "{{simulacion_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.6 DELETE /inversiones/simulaciones/{id} · eliminar (RN-042.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-042.4 · simulación eliminada', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/simulaciones/{{simulacion_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "simulaciones",
+                "{{simulacion_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "70 · Liquidación y eliminación",
+      "item": [
+        {
+          "name": "70.1 POST /inversiones/{id}/movimientos · liquidación total del CDT (RN-038.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.3 · la inversión queda Liquidada con valor actual 0', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const i = pm.response.json().data.inversion;",
+                  "    pm.expect(i.estado).to.eql('LIQUIDADA');",
+                  "    pm.expect(i.valor_actual).to.eql('0.00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"LIQUIDACION_TOTAL\",\n  \"fecha\": \"2026-09-01\",\n  \"monto\": \"10600000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.2 POST /inversiones/{id}/movimientos · movimiento sobre la inversión liquidada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-038.3 · una inversión liquidada no admite movimientos', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('inversion');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{cdt_id}}",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"APORTE\",\n  \"fecha\": \"2026-09-02\",\n  \"monto\": \"100000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "70.3 DELETE /inversiones/{id} · inversión sin rendimientos (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · la inversión sin rendimientos se elimina', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo2_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.4 GET /inversiones/{id} · la inversión eliminada ya no aparece",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · la eliminación lógica la saca de las consultas', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inversiones/{{fondo2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inversiones",
+                "{{fondo2_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

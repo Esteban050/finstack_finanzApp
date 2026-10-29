@@ -3,7 +3,9 @@
 use App\Models\BitacoraAuditoria;
 use App\Models\Usuario;
 use App\Services\AlertaSeguridadSocialService;
+use App\Services\InversionService;
 use App\Services\RecurrenciaService;
+use App\Services\SoporteArchivoService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
@@ -50,6 +52,9 @@ Artisan::command('scfp:purgar-supresiones', function () {
             'justificacion' => "Supresión física definitiva cumplidos 15 días calendario (ID anónimo procesado: {$uuidAnonimo})",
             'fecha_evento' => now(),
         ]);
+
+        // RN-030.3: el cascade borra las filas de los soportes, no sus archivos.
+        SoporteArchivoService::eliminarDelUsuario($uuidAnonimo);
 
         $cuenta->delete();
     }
@@ -107,6 +112,13 @@ Artisan::command('scfp:alertas-seguridad-social', function () {
     $this->info("Se enviaron {$resultado['enviadas']} alertas de vencimiento de seguridad social (RF-036).");
 })->purpose('Enviar las alertas de vencimiento del pago de seguridad social');
 
+// RN-037.5: "Vencida (la marca el Sistema al pasar la fecha de vencimiento)".
+Artisan::command('scfp:marcar-inversiones-vencidas', function () {
+    $total = InversionService::marcarVencidas(CarbonImmutable::today());
+
+    $this->info("Se marcaron {$total} inversiones como vencidas (RN-037.5).");
+})->purpose('Marcar como vencidas las inversiones cuya fecha de vencimiento ya pasó');
+
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();
 Schedule::command('scfp:purgar-supresiones')->daily();
@@ -120,3 +132,6 @@ Schedule::command('scfp:sincronizar-trm')->hourlyAt(0)->between('08:00', '13:00'
 
 // RF-036: una vez al día, por la mañana.
 Schedule::command('scfp:alertas-seguridad-social')->dailyAt('07:00');
+
+// RN-037.5: al empezar el día siguiente al vencimiento.
+Schedule::command('scfp:marcar-inversiones-vencidas')->dailyAt('00:10');

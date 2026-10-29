@@ -5,17 +5,22 @@ namespace App\Http\Controllers;
 use App\Models\Gasto;
 use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
+use App\Models\SoportePagoSeguridadSocial;
 use App\Services\BitacoraService;
 use App\Services\GastoService;
 use App\Services\SeguridadSocialService;
+use App\Services\SoporteArchivoService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * MOD-05 — RF-035: Registro de pagos de aportes a seguridad social por PILA.
@@ -63,16 +68,23 @@ class PagoSeguridadSocialController extends Controller
 
     /**
      * RN-035.1 / RN-035.3: Registrar el pago y, en la misma transacción, el
-     * gasto de "Seguridad social" por el total (CA-035.1).
+     * gasto de "Seguridad social" por el total (CA-035.1) y el soporte, si se
+     * adjuntó (RF-030). Un soporte inválido rechaza el registro completo.
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate($this->reglas(), $this->mensajes());
+        $validated = $request->validate(
+            array_merge($this->reglas(), ['soporte' => ['nullable', 'file']]),
+            $this->mensajes()
+        );
         $this->validarTotal($validated);
         $this->validarPeriodoLibre($validated);
 
+        $archivo = $request->file('soporte');
+        $tipoSoporte = $archivo === null ? null : SoporteArchivoService::validar($archivo, 'soporte');
+
         try {
-            $pago = DB::transaction(function () use ($validated) {
+            $pago = DB::transaction(function () use ($validated, $archivo, $tipoSoporte) {
                 $pago = new PagoSeguridadSocial(array_merge($this->atributosPago($validated), [
                     'usuario_id' => Auth::id(),
                 ]));
@@ -102,6 +114,10 @@ class PagoSeguridadSocialController extends Controller
                     justificacion: 'RF-035: pago de aportes del periodo '.$pago->periodo.'.',
                     usuarioId: Auth::id()
                 );
+
+                if ($archivo !== null) {
+                    $this->guardarSoporte($pago, $archivo, $tipoSoporte);
+                }
 
                 return $pago->fresh();
             });
@@ -236,6 +252,91 @@ class PagoSeguridadSocialController extends Controller
     }
 
     /**
+     * RN-035.1: Adjuntar el soporte al pago o reemplazar el que tenía. El
+     * archivo anterior se borra después del commit.
+     */
+    public function subirSoporte(Request $request, string $id): JsonResponse
+    {
+        $pago = $this->pagoPropio($id);
+        $request->validate(['soporte' => ['required', 'file']], $this->mensajes());
+
+        $archivo = $request->file('soporte');
+        $tipo = SoporteArchivoService::validar($archivo, 'soporte');
+
+        $rutaAnterior = DB::transaction(fn () => $this->guardarSoporte($pago, $archivo, $tipo));
+
+        if ($rutaAnterior !== null) {
+            SoporteArchivoService::eliminar($rutaAnterior);
+        }
+
+        return response()->json([
+            'mensaje' => 'Soporte del pago guardado.',
+            'data' => $this->presentar($pago->fresh()),
+        ], 201);
+    }
+
+    /**
+     * RN-035.1: Quitar el soporte del pago. El archivo se borra después del
+     * commit; la acción queda en la bitácora.
+     */
+    public function eliminarSoporte(string $id): JsonResponse
+    {
+        $pago = $this->pagoPropio($id);
+        $soporte = SoportePagoSeguridadSocial::where('pago_id', $pago->id)->first();
+
+        if ($soporte === null) {
+            abort(404);
+        }
+
+        $ruta = $soporte->ruta;
+
+        DB::transaction(function () use ($soporte, $pago) {
+            $anterior = $soporte->toArray();
+            $soporte->delete();
+
+            BitacoraService::registrar(
+                accion: 'ELIMINAR_SOPORTE_PAGO_SEGURIDAD_SOCIAL',
+                entidadAfectada: 'soportes_pago_seguridad_social',
+                entidadId: $soporte->id,
+                valorAnterior: $anterior,
+                justificacion: 'RN-035.1: soporte quitado del pago PILA del periodo '.$pago->periodo.'.',
+                usuarioId: Auth::id()
+            );
+        });
+
+        SoporteArchivoService::eliminar($ruta);
+
+        return response()->json([
+            'mensaje' => 'Soporte del pago eliminado.',
+            'data' => $this->presentar($pago->fresh()),
+        ]);
+    }
+
+    /**
+     * RN-030.3: Descarga del soporte, solo con el enlace firmado de 5 minutos
+     * (middleware `signed`). El archivo se descifra al entregarlo.
+     */
+    public function descargarSoporte(string $id): StreamedResponse
+    {
+        $pago = $this->pagoPropio($id);
+        $soporte = SoportePagoSeguridadSocial::where('pago_id', $pago->id)->first();
+
+        if ($soporte === null) {
+            abort(404);
+        }
+
+        $contenido = SoporteArchivoService::leer($soporte->ruta);
+
+        return response()->streamDownload(
+            function () use ($contenido) {
+                echo $contenido;
+            },
+            $soporte->nombre_original,
+            ['Content-Type' => $soporte->tipo_mime]
+        );
+    }
+
+    /**
      * RN-035.4: Aportes obligatorios de salud y pensión pagados en el año, que
      * se acumulan como ingreso no constitutivo de renta (RF-043).
      */
@@ -265,9 +366,82 @@ class PagoSeguridadSocialController extends Controller
     {
         return array_merge($pago->toArray(), [
             'gasto' => $pago->gasto_id === null ? null : Gasto::find($pago->gasto_id),
+            'soporte' => $this->presentarSoporte($pago),
             'comparacion' => SeguridadSocialService::diferenciasConLiquidacion($pago),
             'aviso_legal' => SeguridadSocialService::AVISO_LEGAL,
         ]);
+    }
+
+    /**
+     * RN-035.1 / RN-030.3: datos del soporte y su enlace de descarga firmado,
+     * que vence en 5 minutos. La ruta del archivo no sale.
+     */
+    private function presentarSoporte(PagoSeguridadSocial $pago): ?array
+    {
+        $soporte = SoportePagoSeguridadSocial::where('pago_id', $pago->id)->first();
+
+        if ($soporte === null) {
+            return null;
+        }
+
+        $vence = now()->addMinutes(SoporteArchivoService::MINUTOS_ENLACE);
+
+        return [
+            'id' => $soporte->id,
+            'nombre_original' => $soporte->nombre_original,
+            'tipo_mime' => $soporte->tipo_mime,
+            'tamano_bytes' => $soporte->tamano_bytes,
+            'url_descarga' => URL::temporarySignedRoute('seguridad-social.pagos.soporte.descarga', $vence, ['id' => $pago->id]),
+            'url_vence_en' => $vence->toIso8601String(),
+        ];
+    }
+
+    /**
+     * RN-035.1 / RN-030.3: guarda el soporte cifrado del pago o reemplaza el
+     * que tenía. Devuelve la ruta del archivo anterior, que se borra después
+     * del commit. Si la base falla, el archivo nuevo no queda huérfano.
+     */
+    private function guardarSoporte(PagoSeguridadSocial $pago, UploadedFile $archivo, string $tipo): ?string
+    {
+        $ruta = SoporteArchivoService::guardarCifrado($archivo, SoporteArchivoService::carpeta(Auth::id(), 'seguridad-social'));
+
+        try {
+            $soporte = SoportePagoSeguridadSocial::where('pago_id', $pago->id)->first();
+            $anterior = $soporte?->toArray();
+            $rutaAnterior = $soporte?->ruta;
+
+            $valores = [
+                'nombre_original' => mb_substr($archivo->getClientOriginalName(), 0, 255),
+                'tipo_mime' => $tipo,
+                'tamano_bytes' => $archivo->getSize(),
+                'ruta' => $ruta,
+            ];
+
+            if ($soporte === null) {
+                $soporte = SoportePagoSeguridadSocial::create(array_merge($valores, [
+                    'usuario_id' => Auth::id(),
+                    'pago_id' => $pago->id,
+                ]));
+            } else {
+                $soporte->update($valores);
+            }
+
+            BitacoraService::registrar(
+                accion: 'ADJUNTAR_SOPORTE_PAGO_SEGURIDAD_SOCIAL',
+                entidadAfectada: 'soportes_pago_seguridad_social',
+                entidadId: $soporte->id,
+                valorAnterior: $anterior,
+                valorNuevo: $soporte->fresh()->toArray(),
+                justificacion: 'RN-035.1: soporte del pago PILA del periodo '.$pago->periodo.'.',
+                usuarioId: Auth::id()
+            );
+        } catch (\Throwable $e) {
+            SoporteArchivoService::eliminar($ruta);
+
+            throw $e;
+        }
+
+        return $rutaAnterior;
     }
 
     private function atributosPago(array $validated): array
@@ -379,8 +553,8 @@ class PagoSeguridadSocialController extends Controller
     }
 
     /**
-     * RN-035.1: Campos del pago. El soporte adjunto (RF-030) no está en el
-     * alcance de esta entrega.
+     * RN-035.1: Campos del pago. El soporte (RF-030) se valida aparte, en
+     * store() y subirSoporte().
      */
     private function reglas(): array
     {
@@ -422,6 +596,9 @@ class PagoSeguridadSocialController extends Controller
             'numero_planilla.max' => 'El número de planilla admite máximo 20 caracteres.',
             'es_correccion.boolean' => 'La marca de planilla de corrección debe ser verdadero o falso.',
             'medio_pago.in' => 'El medio de pago no es válido.',
+            'soporte.required' => 'Adjunte el archivo de soporte (PDF, JPG o PNG).',
+            'soporte.file' => 'El soporte debe ser un archivo PDF, JPG o PNG.',
+            'soporte.uploaded' => 'El soporte no se pudo subir: puede superar el tamaño que admite el servidor.',
         ];
 
         $nombres = [

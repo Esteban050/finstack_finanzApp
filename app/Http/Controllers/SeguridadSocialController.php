@@ -163,6 +163,8 @@ class SeguridadSocialController extends Controller
     {
         $validated = $request->validate([
             'salario' => $this->reglaMonto(),
+            // RN-034.4: retención en la fuente informada por el usuario (opcional).
+            'retencion_fuente' => array_merge(['nullable'], array_slice($this->reglaMonto(permiteCero: true), 1)),
             // Periodo del que se toman los parámetros (RNG-04). Por defecto, el actual.
             'periodo' => array_merge(['nullable'], array_slice($this->reglaPeriodo(), 1)),
         ], $this->mensajes());
@@ -173,8 +175,16 @@ class SeguridadSocialController extends Controller
         $calculo = SeguridadSocialService::calcularAsalariado(
             (string) $validated['salario'],
             (bool) $perfil->es_salario_integral,
-            $parametro
+            $parametro,
+            isset($validated['retencion_fuente']) ? (string) $validated['retencion_fuente'] : null
         );
+
+        // RN-021.2: como en el ingreso, el neto no puede quedar negativo.
+        if (bccomp($calculo['salario_neto_estimado'], '0', 2) === -1) {
+            throw ValidationException::withMessages([
+                'retencion_fuente' => 'La retención en la fuente no puede superar el salario menos los aportes (RN-034.4).',
+            ]);
+        }
 
         return response()->json([
             'mensaje' => 'Aportes del asalariado calculados.',
@@ -217,7 +227,8 @@ class SeguridadSocialController extends Controller
         $calculo = SeguridadSocialService::calcularAsalariado(
             (string) $ingreso->monto_bruto_cop,
             (bool) $perfil->es_salario_integral,
-            $parametro
+            $parametro,
+            (string) $ingreso->retencion_fuente_cop
         );
 
         // RN-021.2: el neto (bruto − retención − aportes) no puede quedar negativo.
@@ -420,6 +431,10 @@ class SeguridadSocialController extends Controller
             'salario.gt' => 'El salario debe ser mayor que cero.',
             'salario.max' => 'El salario no puede superar $ 999.999.999.999,99.',
             'salario.regex' => 'El salario admite hasta 12 dígitos enteros y 2 decimales.',
+            'retencion_fuente.numeric' => 'La retención en la fuente debe ser un número.',
+            'retencion_fuente.min' => 'La retención en la fuente no puede ser negativa.',
+            'retencion_fuente.max' => 'La retención en la fuente no puede superar $ 999.999.999.999,99.',
+            'retencion_fuente.regex' => 'La retención en la fuente admite hasta 12 dígitos enteros y 2 decimales.',
             'ingreso_id.required' => 'Indique el ingreso al que se aplican los aportes.',
             'ingreso_id.uuid' => 'El ingreso indicado no es válido.',
         ];
