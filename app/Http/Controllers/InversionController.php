@@ -9,14 +9,17 @@ use App\Models\ValoracionInversion;
 use App\Services\BitacoraService;
 use App\Services\IngresoService;
 use App\Services\InversionService;
+use App\Services\RentabilidadService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 /**
  * MOD-06 — RF-037: Registro de inversiones.
@@ -33,7 +36,7 @@ class InversionController extends Controller
      * RF-037: Inversiones del Usuario, de la apertura más reciente a la más
      * antigua (RNG-10), filtrables por estado y tipo.
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): View|JsonResponse
     {
         $validated = $request->validate([
             'estado' => ['nullable', Rule::in(Inversion::ESTADOS)],
@@ -58,17 +61,28 @@ class InversionController extends Controller
 
         $hoy = CarbonImmutable::today();
 
-        return response()->json([
-            'mensaje' => 'Inversiones consultadas.',
-            'data' => [
-                'inversiones' => collect($inversiones->items())->map(fn (Inversion $inversion) => InversionService::presentar($inversion, $hoy)),
-                'meta' => [
-                    'pagina_actual' => $inversiones->currentPage(),
-                    'por_pagina' => $inversiones->perPage(),
-                    'total' => $inversiones->total(),
-                    'ultima_pagina' => $inversiones->lastPage(),
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Inversiones consultadas.',
+                'data' => [
+                    'inversiones' => collect($inversiones->items())->map(fn (Inversion $inversion) => InversionService::presentar($inversion, $hoy)),
+                    'meta' => [
+                        'pagina_actual' => $inversiones->currentPage(),
+                        'por_pagina' => $inversiones->perPage(),
+                        'total' => $inversiones->total(),
+                        'ultima_pagina' => $inversiones->lastPage(),
+                    ],
                 ],
-            ],
+            ]);
+        }
+
+        $presentadas = collect($inversiones->items())->map(fn (Inversion $inversion) => InversionService::presentar($inversion, $hoy));
+
+        return view('inversiones.index', [
+            'inversiones' => $inversiones,
+            'inversionesPresentadas' => $presentadas,
+            'tipos' => Inversion::TIPOS,
+            'estados' => Inversion::ESTADOS,
         ]);
     }
 
@@ -77,8 +91,13 @@ class InversionController extends Controller
      * monto inicial queda como primer movimiento "Aporte" (RN-037.4) y como
      * valoración inicial (decisión 7, SC-001).
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
+        if ($request->has('nivel_riesgo')) {
+            $nivel = $request->input('nivel_riesgo');
+            $request->merge(['nivel_riesgo' => !empty($nivel) ? strtoupper(trim($nivel)) : null]);
+        }
+
         $validated = $request->validate($this->reglas($request), $this->mensajes());
 
         $tipo = $validated['tipo'];
@@ -123,6 +142,8 @@ class InversionController extends Controller
                 'simbolo' => $conUnidades ? ($validated['simbolo'] ?? null) : null,
                 'unidades_iniciales' => $conUnidades ? (string) $validated['unidades'] : null,
                 'precio_unitario_compra' => $conUnidades ? (string) $validated['precio_unitario_compra'] : null,
+                'rentabilidad_esperada_porc' => isset($validated['rentabilidad_esperada_porc']) ? (string) $validated['rentabilidad_esperada_porc'] : null,
+                'plazo_meses_esperado' => isset($validated['plazo_meses_esperado']) ? (int) $validated['plazo_meses_esperado'] : null,
                 // RN-037.5: un CDT registrado después de su vencimiento ya está vencido.
                 'estado' => InversionService::estadoSegunVencimiento($vencimiento, $hoy),
             ]);
@@ -164,29 +185,65 @@ class InversionController extends Controller
             return $inversion->fresh();
         });
 
-        return response()->json([
-            'mensaje' => 'Inversión registrada. El monto inicial quedó como primer aporte.',
-            'data' => InversionService::presentar($inversion, $hoy),
-        ], 201);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Inversión registrada. El monto inicial quedó como primer aporte.',
+                'data' => InversionService::presentar($inversion, $hoy),
+            ], 201);
+        }
+
+        return redirect()->route('inversiones.show', $inversion->id)
+            ->with('status', 'Inversión registrada con éxito. El monto inicial se registró como primer aporte.');
     }
 
     /**
      * RF-037: Detalle de la inversión con sus movimientos (RF-038).
      */
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): View|JsonResponse
     {
         $inversion = $this->inversionPropia($id);
+        $hoy = CarbonImmutable::today();
 
         $movimientos = MovimientoInversion::where('inversion_id', $inversion->id)
             ->orderByDesc('fecha')
             ->orderByDesc('creado_en')
             ->get();
 
-        return response()->json([
-            'mensaje' => 'Inversión consultada.',
-            'data' => array_merge(InversionService::presentar($inversion, CarbonImmutable::today()), [
-                'movimientos' => $movimientos,
-            ]),
+        $valoraciones = ValoracionInversion::where('inversion_id', $inversion->id)
+            ->orderByDesc('fecha')
+            ->get();
+
+        $valoracionesCronologicas = ValoracionInversion::where('inversion_id', $inversion->id)
+            ->orderBy('fecha', 'asc')
+            ->orderBy('creado_en', 'asc')
+            ->get();
+
+        $indicadores = RentabilidadService::indicadores($inversion, $hoy);
+
+        $valorCausadoPropuesto = in_array($inversion->tipo, Inversion::CON_TASA, true) && $inversion->tasa_ea !== null
+            ? InversionService::valorCausado($inversion, $hoy)
+            : null;
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Inversión consultada.',
+                'data' => array_merge(InversionService::presentar($inversion, $hoy), [
+                    'movimientos' => $movimientos,
+                    'valoraciones' => $valoraciones,
+                    'valoraciones_cronologicas' => $valoracionesCronologicas,
+                    'indicadores' => $indicadores,
+                ]),
+            ]);
+        }
+
+        return view('inversiones.show', [
+            'inversion' => $inversion,
+            'presentacion' => InversionService::presentar($inversion, $hoy),
+            'movimientos' => $movimientos,
+            'valoraciones' => $valoraciones,
+            'valoracionesCronologicas' => $valoracionesCronologicas,
+            'indicadores' => $indicadores,
+            'valorCausadoPropuesto' => $valorCausadoPropuesto,
         ]);
     }
 
@@ -199,11 +256,18 @@ class InversionController extends Controller
     {
         $inversion = $this->inversionPropia($id);
 
+        if ($request->has('nivel_riesgo')) {
+            $nivel = $request->input('nivel_riesgo');
+            $request->merge(['nivel_riesgo' => !empty($nivel) ? strtoupper(trim($nivel)) : null]);
+        }
+
         $validated = $request->validate([
             'nombre' => ['sometimes', 'required', 'string', 'min:3', 'max:60'],
             'entidad' => ['sometimes', 'nullable', 'string', 'max:80'],
             'nivel_riesgo' => ['sometimes', 'nullable', Rule::in(Inversion::NIVELES_RIESGO)],
             'simbolo' => ['sometimes', 'nullable', 'string', 'max:15'],
+            'rentabilidad_esperada_porc' => ['sometimes', 'nullable', 'numeric', 'between:-100,10000'],
+            'plazo_meses_esperado' => ['sometimes', 'nullable', 'integer', 'between:1,360'],
             'fecha_vencimiento' => ['sometimes', 'required', 'date', 'after:'.$inversion->fecha_apertura->toDateString()],
         ], $this->mensajes());
 
@@ -255,7 +319,7 @@ class InversionController extends Controller
      * RNG-07: Eliminación lógica. Una inversión con rendimientos ya generó
      * ingresos (RN-038.4): no se elimina, se liquida.
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
 
@@ -283,7 +347,12 @@ class InversionController extends Controller
             );
         });
 
-        return response()->json(['mensaje' => 'Inversión eliminada.']);
+        if ($request->expectsJson()) {
+            return response()->json(['mensaje' => 'Inversión eliminada.']);
+        }
+
+        return redirect()->route('inversiones.index')
+            ->with('status', 'Inversión eliminada con éxito.');
     }
 
     /**
@@ -342,6 +411,8 @@ class InversionController extends Controller
             'simbolo' => ['nullable', 'string', 'max:15'],
             'unidades' => [Rule::requiredIf($conUnidades), 'nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
             'precio_unitario_compra' => [Rule::requiredIf($conUnidades), 'nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
+            'rentabilidad_esperada_porc' => ['nullable', 'numeric', 'between:-100,10000', 'regex:/^-?\d{1,5}(\.\d{1,4})?$/'],
+            'plazo_meses_esperado' => ['nullable', 'integer', 'between:1,360'],
         ];
     }
 

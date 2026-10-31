@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gasto;
+use App\Models\LiquidacionSeguridadSocial;
 use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\SoportePagoSeguridadSocial;
@@ -13,6 +14,7 @@ use App\Services\SoporteArchivoService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -39,7 +42,7 @@ class PagoSeguridadSocialController extends Controller
     /**
      * RF-035: Pagos registrados, del periodo más reciente al más antiguo.
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): View|JsonResponse
     {
         $porPagina = (int) $request->query('por_pagina', 20);
         if (! in_array($porPagina, self::POR_PAGINA, true)) {
@@ -52,17 +55,37 @@ class PagoSeguridadSocialController extends Controller
             ->paginate($porPagina)
             ->withQueryString();
 
-        return response()->json([
-            'mensaje' => 'Pagos de seguridad social consultados.',
-            'data' => [
-                'pagos' => $pagos->items(),
-                'meta' => [
-                    'pagina_actual' => $pagos->currentPage(),
-                    'por_pagina' => $pagos->perPage(),
-                    'total' => $pagos->total(),
-                    'ultima_pagina' => $pagos->lastPage(),
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Pagos de seguridad social consultados.',
+                'data' => [
+                    'pagos' => $pagos->items(),
+                    'meta' => [
+                        'pagina_actual' => $pagos->currentPage(),
+                        'por_pagina' => $pagos->perPage(),
+                        'total' => $pagos->total(),
+                        'ultima_pagina' => $pagos->lastPage(),
+                    ],
                 ],
-            ],
+            ]);
+        }
+
+        $usuario = Auth::user();
+        $anioActual = (int) CarbonImmutable::today()->year;
+        $resumenAnual = SeguridadSocialService::resumenAnual($usuario->id, $anioActual);
+        $liquidaciones = LiquidacionSeguridadSocial::where('usuario_id', $usuario->id)
+            ->orderByDesc('periodo')
+            ->get()
+            ->keyBy('periodo');
+
+        $pagosPresentados = collect($pagos->items())->map(fn ($p) => $this->presentar($p));
+
+        return view('seguridad-social.pagos.index', [
+            'pagos' => $pagos,
+            'pagosPresentados' => $pagosPresentados,
+            'resumenAnual' => $resumenAnual,
+            'liquidaciones' => $liquidaciones,
+            'anioActual' => $anioActual,
         ]);
     }
 
@@ -71,7 +94,7 @@ class PagoSeguridadSocialController extends Controller
      * gasto de "Seguridad social" por el total (CA-035.1) y el soporte, si se
      * adjuntó (RF-030). Un soporte inválido rechaza el registro completo.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate(
             array_merge($this->reglas(), ['soporte' => ['nullable', 'file']]),
@@ -125,10 +148,15 @@ class PagoSeguridadSocialController extends Controller
             throw $this->rechazoPorPeriodoOcupado($e, $validated['periodo']);
         }
 
-        return response()->json([
-            'mensaje' => 'Pago registrado. Se creó su gasto en "Seguridad social".',
-            'data' => $this->presentar($pago),
-        ], 201);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Pago registrado. Se creó su gasto en "Seguridad social".',
+                'data' => $this->presentar($pago),
+            ], 201);
+        }
+
+        return redirect()->route('seguridad-social.pagos.index')
+            ->with('status', 'Pago PILA registrado con éxito. Se creó automáticamente el gasto (egreso) en "Seguridad social" (RN-035.3).');
     }
 
     /**
@@ -214,7 +242,7 @@ class PagoSeguridadSocialController extends Controller
      * RN-035.3 / RNG-07: Eliminar el pago elimina también su gasto. Los dos se
      * eliminan de forma lógica.
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $pago = $this->pagoPropio($id);
 
@@ -248,7 +276,12 @@ class PagoSeguridadSocialController extends Controller
             );
         });
 
-        return response()->json(['mensaje' => 'Pago eliminado junto con su gasto.']);
+        if ($request->expectsJson()) {
+            return response()->json(['mensaje' => 'Pago eliminado junto con su gasto.']);
+        }
+
+        return redirect()->route('seguridad-social.pagos.index')
+            ->with('status', 'Pago de seguridad social eliminado con éxito junto con su gasto.');
     }
 
     /**

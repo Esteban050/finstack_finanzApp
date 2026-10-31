@@ -76,6 +76,8 @@ class Inversion extends Model
         'simbolo',
         'unidades_iniciales',
         'precio_unitario_compra',
+        'rentabilidad_esperada_porc',
+        'plazo_meses_esperado',
         'estado',
         'liquidada_en',
     ];
@@ -91,6 +93,8 @@ class Inversion extends Model
             'plazo_dias' => 'integer',
             'unidades_iniciales' => 'decimal:8',
             'precio_unitario_compra' => 'decimal:8',
+            'rentabilidad_esperada_porc' => 'decimal:4',
+            'plazo_meses_esperado' => 'integer',
             'creado_en' => 'datetime',
             'actualizado_en' => 'datetime',
             'eliminado_en' => 'datetime',

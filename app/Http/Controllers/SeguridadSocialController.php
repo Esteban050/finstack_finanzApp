@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FuenteIngreso;
 use App\Models\Ingreso;
 use App\Models\LiquidacionSeguridadSocial;
+use App\Models\PagoSeguridadSocial;
+use App\Models\ParametroNormativo;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\AlertaSeguridadSocialService;
 use App\Services\BitacoraService;
@@ -11,10 +14,12 @@ use App\Services\IngresoService;
 use App\Services\SeguridadSocialService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 /**
  * MOD-05 — Seguridad social: liquidación del independiente o contratista
@@ -29,10 +34,127 @@ class SeguridadSocialController extends Controller
     private const POR_PAGINA = [10, 20, 50, 100];
 
     /**
+     * RF-036 / Vista principal de Seguridad Social:
+     * - Fechas límite de pago según cédula/NIT y calendario tributario.
+     * - Detección de fuentes de ingreso (Asalariado vs Contratista/Servicios).
+     * - Alerta de doble obligación o cálculo voluntario.
+     */
+    public function index(Request $request): View|JsonResponse
+    {
+        $usuario = Auth::user();
+        $perfil = $usuario->perfilTributarioActivo;
+
+        // Cédula / Dígitos para calendario de aportes (RF-016 / RF-036)
+        $digitos = $perfil?->ultimos_digitos_nit;
+        if ($digitos === null && ! empty($usuario->numero_documento)) {
+            $limpio = preg_replace('/\D/', '', $usuario->numero_documento);
+            if (strlen($limpio) >= 2) {
+                $digitos = substr($limpio, -2);
+            }
+        }
+
+        $anioActual = (int) CarbonImmutable::today()->year;
+        $calendario = $digitos !== null ? AlertaSeguridadSocialService::calendarioPara($anioActual, $digitos) : null;
+        $hayCalendario = AlertaSeguridadSocialService::hayCalendario($anioActual);
+
+        $periodos = [];
+        $alertas = [];
+        $periodoActual = CarbonImmutable::today()->format('Y-m');
+        if ($digitos !== null) {
+            $periodos = AlertaSeguridadSocialService::estadoDePeriodos($usuario->id, $digitos, CarbonImmutable::today());
+            $periodos = collect($periodos)->sortByDesc('periodo')->values()->all();
+
+            // RN-036: En las alertas activas solo mostramos el periodo del mes actual
+            // para evitar acumular vencimientos de meses históricos en la vista principal.
+            $alertas = collect($periodos)
+                ->where('periodo', $periodoActual)
+                ->whereIn('estado', [
+                    AlertaSeguridadSocialService::ESTADO_POR_VENCER,
+                    AlertaSeguridadSocialService::ESTADO_VENCIDO,
+                ])->map(fn (array $p) => array_merge($p, [
+                    'advertencia' => $p['estado'] === AlertaSeguridadSocialService::ESTADO_VENCIDO
+                        ? AlertaSeguridadSocialService::ADVERTENCIA_MORA
+                        : null,
+                ]))->values()->all();
+        }
+
+        // Inspección de fuentes de ingreso y ocupaciones
+        $fuentes = FuenteIngreso::where('usuario_id', $usuario->id)
+            ->where('activa', true)
+            ->with('tipoFuente')
+            ->get();
+
+        $ocupaciones = $perfil?->ocupaciones ?? [];
+
+        $tieneSalario = $fuentes->contains(fn ($f) => stripos($f->tipoFuente?->nombre ?? '', 'salario') !== false)
+            || in_array(SeguridadSocialService::OCUPACION_ASALARIADO, $ocupaciones, true);
+
+        $tienePrestacionServicios = $fuentes->contains(fn ($f) => 
+            stripos($f->tipoFuente?->nombre ?? '', 'honorarios') !== false
+            || stripos($f->tipoFuente?->nombre ?? '', 'servicios') !== false
+            || stripos($f->nombre, 'prestaci') !== false
+            || stripos($f->nombre, 'honorario') !== false
+            || stripos($f->nombre, 'contrat') !== false
+        ) || SeguridadSocialService::tieneOcupacion($perfil, SeguridadSocialService::OCUPACIONES_INDEPENDIENTE);
+
+        $esDobleObligacion = $tieneSalario && $tienePrestacionServicios;
+        $esVoluntario = ! $tienePrestacionServicios;
+
+        $parametro = ParametroNormativo::where('anio_vigencia', $anioActual)->where('es_activa', true)->first()
+            ?? ParametroNormativo::where('es_activa', true)->orderByDesc('anio_vigencia')->first();
+
+        // Resumen
+        $totalLiquidaciones = LiquidacionSeguridadSocial::count();
+        $totalPagos = PagoSeguridadSocial::count();
+        $resumenAnual = SeguridadSocialService::resumenAnual($usuario->id, $anioActual);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Resumen de seguridad social.',
+                'data' => [
+                    'usuario' => $usuario,
+                    'perfil' => $perfil,
+                    'digitos' => $digitos,
+                    'calendario' => $calendario,
+                    'hay_calendario' => $hayCalendario,
+                    'periodos' => $periodos,
+                    'alertas' => $alertas,
+                    'tiene_salario' => $tieneSalario,
+                    'tiene_prestacion_servicios' => $tienePrestacionServicios,
+                    'es_doble_obligacion' => $esDobleObligacion,
+                    'es_voluntario' => $esVoluntario,
+                    'parametro' => $parametro,
+                    'resumen_anual' => $resumenAnual,
+                ],
+            ]);
+        }
+
+        return view('seguridad-social.index', compact(
+            'usuario',
+            'perfil',
+            'digitos',
+            'calendario',
+            'hayCalendario',
+            'periodos',
+            'alertas',
+            'periodoActual',
+            'fuentes',
+            'tieneSalario',
+            'tienePrestacionServicios',
+            'esDobleObligacion',
+            'esVoluntario',
+            'parametro',
+            'totalLiquidaciones',
+            'totalPagos',
+            'resumenAnual'
+        ));
+    }
+
+    /**
      * RN-033.7: Liquidaciones estimadas guardadas, de la más reciente a la más
      * antigua (RNG-10).
      */
-    public function liquidaciones(Request $request): JsonResponse
+    public function liquidaciones(Request $request): View|JsonResponse
     {
         $porPagina = (int) $request->query('por_pagina', 20);
         if (! in_array($porPagina, self::POR_PAGINA, true)) {
@@ -44,18 +166,31 @@ class SeguridadSocialController extends Controller
             ->paginate($porPagina)
             ->withQueryString();
 
-        return response()->json([
-            'mensaje' => 'Liquidaciones consultadas.',
-            'data' => [
-                'liquidaciones' => $liquidaciones->items(),
-                'meta' => [
-                    'pagina_actual' => $liquidaciones->currentPage(),
-                    'por_pagina' => $liquidaciones->perPage(),
-                    'total' => $liquidaciones->total(),
-                    'ultima_pagina' => $liquidaciones->lastPage(),
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Liquidaciones consultadas.',
+                'data' => [
+                    'liquidaciones' => $liquidaciones->items(),
+                    'meta' => [
+                        'pagina_actual' => $liquidaciones->currentPage(),
+                        'por_pagina' => $liquidaciones->perPage(),
+                        'total' => $liquidaciones->total(),
+                        'ultima_pagina' => $liquidaciones->lastPage(),
+                    ],
+                    'aviso_legal' => SeguridadSocialService::AVISO_LEGAL,
                 ],
-                'aviso_legal' => SeguridadSocialService::AVISO_LEGAL,
-            ],
+            ]);
+        }
+
+        $parametro = ParametroNormativo::where('anio_vigencia', (int) now()->year)->where('es_activa', true)->first()
+            ?? ParametroNormativo::where('es_activa', true)->orderByDesc('anio_vigencia')->first();
+        $perfil = Auth::user()->perfilTributarioActivo;
+
+        return view('seguridad-social.liquidaciones.index', [
+            'liquidaciones' => $liquidaciones,
+            'parametro' => $parametro,
+            'perfil' => $perfil,
+            'aviso_legal' => SeguridadSocialService::AVISO_LEGAL,
         ]);
     }
 
@@ -86,13 +221,13 @@ class SeguridadSocialController extends Controller
      * trabajo registrados (RN-033.1) y guardarla como "Liquidación estimada"
      * (RN-033.7). Si el periodo ya tenía una, se recalcula.
      */
-    public function liquidar(Request $request): JsonResponse
+    public function liquidar(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'periodo' => $this->reglaPeriodo(),
         ], $this->mensajes());
 
-        [$inicio, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo']);
+        [$inicio, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
 
         $ingresoBase = SeguridadSocialService::ingresoBaseDelPeriodo(Auth::id(), $inicio);
         $calculo = SeguridadSocialService::calcularIndependiente($ingresoBase, $parametro, $perfil);
@@ -119,47 +254,93 @@ class SeguridadSocialController extends Controller
             return [$anterior, $liquidacion];
         });
 
-        return response()->json([
-            'mensaje' => $anterior === null
-                ? 'Liquidación estimada calculada y guardada.'
-                : 'Liquidación estimada recalculada.',
-            'data' => array_merge([
-                'id' => $liquidacion->id,
-                'periodo' => $liquidacion->periodo,
-                'origen_ingreso' => $liquidacion->origen_ingreso,
-            ], $calculo),
-        ], $anterior === null ? 201 : 200);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => $anterior === null
+                    ? 'Liquidación estimada calculada y guardada.'
+                    : 'Liquidación estimada recalculada.',
+                'data' => array_merge([
+                    'id' => $liquidacion->id,
+                    'periodo' => $liquidacion->periodo,
+                    'origen_ingreso' => $liquidacion->origen_ingreso,
+                ], $calculo),
+            ], $anterior === null ? 201 : 200);
+        }
+
+        return redirect()->route('seguridad-social.liquidaciones.index')
+            ->with('status', $anterior === null ? 'Liquidación estimada calculada y guardada.' : 'Liquidación estimada recalculada.')
+            ->with('calculo_reciente', array_merge(['id' => $liquidacion->id, 'periodo' => $liquidacion->periodo], $calculo));
     }
 
     /**
      * RN-033.1: Simular la liquidación con un ingreso base ingresado a mano.
      * Es una simulación: no reemplaza la liquidación estimada guardada.
      */
-    public function simular(Request $request): JsonResponse
+    public function simular(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'periodo' => $this->reglaPeriodo(),
             'ingreso_base' => $this->reglaMonto(permiteCero: true),
         ], $this->mensajes());
 
-        [, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo']);
+        [, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
 
         $calculo = SeguridadSocialService::calcularIndependiente((string) $validated['ingreso_base'], $parametro, $perfil);
 
-        return response()->json([
-            'mensaje' => 'Simulación calculada. No se guardó como liquidación estimada.',
-            'data' => array_merge([
-                'periodo' => $validated['periodo'],
-                'origen_ingreso' => LiquidacionSeguridadSocial::ORIGEN_MANUAL,
-            ], $calculo),
-        ]);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Simulación calculada. No se guardó como liquidación estimada.',
+                'data' => array_merge([
+                    'periodo' => $validated['periodo'],
+                    'origen_ingreso' => LiquidacionSeguridadSocial::ORIGEN_MANUAL,
+                ], $calculo),
+            ]);
+        }
+
+        return redirect()->route('seguridad-social.liquidaciones.index')
+            ->with('status', 'Simulación calculada exitosamente (no guardada).')
+            ->with('simulacion', array_merge(['periodo' => $validated['periodo']], $calculo));
+    }
+
+    /**
+     * RF-034: Pantalla de cálculo y aplicación de aportes del asalariado.
+     */
+    public function asalariadoIndex(Request $request): View|JsonResponse
+    {
+        $usuario = Auth::user();
+        $perfil = $usuario->perfilTributarioActivo;
+        $anioActual = (int) CarbonImmutable::today()->year;
+        $parametro = ParametroNormativo::where('anio_vigencia', $anioActual)->where('es_activa', true)->first()
+            ?? ParametroNormativo::where('es_activa', true)->orderByDesc('anio_vigencia')->first();
+
+        // Ingresos de rentas de trabajo de fuente tipo Salario (RF-021 / RN-034.5)
+        $ingresosSalario = Ingreso::where('usuario_id', $usuario->id)
+            ->confirmados()
+            ->where('clasificacion_tributaria', 'RENTAS_TRABAJO')
+            ->whereHas('fuente.tipoFuente', SeguridadSocialService::deFuenteSalario())
+            ->orderByDesc('fecha_recepcion')
+            ->take(20)
+            ->get();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Módulo asalariado consultado.',
+                'data' => [
+                    'parametro' => $parametro,
+                    'perfil' => $perfil,
+                    'ingresos_salario' => $ingresosSalario,
+                ],
+            ]);
+        }
+
+        return view('seguridad-social.asalariado.index', compact('parametro', 'perfil', 'ingresosSalario'));
     }
 
     /**
      * RF-034: Aportes que el empleador descuenta del salario y salario neto. El
      * salario integral sale del perfil del periodo (RN-034.1).
      */
-    public function calcularAsalariado(Request $request): JsonResponse
+    public function calcularAsalariado(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'salario' => $this->reglaMonto(),
@@ -186,10 +367,16 @@ class SeguridadSocialController extends Controller
             ]);
         }
 
-        return response()->json([
-            'mensaje' => 'Aportes del asalariado calculados.',
-            'data' => array_merge(['periodo' => $periodo], $calculo),
-        ]);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Aportes del asalariado calculados.',
+                'data' => array_merge(['periodo' => $periodo], $calculo),
+            ]);
+        }
+
+        return redirect()->route('seguridad-social.asalariado.index')
+            ->with('status', 'Aportes del asalariado calculados exitosamente.')
+            ->with('calculo_asalariado', array_merge(['periodo' => $periodo], $calculo));
     }
 
     /**
@@ -199,7 +386,7 @@ class SeguridadSocialController extends Controller
      * El salario es el monto bruto del ingreso y los parámetros, los de su fecha
      * de recepción (RNG-04).
      */
-    public function aplicarAsalariado(Request $request): JsonResponse
+    public function aplicarAsalariado(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'ingreso_id' => ['required', 'uuid'],
@@ -260,13 +447,18 @@ class SeguridadSocialController extends Controller
             );
         });
 
-        return response()->json([
-            'mensaje' => 'Aportes aplicados al ingreso.',
-            'data' => [
-                'ingreso' => $ingreso->fresh(),
-                'calculo' => array_merge(['periodo' => $periodo], $calculo),
-            ],
-        ]);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Aportes aplicados al ingreso.',
+                'data' => [
+                    'ingreso' => $ingreso->fresh(),
+                    'calculo' => array_merge(['periodo' => $periodo], $calculo),
+                ],
+            ]);
+        }
+
+        return redirect()->route('seguridad-social.asalariado.index')
+            ->with('status', 'Aportes descontados aplicados exitosamente al ingreso de nómina.');
     }
 
     /**
@@ -290,13 +482,16 @@ class SeguridadSocialController extends Controller
             ]);
         }
 
+        $periodoActual = CarbonImmutable::today()->format('Y-m');
         $periodos = AlertaSeguridadSocialService::estadoDePeriodos(
             Auth::id(),
             $perfil->ultimos_digitos_nit,
             CarbonImmutable::today()
         );
+        $periodos = collect($periodos)->sortByDesc('periodo')->values()->all();
 
         $alertas = collect($periodos)
+            ->where('periodo', $periodoActual)
             ->whereIn('estado', [AlertaSeguridadSocialService::ESTADO_POR_VENCER, AlertaSeguridadSocialService::ESTADO_VENCIDO])
             ->map(fn (array $periodo) => array_merge($periodo, [
                 'advertencia' => $periodo['estado'] === AlertaSeguridadSocialService::ESTADO_VENCIDO
@@ -318,19 +513,36 @@ class SeguridadSocialController extends Controller
     /**
      * RF-033: periodo, parámetros de su vigencia (RNG-04) y perfil que regía
      * entonces (RN-008.6), que debe ser de Independiente o Contratista.
+     * Permite también cotización voluntaria si se indica o si tiene fuentes de servicios.
      *
      * @throws ValidationException
      */
-    private function contextoIndependiente(string $periodo): array
+    private function contextoIndependiente(string $periodo, bool $permiteVoluntario = false): array
     {
         $inicio = SeguridadSocialService::inicioDelPeriodo($periodo);
         $parametro = SeguridadSocialService::parametrosDe($inicio->year);
         $perfil = SeguridadSocialService::perfilDelPeriodo(Auth::id(), $inicio);
 
-        if (! SeguridadSocialService::tieneOcupacion($perfil, SeguridadSocialService::OCUPACIONES_INDEPENDIENTE)) {
-            throw ValidationException::withMessages([
-                'periodo' => "Su perfil tributario del periodo {$periodo} no registra la ocupación Independiente por cuenta propia ni Contratista por prestación de servicios (RF-033).",
-            ]);
+        $esIndependiente = SeguridadSocialService::tieneOcupacion($perfil, SeguridadSocialService::OCUPACIONES_INDEPENDIENTE);
+
+        if (! $esIndependiente && ! $permiteVoluntario) {
+            $tieneFuenteIndep = FuenteIngreso::where('usuario_id', Auth::id())
+                ->where('activa', true)
+                ->where(function ($q) {
+                    $q->whereHas('tipoFuente', function ($tf) {
+                        $tf->where('nombre', 'LIKE', '%Honorarios%')
+                           ->orWhere('nombre', 'LIKE', '%Servicios%');
+                    })
+                    ->orWhere('nombre', 'LIKE', '%prestaci%')
+                    ->orWhere('nombre', 'LIKE', '%contrat%');
+                })
+                ->exists();
+
+            if (! $tieneFuenteIndep) {
+                throw ValidationException::withMessages([
+                    'periodo' => "Su perfil tributario del periodo {$periodo} no registra la ocupación Independiente por cuenta propia ni Contratista por prestación de servicios (RF-033). Para calcular como cotizante voluntario, seleccione la opción correspondiente.",
+                ]);
+            }
         }
 
         return [$inicio, $parametro, $perfil];

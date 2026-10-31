@@ -10,6 +10,7 @@ use App\Services\IngresoService;
 use App\Services\InversionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -61,7 +62,7 @@ class ValoracionInversionController extends Controller
      * aceptando el valor causado (CDT y bonos). Otra valoración en la misma
      * fecha la reemplaza.
      */
-    public function store(Request $request, string $id): JsonResponse
+    public function store(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
 
@@ -107,20 +108,25 @@ class ValoracionInversionController extends Controller
             return $valoracion->fresh();
         });
 
-        return response()->json([
-            'mensaje' => 'Valoración registrada.',
-            'data' => [
-                'valoracion' => $valoracion,
-                'inversion' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
-            ],
-        ], 201);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Valoración registrada.',
+                'data' => [
+                    'valoracion' => $valoracion,
+                    'inversion' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
+                ],
+            ], 201);
+        }
+
+        return redirect()->route('inversiones.show', $inversion->id)
+            ->with('status', 'Valoración de mercado registrada con éxito.');
     }
 
     /**
      * RNG-07: Eliminar una valoración registrada por el Usuario. La inicial y
      * la de la liquidación las crea el Sistema y no se eliminan.
      */
-    public function destroy(string $id, string $valoracionId): JsonResponse
+    public function destroy(Request $request, string $id, string $valoracionId): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
 
@@ -152,10 +158,15 @@ class ValoracionInversionController extends Controller
             );
         });
 
-        return response()->json([
-            'mensaje' => 'Valoración eliminada.',
-            'data' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
-        ]);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Valoración eliminada.',
+                'data' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
+            ]);
+        }
+
+        return redirect()->route('inversiones.show', $inversion->id)
+            ->with('status', 'Valoración eliminada con éxito.');
     }
 
     /**

@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 /**
  * MOD-06 — Rentabilidad de una inversión (RF-040) y consolidado del
@@ -47,11 +48,21 @@ class RentabilidadController extends Controller
     /**
      * RF-041: Consolidado del portafolio a la fecha de corte (por defecto, hoy).
      */
-    public function portafolio(Request $request): JsonResponse
+    public function portafolio(Request $request): View|JsonResponse
     {
-        return response()->json([
-            'mensaje' => 'Portafolio consolidado.',
-            'data' => RentabilidadService::portafolio($this->fechaCorte($request)),
+        $corte = $this->fechaCorte($request);
+        $datos = RentabilidadService::portafolio($corte);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Portafolio consolidado.',
+                'data' => $datos,
+            ]);
+        }
+
+        return view('inversiones.portafolio', [
+            'portafolio' => $datos,
+            'fechaCorte' => $corte->toDateString(),
         ]);
     }
 

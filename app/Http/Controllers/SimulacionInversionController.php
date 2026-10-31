@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ParametroNormativo;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\SimulacionInversion;
 use App\Services\BitacoraService;
 use App\Services\SimulacionInversionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 /**
  * MOD-06 — RF-042: Simulación y comparación de hasta 4 alternativas de
@@ -29,21 +32,30 @@ class SimulacionInversionController extends Controller
     /**
      * RN-042.3 / CA-042.2: Comparar las alternativas sin guardarlas.
      */
-    public function calcular(Request $request): JsonResponse
+    public function calcular(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate($this->reglasAlternativas(), $this->mensajes());
         $this->validarAlternativas($validated['alternativas']);
 
-        return response()->json([
-            'mensaje' => 'Simulación calculada. No se guardó.',
-            'data' => SimulacionInversionService::comparar($validated['alternativas'], CarbonImmutable::today()),
-        ]);
+        $resultado = SimulacionInversionService::comparar($validated['alternativas'], CarbonImmutable::today());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Simulación calculada. No se guardó.',
+                'data' => $resultado,
+            ]);
+        }
+
+        return redirect()->route('inversiones.simulaciones.index')
+            ->with('status', 'Simulación calculada con éxito.')
+            ->with('comparacion', $resultado)
+            ->with('alternativas_enviadas', $validated['alternativas']);
     }
 
     /**
      * RN-042.4: Simulaciones guardadas, de la más reciente a la más antigua (RNG-10).
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): View|JsonResponse
     {
         $porPagina = (int) $request->query('por_pagina', 20);
         if (! in_array($porPagina, self::POR_PAGINA, true)) {
@@ -55,25 +67,35 @@ class SimulacionInversionController extends Controller
             ->paginate($porPagina)
             ->withQueryString();
 
-        return response()->json([
-            'mensaje' => 'Simulaciones consultadas.',
-            'data' => [
-                'simulaciones' => $simulaciones->items(),
-                'meta' => [
-                    'pagina_actual' => $simulaciones->currentPage(),
-                    'por_pagina' => $simulaciones->perPage(),
-                    'total' => $simulaciones->total(),
-                    'ultima_pagina' => $simulaciones->lastPage(),
-                    'maximo' => SimulacionInversionService::MAX_GUARDADAS,
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Simulaciones consultadas.',
+                'data' => [
+                    'simulaciones' => $simulaciones->items(),
+                    'meta' => [
+                        'pagina_actual' => $simulaciones->currentPage(),
+                        'por_pagina' => $simulaciones->perPage(),
+                        'total' => $simulaciones->total(),
+                        'ultima_pagina' => $simulaciones->lastPage(),
+                        'maximo' => SimulacionInversionService::MAX_GUARDADAS,
+                    ],
                 ],
-            ],
+            ]);
+        }
+
+        $parametro = ParametroNormativo::where('anio_vigencia', (int) now()->year)->where('es_activa', true)->first();
+
+        return view('inversiones.simulaciones', [
+            'simulaciones' => $simulaciones,
+            'parametro' => $parametro,
+            'maximo' => SimulacionInversionService::MAX_GUARDADAS,
         ]);
     }
 
     /**
      * RN-042.4: Guardar la simulación con un nombre, hasta 20 por Usuario.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate(
             array_merge(['nombre' => $this->reglaNombre()], $this->reglasAlternativas()),
@@ -106,10 +128,15 @@ class SimulacionInversionController extends Controller
             return $simulacion->fresh();
         });
 
-        return response()->json([
-            'mensaje' => 'Simulación guardada.',
-            'data' => $this->presentar($simulacion),
-        ], 201);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Simulación guardada.',
+                'data' => $this->presentar($simulacion),
+            ], 201);
+        }
+
+        return redirect()->route('inversiones.simulaciones.index')
+            ->with('status', 'Simulación guardada exitosamente.');
     }
 
     /**
@@ -168,7 +195,7 @@ class SimulacionInversionController extends Controller
      * RN-042.4: Eliminar la simulación. Es física: una simulación no es un
      * registro financiero (RNG-07) y no afecta el patrimonio ni los reportes.
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $simulacion = $this->simulacionPropia($id);
 
@@ -186,7 +213,12 @@ class SimulacionInversionController extends Controller
             );
         });
 
-        return response()->json(['mensaje' => 'Simulación eliminada.']);
+        if ($request->expectsJson()) {
+            return response()->json(['mensaje' => 'Simulación eliminada.']);
+        }
+
+        return redirect()->route('inversiones.simulaciones.index')
+            ->with('status', 'Simulación eliminada exitosamente.');
     }
 
     private function presentar(SimulacionInversion $simulacion): array

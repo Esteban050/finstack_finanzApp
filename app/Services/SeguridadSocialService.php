@@ -456,7 +456,7 @@ class SeguridadSocialService
      * RN-015.2: fuentes cuyo tipo es "Salario" (o una subcategoría suya) en el
      * catálogo. Esos ingresos cotizan por nómina (RF-034), no como independiente.
      */
-    private static function deFuenteSalario(): \Closure
+    public static function deFuenteSalario(): \Closure
     {
         return fn ($query) => $query->where(function ($tipo) {
             $tipo->where('nombre', 'Salario')

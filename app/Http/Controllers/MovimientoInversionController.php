@@ -13,6 +13,7 @@ use App\Services\InversionService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -70,7 +71,7 @@ class MovimientoInversionController extends Controller
     /**
      * RN-038.1 a RN-038.4: Registrar un movimiento.
      */
-    public function store(Request $request, string $id): JsonResponse
+    public function store(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
         $validated = $request->validate($this->reglas($inversion), $this->mensajes());
@@ -189,17 +190,22 @@ class MovimientoInversionController extends Controller
             return [$movimiento->fresh(), $movimientoRetencion?->fresh(), $ingreso?->fresh()];
         });
 
-        return response()->json([
-            'mensaje' => $ingreso === null
-                ? 'Movimiento registrado.'
-                : 'Movimiento registrado. Se creó su ingreso en "Rentas de capital".',
-            'data' => [
-                'movimiento' => $movimiento,
-                'retencion' => $movimientoRetencion,
-                'ingreso' => $ingreso,
-                'inversion' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
-            ],
-        ], 201);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => $ingreso === null
+                    ? 'Movimiento registrado.'
+                    : 'Movimiento registrado. Se creó su ingreso en "Rentas de capital".',
+                'data' => [
+                    'movimiento' => $movimiento,
+                    'retencion' => $movimientoRetencion,
+                    'ingreso' => $ingreso,
+                    'inversion' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
+                ],
+            ], 201);
+        }
+
+        return redirect()->route('inversiones.show', $inversion->id)
+            ->with('status', 'Movimiento registrado con éxito.' . ($ingreso !== null ? ' Se creó automáticamente el ingreso en Rentas de Capital (RN-038.4).' : ''));
     }
 
     /**
@@ -211,7 +217,7 @@ class MovimientoInversionController extends Controller
      * - Un rendimiento se lleva su ingreso y su retención (RN-038.4); la
      *   retención atada a un ingreso no se elimina sola.
      */
-    public function destroy(string $id, string $movimientoId): JsonResponse
+    public function destroy(Request $request, string $id, string $movimientoId): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
 
@@ -293,10 +299,15 @@ class MovimientoInversionController extends Controller
             );
         });
 
-        return response()->json([
-            'mensaje' => 'Movimiento eliminado.',
-            'data' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
-        ]);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Movimiento eliminado.',
+                'data' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
+            ]);
+        }
+
+        return redirect()->route('inversiones.show', $inversion->id)
+            ->with('status', 'Movimiento eliminado.');
     }
 
     /**

@@ -71,14 +71,15 @@ class AlertaSeguridadSocialService
     }
 
     /**
-     * Fecha límite del mes: el día del mes de `fecha_vencimiento`, o el último
-     * día si el mes es más corto (un 31 en abril es el 30).
+     * Fecha límite del mes: el día hábil del mes según el número indicado en
+     * `fecha_vencimiento->day` (Decreto 1990 de 2016), omitiendo fines de semana
+     * y festivos oficiales de Colombia (Ley 51 de 1983).
      */
     public static function fechaLimite(CalendarioTributario $calendario, int $anio, int $mes): CarbonImmutable
     {
-        $inicio = CarbonImmutable::create($anio, $mes, 1);
+        $numeroDiaHabil = (int) $calendario->fecha_vencimiento->day;
 
-        return $inicio->setDay(min($calendario->fecha_vencimiento->day, $inicio->daysInMonth));
+        return FestivosColombiaService::diaHabilDelMes($anio, $mes, $numeroDiaHabil);
     }
 
     /** Mes vencido: la fecha límite de abril es la del periodo de marzo. */

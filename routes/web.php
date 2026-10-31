@@ -134,6 +134,9 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     | CA-008.1: sin el perfil de ocupación completo no se puede usar el módulo.
     */
     Route::middleware('perfil.completo')->prefix('seguridad-social')->name('seguridad-social.')->group(function () {
+        // Vista principal de Seguridad Social (RF-036 / Vencimientos y detección de fuentes)
+        Route::get('/', [SeguridadSocialController::class, 'index'])->name('index');
+
         // RF-033: liquidación del independiente o contratista (RN-033.7)
         Route::get('/liquidaciones', [SeguridadSocialController::class, 'liquidaciones'])->name('liquidaciones.index');
         Route::post('/liquidaciones', [SeguridadSocialController::class, 'liquidar'])->name('liquidaciones.store');
@@ -142,6 +145,7 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::get('/liquidaciones/{periodo}', [SeguridadSocialController::class, 'liquidacion'])->name('liquidaciones.show');
 
         // RF-034: aportes del asalariado y aplicación al ingreso (RN-034.5)
+        Route::get('/asalariado', [SeguridadSocialController::class, 'asalariadoIndex'])->name('asalariado.index');
         Route::post('/asalariado/calcular', [SeguridadSocialController::class, 'calcularAsalariado'])->name('asalariado.calcular');
         Route::post('/asalariado/aplicar', [SeguridadSocialController::class, 'aplicarAsalariado'])->name('asalariado.aplicar');
 
