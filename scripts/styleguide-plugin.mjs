@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 const execute = promisify(execFile);
 
@@ -11,6 +12,14 @@ export function styleguidePlugin() {
         apply: 'serve',
         configureServer(server) {
             server.middlewares.use(async (req, res, next) => {
+                if (req.url?.split('?')[0] === '/favicon.svg') {
+                    try {
+                        const logo = await readFile(path.resolve(server.config.root, 'public/favicon.svg'));
+                        res.setHeader('Content-Type', 'image/svg+xml');
+                        res.end(logo);
+                    } catch { next(); }
+                    return;
+                }
                 if (!['/dev/styleguide', '/dev/styleguide/'].includes(req.url?.split('?')[0])) return next();
                 try {
                     const { stdout } = await execute('php', [path.resolve('scripts/render-styleguide.php')], { cwd: server.config.root, maxBuffer: 4 * 1024 * 1024 });

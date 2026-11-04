@@ -1,15 +1,19 @@
-/* El tema oscuro conserva los tokens aprobados; el claro cambia solo tokens. */
+/* Naranja neutro (claro); Naranja nocturno vive en los tokens base. */
 :root[data-theme=light] {
     color-scheme: light;
-    --ui-bg: #F4F6F8;
+    --ui-bg: #F8FAFC;
     --ui-surface: #FFFFFF;
-    --ui-raised: #E8EDF2;
-    --ui-border: #CED6DF;
-    --ui-border-strong: #6B7A8C;
-    --ui-text: #17212B;
-    --ui-muted: #48596B;
-    --accent: #047857;
+    --ui-raised: #FFEDD5;
+    --ui-border: #E5E7EB;
+    --ui-border-strong: #898A8E;
+    --ui-text: #1F2937;
+    --ui-muted: #626974;
+    --accent: #C2410C;
     --accent-contrast: #FFFFFF;
+    --accent-secondary: #FFEDD5;
+    --accent-secondary-contrast: #7C2D12;
+    --ui-success: #047857;
     --ui-danger: #B91C1C;
+    --ui-danger-contrast: #FFFFFF;
     --ui-warning: #854D0E;
 }
