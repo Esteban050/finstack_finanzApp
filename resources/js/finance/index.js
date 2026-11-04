@@ -1,9 +1,9 @@
 import Chart from 'chart.js/auto';
-import { request, safeMessage, showRequestError, contractPayload } from '../api/index.js';
+import { request, showRequestError, contractPayload } from '../api/index.js';
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { moneyInputErrors } from '../income/index.js';
 import { decimal, formatMoney, formatQuantity } from '../utils/money.js';
-import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText } from './rules.js';
+import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText, financeMessage } from './rules.js';
 import { mountInvestmentGoals } from './projections.js';
 import { mountProjectionViews } from './projection-view.js';
 
@@ -91,7 +91,7 @@ export function mountFinance() {
                         else {output.textContent=(output.dataset.resultFormat==='sign-money' && decimal(String(value)).gt('0')?'+':'')+formatMoney(String(value));if(output.dataset.resultFormat==='sign-money')output.dataset.result=decimal(String(value)).isZero()?'neutral':decimal(String(value)).gt('0')?'positive':'negative';}
                     }
                     const notices = host.querySelector('[data-result-notices]');
-                    if (notices) notices.replaceChildren(...(data.avisos || data.mensajes || []).map(text => {const p=document.createElement('p');p.textContent=safeMessage(text).replace(/\b(?:RF|RN|RNG|CA)-\d+(?:\.\d+)?\b/g,'');return p;}));
+                    if (notices) notices.replaceChildren(...(data.avisos || data.mensajes || []).map(text => {const p=document.createElement('p');p.textContent=financeMessage(text);return p;}));
                     const parameters=host.querySelector('[data-result-parameters]');
                     if(parameters){parameters.replaceChildren();const list=document.createElement('dl');list.className='finance-breakdown';const labels={anio_vigencia:'Vigencia',version:'Versión',acto_administrativo:'Acto administrativo',valor_smmlv:'Salario mínimo mensual',ibc_min_smmlv:'IBC mínimo en salarios mínimos',ibc_max_smmlv:'IBC máximo en salarios mínimos',ibc_en_smmlv:'IBC en salarios mínimos',porc_ibc:'Porcentaje de IBC',tarifa_salud:'Tarifa de salud (%)',tarifa_pension:'Tarifa de pensión (%)',tarifa_fsp:'Tarifa del Fondo de Solidaridad Pensional (%)',tarifa_arl:'Tarifa de riesgos laborales (%)',pensionado:'Pensionado',clase_riesgo_arl:'Clase de riesgo laboral'};for(const [key,value] of Object.entries(data.parametros_usados || {})){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=labels[key] || key.replaceAll('_',' ');dd.textContent=parameterText(key,value);list.append(dt,dd);}parameters.append(list);}
                     if(data.id){const refresh=document.createElement('a');refresh.href=window.location.href;refresh.textContent='Actualizar histórico de liquidaciones';host.querySelector('[data-result-refresh]')?.remove();refresh.dataset.resultRefresh='';host.append(refresh);}
@@ -106,7 +106,7 @@ export function mountFinance() {
                     if(samePage)window.location.reload();
                 }
             } catch(error) {
-                const errors = Object.fromEntries(Object.entries(error.errors || {}).map(([key,messages])=>[key,messages.map(message=>safeMessage(message).replace(/\s*\((?:RF|RN|RNG|CA)-\d+(?:\.\d+)?\)/g,''))]));
+                const errors = Object.fromEntries(Object.entries(error.errors || {}).map(([key,messages])=>[key,messages.map(financeMessage)]));
                 mapFieldErrors(form,errors); showRequestError(status,error);
                 if(status)for(const [key,messages] of Object.entries(errors))if(![...form.querySelectorAll('[data-field]')].some(field=>field.dataset.field===key)){const p=document.createElement('p');p.textContent=messages.join(' ');status.append(p);}
             } finally {
@@ -211,6 +211,6 @@ function renderComparison(form,data,alternatives) {
     });
     const save=host.querySelector('[data-comparison-save]');save.querySelectorAll('[data-simulation-value]').forEach(input=>input.remove());
     alternatives.forEach((row,index)=>Object.entries(row).forEach(([key,value])=>{const input=document.createElement('input');input.type='hidden';input.name=`alternativas[${index}][${key}]`;input.value=value;input.dataset.simulationValue='';save.append(input);}));
-    const notices=host.querySelector('[data-comparison-notices]');notices.textContent=(data.mensajes || []).map(message=>safeMessage(message)).join(' ');
+    const notices=host.querySelector('[data-comparison-notices]');notices.textContent=(data.mensajes || []).map(financeMessage).join(' ');
     host.hidden=false;host.focus();
 }

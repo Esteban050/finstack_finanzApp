@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText } from '../finance/rules.js';
+import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText, financeMessage } from '../finance/rules.js';
 import { contractPayload, validResourcePath, request } from '../api/index.js';
 import { renderFinanceFixtures } from './finance-fixtures.js';
+
+test('avisos financieros conservan la explicación sin códigos ni paréntesis vacíos',()=>{
+    assert.equal(financeMessage('XIRR no calculable: menos de 30 días (RN-040.2). Se muestra solo el ROI.'), 'XIRR no calculable: menos de 30 días. Se muestra solo el ROI.');
+    assert.equal(financeMessage('Tasa efectiva anual (EA).'), 'Tasa efectiva anual (EA).');
+    assert.equal(financeMessage('SQLSTATE select datos'), 'No fue posible completar la operación. Intenta nuevamente.');
+});
 
 test('C/D: decimales localizados conservan ocho decimales y límites de tasa y comisión',()=>{
     assert.equal(canonicalDecimal('0,00000001',{min:'0.00000001',precision:8}),'0.00000001');

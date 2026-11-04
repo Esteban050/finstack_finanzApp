@@ -1,5 +1,13 @@
 import { decimal, MAX_AMOUNT, formatMoney } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
+import { safeMessage } from '../api/index.js';
+
+export function financeMessage(value) {
+    return safeMessage(value)
+        .replace(/\s*\((?:RF|RN|RNG|CA)-\d+(?:\.\d+)*\)/g, '')
+        .replace(/\b(?:RF|RN|RNG|CA)-\d+(?:\.\d+)*\b/g, '')
+        .replace(/\s{2,}/g, ' ').trim();
+}
 
 export function canonicalDecimal(value, { min = '0', max, precision = 2 } = {}) {
     if (typeof value !== 'string' || !new RegExp(`^-?\\d+(?:,\\d{1,${precision}})?$`).test(value)) throw new Error(`Usa coma decimal y máximo ${precision} decimales, sin separadores de miles.`);
