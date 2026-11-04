@@ -89,25 +89,20 @@ class IngresoService
      * convierten con la misma tasa, para que la comparación contra el monto bruto
      * de CA-021.2 se haga sobre magnitudes homogéneas.
      *
+     * `$fechaTasa` es la fecha del hecho económico: con ella se busca la TRM
+     * cuando el ingreso es en USD y no trae tasa (RF-017, CA-017.1).
+     *
      * @throws ValidationException
      */
-    public static function prepararMontos(array $validated, FuenteIngreso $fuente): array
+    public static function prepararMontos(array $validated, FuenteIngreso $fuente, string $fechaTasa): array
     {
         $moneda = strtoupper($validated['moneda']);
         $montoOriginal = (string) $validated['monto_original'];
 
-        // RN-021.3: si la moneda no es COP se exige la tasa usada y se guarda el
-        // monto convertido, que es el que alimenta todos los cálculos.
-        if ($moneda === 'COP') {
-            $tasa = '1.0000';
-        } else {
-            if (($validated['tasa_cambio_usada'] ?? null) === null) {
-                throw ValidationException::withMessages([
-                    'tasa_cambio_usada' => 'Indique la tasa de cambio usada para convertir a pesos colombianos.',
-                ]);
-            }
-            $tasa = (string) $validated['tasa_cambio_usada'];
-        }
+        // RN-021.3: si la moneda no es COP se guarda la tasa usada y el monto
+        // convertido, que es el que alimenta todos los cálculos. RN-017.4: en USD
+        // la tasa por defecto es la TRM; otras monedas exigen la tasa manual.
+        $tasa = TrmService::tasaPara($moneda, $validated['tasa_cambio_usada'] ?? null, $fechaTasa);
 
         $brutoCop = self::convertirACop($montoOriginal, $tasa);
         $retencionCop = self::convertirACop((string) ($validated['retencion_fuente'] ?? '0'), $tasa);

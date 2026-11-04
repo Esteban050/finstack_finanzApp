@@ -70,7 +70,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
             'Vestuario' => ['Ropa y Calzado', 'Accesorios'],
             'Obligaciones financieras' => ['Tarjetas de Crédito', 'Créditos de Consumo'],
             'Impuestos' => ['Predial / Vehicular', 'Renta / IVA'],
-            'Seguridad social' => ['Salud y Pensión independiente', 'Aportes voluntarios'],
+            'Seguridad social' => ['Aporte PILA independiente', 'Aportes voluntarios'],
             'Seguros' => ['Seguro de Vida', 'Seguro de Vehículo'],
             'Mascotas' => ['Alimento para mascotas', 'Veterinaria y Cuidados'],
             'Donaciones' => ['Caridad', 'Ayuda familiar'],

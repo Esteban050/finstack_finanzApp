@@ -28,6 +28,15 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    /*
+    | RF-017 RN-017.1: TRM oficial, datos abiertos de la Superintendencia
+    | Financiera. Es pública y no necesita clave.
+    */
+    'trm' => [
+        'url' => env('TRM_API_URL', 'https://www.datos.gov.co/resource/32sa-8pi3.json'),
+        'timeout' => env('TRM_API_TIMEOUT', 10),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

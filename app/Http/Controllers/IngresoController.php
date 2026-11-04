@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Categoria;
 use App\Models\FuenteIngreso;
 use App\Models\Ingreso;
+use App\Models\MovimientoInversion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
 use App\Services\IngresoService;
@@ -117,7 +118,8 @@ class IngresoController extends Controller
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
+        // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha de recepción.
+        $montos = IngresoService::prepararMontos($validated, $fuente, $validated['fecha_recepcion']);
 
         $ingreso = Ingreso::create(array_merge($montos, [
             'usuario_id' => Auth::id(),
@@ -180,11 +182,13 @@ class IngresoController extends Controller
     public function update(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $ingreso = $this->ingresoPropio($id);
+        $this->rechazarSiEsDeInversion($ingreso);
         $this->procesarPorcentajes($request);
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $fuente = $this->fuenteActivaPropia($validated['fuente_id']);
-        $montos = IngresoService::prepararMontos($validated, $fuente);
+        // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha de recepción.
+        $montos = IngresoService::prepararMontos($validated, $fuente, $validated['fecha_recepcion']);
 
         $anterior = $ingreso->toArray();
 
@@ -228,6 +232,7 @@ class IngresoController extends Controller
     public function destroy(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $ingreso = $this->ingresoPropio($id);
+        $this->rechazarSiEsDeInversion($ingreso);
         $anterior = $ingreso->toArray();
 
         $ingreso->delete();
@@ -447,6 +452,22 @@ class IngresoController extends Controller
         }
 
         abort(404);
+    }
+
+    /**
+     * RN-038.4: el ingreso que creó un rendimiento se edita o elimina desde su
+     * movimiento (/inversiones/{id}/movimientos), para que los dos no queden con
+     * montos distintos.
+     *
+     * @throws ValidationException
+     */
+    private function rechazarSiEsDeInversion(Ingreso $ingreso): void
+    {
+        if (MovimientoInversion::where('ingreso_id', $ingreso->id)->exists()) {
+            throw ValidationException::withMessages([
+                'ingreso' => 'Este ingreso lo generó un rendimiento de inversión. Elimínelo desde el movimiento en /inversiones.',
+            ]);
+        }
     }
 
     /**

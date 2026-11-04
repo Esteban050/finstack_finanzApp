@@ -1,9 +1,10 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **dos colecciones** en esta carpeta. Esta primera parte documenta la de
-> MOD-03; la de MOD-04 (gastos) está al final del archivo.
+> Hay **cinco colecciones** en esta carpeta. Esta primera parte documenta la de
+> MOD-03; las de MOD-04 (gastos), RF-017 (TRM), MOD-05 (seguridad social) y
+> MOD-06 (inversiones) están al final del archivo.
 
-Verificación de los RF-020 a RF-024 por HTTP. **32 peticiones**, cada una con
+Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
 comprueba.
 
@@ -11,7 +12,23 @@ comprueba.
 | :---- | :---- |
 | `SCFP-MOD-03.postman_collection.json` | La colección de MOD-03 (ingresos) |
 | `SCFP-MOD-04.postman_collection.json` | La colección de MOD-04 (gastos) |
-| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales), común a las dos |
+| `SCFP-TRM.postman_collection.json` | La colección de RF-017 (TRM y conversión COP ⇄ USD) |
+| `SCFP-MOD-05.postman_collection.json` | La colección de MOD-05 (seguridad social) |
+| `SCFP-MOD-06.postman_collection.json` | La colección de MOD-06 (inversiones y rentabilidad) |
+| `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales) de MOD-03; las demás colecciones traen sus propias variables |
+
+> **Sesión de una corrida anterior (todas las colecciones).** La app de Postman
+> guarda las cookies entre corridas, y `/login` está bajo el middleware `guest`:
+> si quedó abierta la sesión de otra cuenta (por ejemplo, la cuenta sin perfil
+> con la que termina MOD-05, o el Administrador con el que termina TRM), el login
+> de la carpeta 00 redirigía al dashboard sin cambiar de cuenta y la colección
+> corría con la cuenta equivocada (en MOD-05, 403 desde la 10.1). Desde el
+> 28/10/2026 la 00.1 de cada colección trae un script previo que cierra esa sesión
+> antes del login (solo si la página es autenticada, es decir, trae el formulario
+> de "Cerrar sesión") y no sigue redirecciones: si no logra cerrarla, falla ahí
+> con "Formulario de login disponible". Ya no hace falta borrar las cookies a
+> mano. Newman cuenta como peticiones las que hace ese script (una o dos más que
+> las de la colección); las aserciones no cambian.
 
 ## Antes de importar
 
@@ -69,7 +86,7 @@ resuelve `fuente_id`.
 | :---- | :---- |
 | 00 · Autenticación | Login por el formulario real, token CSRF |
 | 10 · RF-020 Fuentes de ingreso | CA-020.1, CA-020.2, RN-020.1, RN-020.3 |
-| 20 · RF-021 Registro de ingreso | CA-021.1, CA-021.2, CA-021.3, RN-021.3, RN-021.4 |
+| 20 · RF-021 Registro de ingreso | CA-021.1, CA-021.2, CA-021.3, RN-021.3, RN-021.4, CA-017.1 (20.7: USD sin tasa usa la TRM) |
 | 30 · RF-024 Consulta y filtrado | CA-024.1, CA-024.2, RN-024.1, RN-024.3, RNG-10 |
 | 40 · RF-023 Edición y eliminación | RN-023.1, RN-023.2, RNG-07 |
 | 50 · RF-022 Ingresos recurrentes | RN-022.1, RN-022.3, CA-022.2 |
@@ -144,7 +161,10 @@ regla sin mensaje propio saldría como la clave cruda `validation.required`.
 
 Comprobado:
 
-- El JSON está bien formado: 7 carpetas, 32 peticiones.
+- El JSON está bien formado: 7 carpetas, 33 peticiones. La `20.7` (CA-017.1) se
+  agregó con RF-017 y se ejecutó contra la app corriendo: el ingreso de USD 1.200
+  del 20/04/2026 quedó con la TRM oficial de esa fecha (3.593,14) y su valor en
+  COP exacto.
 - Las 17 rutas existen (`php artisan route:list --path=ingresos`).
 - Los endpoints responden los códigos y payloads que la colección afirma: 92
   pruebas automatizadas con 250 aserciones, todas en verde
@@ -175,7 +195,7 @@ y borra las fuentes sobrantes.
 
 # Postman — MOD-04 Gestión de gastos
 
-Verificación de los RF-025 a RF-029 por HTTP. **67 peticiones en 10 carpetas**,
+Verificación de los RF-025 a RF-029 por HTTP. **68 peticiones en 10 carpetas**,
 cada una con aserciones referenciadas al criterio de aceptación o la regla de
 negocio que comprueba.
 
@@ -221,7 +241,7 @@ las categorías: si no corre primero, las carpetas 20 a 80 se quedan sin
 | :---- | :---- | :---- |
 | 00 · Autenticación | 3 | Login por el formulario real, token CSRF |
 | 10 · RF-027 Categorías y subcategorías | 12 | RN-027.1, RN-027.2, RN-027.3, RN-027.4, RN-026.2, CA-027.2 |
-| 20 · RF-025 Registro de gasto | 7 | RN-025.1, CA-025.1, RNG-09 |
+| 20 · RF-025 Registro de gasto | 8 | RN-025.1, CA-025.1, RNG-09, CA-017.1 (20.8: USD sin tasa usa la TRM) |
 | 30 · RF-026 Clasificación multidimensional | 12 | RN-026.1, RN-026.2, CA-026.1, CA-026.2, CA-026.3 |
 | 40 · RN-025.2 Indicadores anuales | 3 | RN-025.2, CA-025.2, RN-026.3, RNG-08 |
 | 50 · RF-029 Consulta y filtrado | 6 | RN-029.1, CA-029.1, RNG-10 |
@@ -301,7 +321,10 @@ php artisan db:seed --class="Database\Seeders\Test\Mod04DemoSeeder"
 
 Comprobado:
 
-- El JSON está bien formado: 10 carpetas, 67 peticiones.
+- El JSON está bien formado: 10 carpetas, 68 peticiones. La `20.8` (CA-017.1) se
+  agregó con RF-017 y se ejecutó contra la app corriendo: el gasto de USD 120 del
+  06/03/2026 quedó con la TRM oficial de esa fecha (3.767,94). El resto del
+  recorrido de abajo es el de la versión de 67 peticiones.
 - Las 21 rutas existen (`php artisan route:list --path=gastos`).
 - **Las 67 peticiones se ejecutaron contra la aplicación corriendo**, en orden y
   en una sola sesión, reproduciendo la cookie de sesión, el token CSRF por
@@ -316,3 +339,306 @@ Comprobado:
 Lo que **no** está comprobado es la corrida desde el Collection Runner de
 Postman, que es lo único que ejecuta el JavaScript de los scripts `test` tal como
 está escrito. El recorrido HTTP sí se verificó por completo.
+
+# Postman — RF-017 TRM y conversión COP ⇄ USD
+
+Verificación de RF-017 por HTTP: consulta de la TRM, conversión, administración
+manual y sincronización con la fuente oficial. **25 peticiones en 7 carpetas.**
+El registro de ingresos y gastos en USD sin tasa (CA-017.1) se verifica en las
+colecciones de MOD-03 (`20.7`) y MOD-04 (`20.8`).
+
+La TRM oficial sale de los datos abiertos de la Superintendencia Financiera
+(`https://www.datos.gov.co/resource/32sa-8pi3.json`). Es pública y no necesita
+clave: no hay que tocar el `.env`.
+
+## Antes de importar
+
+**1. Crear la tabla `tasas_cambio`, una sola vez.** Va con `--path` a propósito:
+la base no tiene tabla `migrations` (la crea esta misma orden), así que un
+`php artisan migrate` a secas intentaría correr también las migraciones base de
+Laravel.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_27_000001_create_tasas_cambio_table.php
+```
+
+**2. Crear las cuentas de demostración.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\TrmDemoSeeder"
+```
+
+Crea `trm@scfp.test` (Usuario) y `trm.admin@scfp.test` (Administrador), las dos
+ACTIVA, sin MFA y con la política vigente aceptada. No siembra ninguna TRM: la
+colección la obtiene de la fuente oficial o la registra a mano.
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_trm`, `correo_trm_admin`, `password_trm`), así que convive con el
+entorno `SCFP · Local` sin tocarlo.
+
+La carpeta `40` **cierra la sesión del Usuario y entra como Administrador**,
+porque RN-017.3 es del Administrador. Las carpetas `50` y `60` dependen de ella.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación (Usuario) | 3 | Login por el formulario real, token CSRF |
+| 10 · RF-017 Consulta de la TRM | 3 | RF-017 (valor, vigencia, fuente, última actualización), RN-017.2, RNG-05 |
+| 20 · RF-017 Conversión COP ⇄ USD | 5 | CA-017.1, RN-017.4, RNG-02, RNG-09 |
+| 30 · CA-003.2 Acceso a la administración | 2 | CA-003.2 (403 para el Usuario) |
+| 40 · Cambio a la sesión del Administrador | 4 | RF-006 (logout), login del Administrador |
+| 50 · RN-017.3 Registro y corrección manual | 7 | RN-017.3, CA-017.2, RNG-10 |
+| 60 · RN-017.1 Sincronización | 1 | RN-017.1 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `GET /tasas-cambio/trm?fecha=` | `moneda`, `valor`, `fecha_consultada`, `vigencia_desde`, `vigencia_hasta`, `es_tasa_anterior`, `fuente`, `ultima_actualizacion` |
+| `GET /tasas-cambio/convertir?monto=&de=&a=&fecha=` | `monto`, `de`, `a`, `resultado` y la `trm` usada, con la forma de arriba |
+| `GET /admin/trm` | `tasas`, `meta` |
+| `POST /admin/trm` | la TRM registrada (201) o corregida (200) |
+| `POST /admin/trm/sincronizar` | la TRM vigente hoy, con la forma de `GET /tasas-cambio/trm` |
+
+`es_tasa_anterior` en `true` significa que la fecha no tiene TRM propia y se usó
+la más reciente anterior (RN-017.2). Cuando no hay TRM en ninguna parte (fuente
+caída y base vacía), las consultas responden **503** con un `mensaje`.
+
+## Datos y conexión
+
+- `10.x` y `20.x` consultan la fuente oficial si la base no tiene la TRM de la
+  fecha, y la guardan: la segunda corrida ya no sale a internet.
+- `50.x` registra y corrige una TRM manual del **02/01/2001**, una fecha lejana a
+  propósito para no alterar la TRM de fechas en uso. En una segunda corrida,
+  `50.4` responde 200 en vez de 201 porque esa TRM ya existe; la prueba admite las
+  dos respuestas.
+- `60.1` sale siempre a internet. Sin conexión, o si la fuente aún no publica la
+  TRM de hoy, responde 503 y el intento queda en bitácora como
+  `FALLO_SINCRONIZACION_TRM`; la prueba admite las dos respuestas.
+
+## Estado de verificación
+
+Comprobado:
+
+- **Las 25 peticiones se ejecutaron contra la aplicación corriendo**
+  (`http://localhost:8000`), en orden y en una sola sesión, reproduciendo la
+  cookie de sesión, el token CSRF por cabecera, el cambio de sesión de la carpeta
+  40 y el encadenamiento de variables: **28 comprobaciones, 0 fallos**. Con la
+  fuente oficial real: TRM del 27/10/2026 = 3.157,94, y el domingo 15/03/2026
+  resuelto con el rango del 14 al 16 de marzo (3.685,53). USD 100 → $ 368.553,00.
+- 27 pruebas automatizadas con 123 aserciones en `tests/Feature/Dominio/Trm/`,
+  con la fuente simulada (`Http::fake`) y sin salir a internet.
+- **28/10/2026: la colección completa se ejecutó con Newman** (el ejecutor de
+  Postman por línea de comandos, que corre los scripts `test` igual que el
+  Collection Runner) contra `http://localhost:8000`: **25 peticiones, 40
+  aserciones, 0 fallos**.
+
+# Postman — MOD-05 Seguridad social
+
+Verificación de RF-033 a RF-036 por HTTP: liquidación del independiente,
+aportes del asalariado, pagos por PILA con su gasto y fechas límite de pago.
+**39 peticiones en 9 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-05, una sola vez.** Va con `--path` por la misma
+razón que la TRM: el esquema de dominio no tiene migraciones.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_28_000001_create_seguridad_social_tables.php
+```
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod05DemoSeeder"
+```
+
+Crea tres cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`:
+
+| Cuenta | Perfil | Datos |
+| :---- | :---- | :---- |
+| `mod05@scfp.test` | Independiente, dígitos 37, ARL clase I | Ingreso de honorarios de $ 8.000.000 en 2025-03 |
+| `mod05.asalariado@scfp.test` | Asalariado | Salario de $ 6.000.000 en 2025-06 (UUID fijo `…0005-000000000004`) |
+| `mod05.sinperfil@scfp.test` | Sin perfil tributario | (CA-008.1) |
+
+Cada ejecución deja las cuentas sin pagos ni liquidaciones, y los aportes del
+salario en cero: así la colección se puede volver a correr.
+
+Si se corre la colección sin volver a sembrar, la liquidación de 2025-03 ya
+existe y la 10.1 recibe un 200 (recálculo) en lugar del 201: la prueba falla
+con el mensaje "la liquidación de 2025-03 ya existía y se recalculó: corra
+Mod05DemoSeeder antes de la colección". La carpeta 40 elimina los pagos, pero
+no las liquidaciones.
+
+Si la base no tiene calendario de seguridad social (`SEGURIDAD_SOCIAL_INDEP`)
+para el año en curso, el seeder crea uno de ejemplo (día 10, todos los dígitos).
+Si ya existe, no lo toca.
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod05`, `password_mod05`, …), así que no necesita el entorno.
+
+Las carpetas 50 y 60 cierran la sesión anterior y entran con otra cuenta: la 55
+es del Asalariado y la 65 de la cuenta sin perfil.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación (Independiente) | 3 | Login por el formulario real, token CSRF |
+| 10 · RF-033 Liquidación del independiente | 10 | RN-033.1 a RN-033.5, RN-033.7, CA-033.2, CA-033.3, CA-033.4, RNG-04, RF-034 (ocupación) |
+| 20 · RF-035 Pagos por PILA | 10 | CA-035.1, CA-035.2, RN-035.1 a RN-035.5 |
+| 30 · RF-036 Fechas límite y alertas | 1 | RF-036, RN-036.1, RN-036.2 |
+| 40 · RN-035.3 Eliminación del pago y su gasto | 3 | RN-035.3, RNG-07 |
+| 50 · Cambio a la sesión del Asalariado | 4 | RF-006, login |
+| 55 · RF-034 Aportes del asalariado | 3 | CA-034.1, RN-034.5, RF-033 (ocupación) |
+| 60 · Cambio a la cuenta sin perfil | 4 | RF-006, login |
+| 65 · CA-008.1 Módulo sin perfil financiero | 1 | CA-008.1 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `POST /seguridad-social/liquidaciones` y `…/simular` | `ingreso_base`, `ibc`, `salud`, `pension`, `fsp`, `arl`, `total`, `avisos`, `parametros_usados`, `aviso_legal` (la guardada trae también `id`, `periodo`, `origen_ingreso`) |
+| `POST /seguridad-social/asalariado/calcular` | `ibc`, `salud`, `pension`, `fsp`, `total_aportes`, `salario_neto_sin_retencion`, `retencion_fuente`, `salario_neto_estimado` (RN-034.4), `parametros_usados`, `aviso_legal` |
+| `POST /seguridad-social/pagos` y `GET/PUT …/{id}` | el pago con su `total`, el `gasto`, el `soporte` (o `null`), la `comparacion` con la liquidación (RN-035.5) y el `aviso_legal` |
+| `POST /seguridad-social/pagos/{id}/soporte` (multipart, campo `soporte`) y `DELETE …/soporte` | el pago, con `soporte`: `nombre_original`, `tipo_mime`, `tamano_bytes`, `url_descarga` (enlace firmado de 5 minutos, RN-030.3) y `url_vence_en` |
+| `GET /seguridad-social/resumen-anual` | `salud`, `pension`, `ingreso_no_constitutivo_pila` (solo pagos PILA; los aportes del salario los consolida RF-043), `alcance`, `cantidad_pagos` |
+| `GET /seguridad-social/alertas` | `periodos` (fecha límite y estado de cada uno) y `alertas` (por vencer o vencidos) |
+
+## Datos y conexión
+
+- La carpeta 30 usa el calendario de la base, así que no fija fechas: comprueba
+  que cada periodo tenga fecha límite y estado, que el periodo sea el mes
+  anterior al de la fecha límite (mes vencido) y que los vencidos traigan la
+  advertencia de mora.
+- El correo de las alertas lo envía el comando `scfp:alertas-seguridad-social`
+  (diario a las 07:00), no la colección. Lo cubren las pruebas automatizadas.
+
+## Estado de verificación
+
+Comprobado el 28/10/2026:
+
+- **La colección completa se ejecutó con Newman** contra `http://localhost:8000`:
+  **39 peticiones, 54 aserciones, 0 fallos**, y otra vez después de volver a
+  correr el seeder, con el mismo resultado. Con el calendario real de la base,
+  los dígitos 37 vencen el día 8 de cada mes.
+- **Otra vez el 28/10/2026, después de la revisión del módulo** (aportes del
+  asalariado solo a fuentes "Salario", peticiones simultáneas, alertas por
+  rangos y planilla de corrección como diferencia que exige el pago original):
+  **39 peticiones, 54 aserciones, 0 fallos**. La colección no necesitó cambios.
+- **Otra vez el 28/10/2026, después de la revisión frente a los criterios de
+  aceptación** (aviso legal en las respuestas de pagos; `resumen-anual` con
+  `ingreso_no_constitutivo_pila` y `alcance`, ajustados en la 20.9): **39
+  peticiones, 54 aserciones, 0 fallos**.
+- **Otra vez el 28/10/2026, con el cierre de la sesión anterior en la 00.1:**
+  sin cookies, **54 aserciones, 0 fallos**; y reutilizando las cookies de una
+  corrida que dejó abierta la sesión de `mod05.sinperfil@scfp.test` (el caso que
+  daba 403 en la 10.1), también **54 aserciones, 0 fallos**. La carpeta 00 de
+  MOD-03, MOD-04 y TRM se comprobó igual: sin cookies, con la sesión de otra
+  cuenta y, en TRM, con la del Administrador (5 de 5 en cada caso).
+- 56 pruebas automatizadas en `tests/Feature/Dominio/Mod05/`.
+
+# Postman — MOD-06 Inversiones y rentabilidad
+
+Verificación de RF-037 a RF-042 por HTTP: registro de inversiones y sus
+movimientos, valoraciones de mercado, rentabilidad (ROI, XIRR), portafolio y
+simulación de alternativas. **40 peticiones en 8 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-06, una sola vez.** Va con `--path` por la misma
+razón que la TRM y MOD-05: el esquema de dominio no tiene migraciones.
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_29_000001_create_inversiones_tables.php
+```
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod06DemoSeeder"
+```
+
+Crea dos cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`:
+
+| Cuenta | Datos |
+| :---- | :---- |
+| `mod06@scfp.test` | Sin inversiones: la colección registra las suyas |
+| `mod06.otro@scfp.test` | Un fondo de UUID fijo `…0006-000000000001` (RNG-01) |
+
+Cada ejecución deja las dos cuentas sin inversiones (salvo la de RNG-01),
+movimientos, valoraciones, simulaciones ni los ingresos de sus rendimientos. La
+fuente "Rendimientos de inversiones" se conserva.
+
+La colección también se puede volver a correr sin sembrar: registra
+inversiones nuevas en cada corrida (se acumulan en el portafolio) y la 60.6
+elimina la simulación que guarda la 60.4. Si una corrida se corta entre esas dos,
+la 60.4 falla con "ya existe una simulación con ese nombre: corra
+Mod06DemoSeeder antes de la colección".
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod06`, `password_mod06`, …), así que no necesita el entorno. Las
+peticiones guardan los ids que usan las siguientes (`cdt_id`, `fondo_id`, …).
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación | 3 | Login por el formulario real, cierre de la sesión anterior |
+| 10 · RF-037 Registro de inversión | 9 | CA-037.1, CA-037.2, RN-037.2 (ajustar vencimiento), RN-037.3, RN-037.4, RNG-10, RNG-01 |
+| 20 · RF-038 Movimientos | 7 | CA-038.1, CA-038.2, RN-038.3, RN-038.4 (retención y bloqueo del ingreso en `/ingresos`) |
+| 30 · RF-039 Valoraciones | 7 | CA-039.1, CA-039.2, RN-039.1 (precio × unidades, fecha no futura), RN-039.2, RN-039.3 |
+| 40 · RF-040 Rentabilidad | 3 | CA-040.1, CA-040.2, RNG-08, fecha de corte |
+| 50 · RF-041 Portafolio | 1 | CA-041.1, CA-041.2, RNG-01 |
+| 60 · RF-042 Simulaciones | 6 | CA-042.1, CA-042.2, máximo 4 alternativas, RN-042.4 |
+| 70 · Liquidación y eliminación | 4 | RN-038.3 (Liquidada con valor 0, sin movimientos nuevos), RNG-07 |
+
+## Forma de las respuestas
+
+| Petición | Qué hay dentro de `data` |
+| :---- | :---- |
+| `POST /inversiones` y `GET/PUT …/{id}` | la inversión con `valor_actual`, `fecha_ultima_valoracion`, `valoracion_desactualizada` (RN-039.4), `unidades_actuales` y `rendimiento_estimado` (CDT y bonos); el detalle trae también `movimientos` |
+| `POST /inversiones/{id}/movimientos` | `movimiento`, `retencion` (si el rendimiento la trae), `ingreso` (si es rendimiento) e `inversion` |
+| `POST /inversiones/{id}/valoraciones` | `valoracion` e `inversion` |
+| `GET /inversiones/{id}/valoraciones` | `valoraciones` y `serie` (`[{fecha, valor}]`, para el gráfico de CA-039.2) |
+| `GET /inversiones/{id}/valor-causado` | `capital`, `tasa_ea`, `dias_transcurridos`, `valor_causado` |
+| `GET /inversiones/{id}/rentabilidad` | totales por tipo, `capital_aportado_neto`, `valor_actual`, `ganancia`, `roi`, `xirr`, `rentabilidad_real`, `resultado` (GANANCIA, PERDIDA o NEUTRO), `mensajes`, `aviso_legal` |
+| `GET /inversiones/portafolio` | `valor_total`, `capital_aportado_neto`, `ganancia`, `roi`, `xirr`, `distribucion` (por tipo, riesgo y moneda), `detalle`, `trm`, `aviso_legal` |
+| `POST /inversiones/simulaciones/calcular` | `alternativas` (con `evolucion` mes a mes y `es_mejor`), `mejores`, `inflacion_vigencia`, `mensajes`, `aviso_legal` |
+
+Los porcentajes van en texto con 2 decimales y signo (`"10.00"`, `"-100.00"`).
+Si la XIRR o la rentabilidad real no se pueden calcular, el valor es
+`"No calculable"` y `mensajes` explica por qué (RN-040.2, RNG-04).
+
+## Datos y conexión
+
+- La colección no usa inversiones en USD: el portafolio las convierte con la
+  TRM real a la fecha de corte (RN-041.4), que cambia cada día. Ese caso lo
+  cubre una prueba automatizada con una TRM fija.
+- Solo existe la vigencia 2025 en `parametros_normativos`: con fecha de corte en
+  2026 la rentabilidad real y el valor en pesos de hoy de las simulaciones
+  salen "No calculable" (RNG-04) hasta que el Administrador cargue la vigencia.
+- La marca de inversiones vencidas la hace el comando
+  `scfp:marcar-inversiones-vencidas` (diario a las 00:10), no la colección. Lo
+  cubren las pruebas automatizadas.
+
+## Estado de verificación
+
+Comprobado el 28/10/2026:
+
+- **La colección completa se ejecutó con Newman** contra `http://localhost:8000`:
+  **40 peticiones, 48 aserciones, 0 fallos** sin cookies; otra vez después de
+  volver a sembrar, reutilizando las cookies de una sesión abierta de
+  `mod05.sinperfil@scfp.test`, con el mismo resultado; y una tercera vez sin
+  volver a sembrar, también sin fallos.
+- 52 pruebas automatizadas en `tests/Feature/Dominio/Mod06/`.

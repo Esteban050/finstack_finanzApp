@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\EnsureAdminMiddleware::class,
             'politica.check' => \App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class,
             'inactividad' => \App\Http\Middleware\InactivityTimeoutMiddleware::class,
+            'perfil.completo' => \App\Http\Middleware\PerfilCompletoMiddleware::class,
         ]);
 
         $middleware->web(append: [

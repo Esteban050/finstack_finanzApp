@@ -5,14 +5,23 @@ use App\Http\Controllers\Admin\CalendarioTributarioController;
 use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
+use App\Http\Controllers\Admin\TrmController;
 use App\Http\Controllers\FuenteIngresoController;
 use App\Http\Controllers\GastoCategoriaController;
 use App\Http\Controllers\GastoController;
 use App\Http\Controllers\GastoRecurrenteController;
 use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
+use App\Http\Controllers\InversionController;
+use App\Http\Controllers\MovimientoInversionController;
+use App\Http\Controllers\PagoSeguridadSocialController;
 use App\Http\Controllers\PoliticaTratamientoController;
+use App\Http\Controllers\RentabilidadController;
+use App\Http\Controllers\SeguridadSocialController;
+use App\Http\Controllers\SimulacionInversionController;
+use App\Http\Controllers\TasaCambioController;
 use App\Http\Controllers\UserProfileController;
+use App\Http\Controllers\ValoracionInversionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -119,6 +128,89 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
     // RN-028.2: Confirmar el monto real de una ocurrencia con monto estimado
     Route::patch('/gastos/{id}/confirmar', [GastoController::class, 'confirmar'])->name('gastos.confirmar');
+
+    // RF-017: TRM vigente en una fecha y conversión COP ⇄ USD
+    Route::get('/tasas-cambio/trm', [TasaCambioController::class, 'trm'])->name('tasas-cambio.trm');
+    Route::get('/tasas-cambio/convertir', [TasaCambioController::class, 'convertir'])->name('tasas-cambio.convertir');
+
+    /*
+    | MOD-05 — Seguridad social (característica C)
+    |
+    | CA-008.1: sin el perfil de ocupación completo no se puede usar el módulo.
+    */
+    Route::middleware('perfil.completo')->prefix('seguridad-social')->name('seguridad-social.')->group(function () {
+        // Vista principal de Seguridad Social (RF-036 / Vencimientos y detección de fuentes)
+        Route::get('/', [SeguridadSocialController::class, 'index'])->name('index');
+
+        // RF-033: liquidación del independiente o contratista (RN-033.7)
+        Route::get('/liquidaciones', [SeguridadSocialController::class, 'liquidaciones'])->name('liquidaciones.index');
+        Route::post('/liquidaciones', [SeguridadSocialController::class, 'liquidar'])->name('liquidaciones.store');
+        // RN-033.1: simulación con un ingreso base ingresado a mano, sin guardar
+        Route::post('/liquidaciones/simular', [SeguridadSocialController::class, 'simular'])->name('liquidaciones.simular');
+        Route::get('/liquidaciones/{periodo}', [SeguridadSocialController::class, 'liquidacion'])->name('liquidaciones.show');
+
+        // RF-034: aportes del asalariado y aplicación al ingreso (RN-034.5)
+        Route::get('/asalariado', [SeguridadSocialController::class, 'asalariadoIndex'])->name('asalariado.index');
+        Route::post('/asalariado/calcular', [SeguridadSocialController::class, 'calcularAsalariado'])->name('asalariado.calcular');
+        Route::post('/asalariado/aplicar', [SeguridadSocialController::class, 'aplicarAsalariado'])->name('asalariado.aplicar');
+
+        // RF-035: pagos por PILA, cada uno con su gasto (RN-035.3)
+        Route::get('/pagos', [PagoSeguridadSocialController::class, 'index'])->name('pagos.index');
+        Route::post('/pagos', [PagoSeguridadSocialController::class, 'store'])->name('pagos.store');
+        Route::get('/pagos/{id}', [PagoSeguridadSocialController::class, 'show'])->name('pagos.show');
+        Route::put('/pagos/{id}', [PagoSeguridadSocialController::class, 'update'])->name('pagos.update');
+        Route::delete('/pagos/{id}', [PagoSeguridadSocialController::class, 'destroy'])->name('pagos.destroy');
+        // RN-035.1: soporte del pago, con las reglas de RF-030
+        Route::post('/pagos/{id}/soporte', [PagoSeguridadSocialController::class, 'subirSoporte'])->name('pagos.soporte.store');
+        Route::delete('/pagos/{id}/soporte', [PagoSeguridadSocialController::class, 'eliminarSoporte'])->name('pagos.soporte.destroy');
+        // RN-030.3: descarga solo con enlace firmado de 5 minutos
+        Route::get('/pagos/{id}/soporte/descarga', [PagoSeguridadSocialController::class, 'descargarSoporte'])->middleware('signed')->name('pagos.soporte.descarga');
+        // RN-035.4: aportes de salud y pensión del año (ingreso no constitutivo)
+        Route::get('/resumen-anual', [PagoSeguridadSocialController::class, 'resumenAnual'])->name('resumen-anual');
+
+        // RF-036: fechas límite de pago y alertas activas
+        Route::get('/alertas', [SeguridadSocialController::class, 'alertas'])->name('alertas');
+    });
+
+    /*
+    | MOD-06 — Inversiones y rentabilidad (característica D)
+    |
+    | Los {id} se restringen a UUID para que las rutas fijas del módulo
+    | (portafolio, simulaciones) no se confundan con una inversión.
+    */
+    Route::prefix('inversiones')->name('inversiones.')->group(function () {
+        // RF-041: consolidado del portafolio a una fecha de corte
+        Route::get('/portafolio', [RentabilidadController::class, 'portafolio'])->name('portafolio');
+
+        // RF-042: simulación de hasta 4 alternativas; se guardan hasta 20 (RN-042.4)
+        Route::post('/simulaciones/calcular', [SimulacionInversionController::class, 'calcular'])->name('simulaciones.calcular');
+        Route::get('/simulaciones', [SimulacionInversionController::class, 'index'])->name('simulaciones.index');
+        Route::post('/simulaciones', [SimulacionInversionController::class, 'store'])->name('simulaciones.store');
+        Route::get('/simulaciones/{id}', [SimulacionInversionController::class, 'show'])->whereUuid('id')->name('simulaciones.show');
+        Route::put('/simulaciones/{id}', [SimulacionInversionController::class, 'update'])->whereUuid('id')->name('simulaciones.update');
+        Route::delete('/simulaciones/{id}', [SimulacionInversionController::class, 'destroy'])->whereUuid('id')->name('simulaciones.destroy');
+
+        // RF-037: registro de inversiones
+        Route::get('/', [InversionController::class, 'index'])->name('index');
+        Route::post('/', [InversionController::class, 'store'])->name('store');
+        Route::get('/{id}', [InversionController::class, 'show'])->whereUuid('id')->name('show');
+        Route::put('/{id}', [InversionController::class, 'update'])->whereUuid('id')->name('update');
+        Route::delete('/{id}', [InversionController::class, 'destroy'])->whereUuid('id')->name('destroy');
+
+        // RF-038: movimientos; un rendimiento crea su ingreso (RN-038.4)
+        Route::get('/{id}/movimientos', [MovimientoInversionController::class, 'index'])->whereUuid('id')->name('movimientos.index');
+        Route::post('/{id}/movimientos', [MovimientoInversionController::class, 'store'])->whereUuid('id')->name('movimientos.store');
+        Route::delete('/{id}/movimientos/{movimientoId}', [MovimientoInversionController::class, 'destroy'])->whereUuid(['id', 'movimientoId'])->name('movimientos.destroy');
+
+        // RF-039: valor de mercado e histórico; valor causado de CDT y bonos (RN-039.2)
+        Route::get('/{id}/valoraciones', [ValoracionInversionController::class, 'index'])->whereUuid('id')->name('valoraciones.index');
+        Route::post('/{id}/valoraciones', [ValoracionInversionController::class, 'store'])->whereUuid('id')->name('valoraciones.store');
+        Route::delete('/{id}/valoraciones/{valoracionId}', [ValoracionInversionController::class, 'destroy'])->whereUuid(['id', 'valoracionId'])->name('valoraciones.destroy');
+        Route::get('/{id}/valor-causado', [ValoracionInversionController::class, 'valorCausado'])->whereUuid('id')->name('valor-causado');
+
+        // RF-040: rentabilidad a una fecha de corte
+        Route::get('/{id}/rentabilidad', [RentabilidadController::class, 'inversion'])->whereUuid('id')->name('rentabilidad');
+    });
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)
@@ -153,6 +245,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/calendario', [CalendarioTributarioController::class, 'index'])->name('calendario.index');
     Route::post('/calendario/importar', [CalendarioTributarioController::class, 'importarCsv'])->name('calendario.importar');
     Route::get('/calendario/consultar-nit', [CalendarioTributarioController::class, 'consultarPorNit'])->name('calendario.consultar');
+
+    // RF-017: TRM — histórico, registro o corrección manual (RN-017.3) y sincronización (RN-017.1)
+    Route::get('/trm', [TrmController::class, 'index'])->name('trm.index');
+    Route::post('/trm', [TrmController::class, 'store'])->name('trm.store');
+    Route::post('/trm/sincronizar', [TrmController::class, 'sincronizar'])->name('trm.sincronizar');
 
     // RF-018: Gestión de cuentas de usuario
     Route::get('/usuarios', [AdminUsuariosController::class, 'index'])->name('usuarios.index');

@@ -10,7 +10,36 @@
       "item": [
         {
           "name": "00.1 GET /login · obtener token CSRF",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                  "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                  "// de cuenta. Se cierra esa sesión primero.",
+                  "const base = pm.variables.get('base_url');",
+                  "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                  "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                  "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                  "    // destino del login (url.intended).",
+                  "    const html = !err && res.code === 200 ? res.text() : '';",
+                  "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "    if (!m) { return; }",
+                  "    pm.sendRequest({",
+                  "        url: base + '/logout',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                  "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                  "    }, function () {});",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -1213,6 +1242,69 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"categoria_id\": \"{{cat_vivienda_id}}\",\n  \"subcategoria_id\": \"{{sub_arriendo_id}}\",\n  \"fecha\": \"2026-03-05\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"100000.00\",\n  \"medio_pago\": \"EFECTIVO\",\n  \"comercio_beneficiario\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.8 POST /gastos · USD sin tasa usa la TRM (CA-017.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CA-017.1 · registro en USD sin tasa aceptado', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const d = pm.response.json().data;",
+                  "const tasa = Number(d.tasa_cambio_usada);",
+                  "",
+                  "pm.test('CA-017.1 · la tasa usada es la TRM de la fecha, no 1', function () {",
+                  "    pm.expect(d.moneda.trim()).to.eql('USD');",
+                  "    pm.expect(tasa).to.be.above(1);",
+                  "});",
+                  "",
+                  "pm.test('CA-017.1 · el valor en COP queda guardado con la TRM usada', function () {",
+                  "    pm.expect(d.monto_cop).to.eql((120 * tasa).toFixed(2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{cat_alimentacion_id}}\",\n  \"subcategoria_id\": \"{{sub_restaurantes_id}}\",\n  \"fecha\": \"2026-03-06\",\n  \"moneda\": \"USD\",\n  \"monto_original\": \"120.00\",\n  \"medio_pago\": \"TARJETA_DEBITO\",\n  \"descripcion\": \"Verificación CA-017.1\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
