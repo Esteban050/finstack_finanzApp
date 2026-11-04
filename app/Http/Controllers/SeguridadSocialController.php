@@ -255,6 +255,8 @@ class SeguridadSocialController extends Controller
         });
 
         if ($request->expectsJson()) {
+            $request->session()->flash('calculo_reciente', array_merge(['id' => $liquidacion->id, 'periodo' => $liquidacion->periodo], $calculo));
+            $request->session()->flash('status', $anterior === null ? 'Liquidación estimada calculada y guardada.' : 'Liquidación estimada recalculada.');
             return response()->json([
                 'mensaje' => $anterior === null
                     ? 'Liquidación estimada calculada y guardada.'

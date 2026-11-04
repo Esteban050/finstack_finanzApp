@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatMoney, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+import { formatMoney, formatQuantity, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+
+test('unidades y precios conservan ocho decimales con separadores de Colombia',()=>{
+    assert.equal(formatQuantity('0.00000001'),'0,00000001');
+    assert.equal(formatQuantity('100000000.00000001'),'100.000.000,00000001');
+    assert.equal(formatQuantity('200000000'),'200.000.000');
+});
 
 test('formato COP sin pérdida de precisión', () => {
     assert.equal(formatMoney('1234567'), '$\u00a01.234.567');

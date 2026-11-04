@@ -102,7 +102,7 @@ class MovimientoInversionController extends Controller
 
             if ($valoracion !== null && bccomp($monto, (string) $valoracion->valor, 2) === 1) {
                 throw ValidationException::withMessages([
-                    'monto' => "El retiro no puede superar el último valor de mercado registrado ({$inversion->moneda} {$valoracion->valor} del {$valoracion->fecha->format('d/m/Y')}) (RN-038.3).",
+                    'monto' => 'El retiro no puede superar el último valor de mercado registrado.',
                 ]);
             }
         }
@@ -146,7 +146,7 @@ class MovimientoInversionController extends Controller
                     'monto' => $retencion,
                     'tasa_cambio_usada' => $tasa,
                     'monto_cop' => IngresoService::convertirACop($retencion, $tasa),
-                    'nota' => 'Retención en la fuente del rendimiento (RN-038.4)',
+                    'nota' => 'Retención en la fuente del rendimiento',
                     'ingreso_id' => $ingreso->id,
                 ]);
             }
@@ -205,7 +205,7 @@ class MovimientoInversionController extends Controller
         }
 
         return redirect()->route('inversiones.show', $inversion->id)
-            ->with('status', 'Movimiento registrado con éxito.' . ($ingreso !== null ? ' Se creó automáticamente el ingreso en Rentas de Capital (RN-038.4).' : ''));
+            ->with('status', 'Movimiento registrado con éxito.' . ($ingreso !== null ? ' Se creó automáticamente el ingreso en rentas de capital.' : ''));
     }
 
     /**
@@ -332,7 +332,7 @@ class MovimientoInversionController extends Controller
             'fecha_recepcion' => $fecha,
             'origen' => 'MANUAL',
             'estado' => 'CONFIRMADO',
-            'descripcion' => "Rendimiento de la inversión «{$inversion->nombre}» (RN-038.4)",
+            'descripcion' => "Rendimiento de la inversión «{$inversion->nombre}»",
         ]));
 
         BitacoraService::registrar(

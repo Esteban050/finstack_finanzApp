@@ -54,6 +54,7 @@ function route(string $name, string $id = ''): string {
     return match ($name) {
         'dashboard' => '/dashboard', 'ingresos.index' => '/ingresos',
         'gastos.index' => '/gastos', 'gastos.categorias.index' => '/gastos/categorias',
+        'seguridad-social.index' => '/seguridad-social', 'inversiones.index' => '/inversiones',
         'logout' => '/logout', 'politica.mostrar' => '/politica-datos', 'ingresos.fuentes.index' => '/ingresos/fuentes',
         'ingresos.confirmar' => '/ingresos/'.$id.'/confirmar', 'ingresos.edit' => '/ingresos/'.$id.'/editar', 'ingresos.destroy' => '/ingresos/'.$id,
         default => throw new RuntimeException('Ruta de fixture no declarada: '.$name),

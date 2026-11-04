@@ -8,6 +8,7 @@ import { mountIncome } from './income/index.js';
 import { mountMovements } from './ui/movements.js';
 import { mountExpenses } from './expenses/index.js';
 import { mountAuth } from './auth/index.js';
+import { mountFinance } from './finance/index.js';
 
 document.querySelectorAll('[data-icon-name]').forEach((host) => {
     const svg = renderIcon(host.dataset.iconName, {
@@ -28,3 +29,4 @@ mountIncome();
 mountMovements();
 mountExpenses();
 mountAuth();
+mountFinance();

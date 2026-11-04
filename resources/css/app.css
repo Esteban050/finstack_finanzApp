@@ -4,6 +4,7 @@
 @import './income.css';
 @import './expenses.css';
 @import './auth.css';
+@import './finance.css';
 
 @tailwind base;
 @tailwind components;

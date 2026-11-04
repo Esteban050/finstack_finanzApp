@@ -8,7 +8,6 @@
 // TODO(contrato: auth.verify-email y auth.confirm-password no tienen ruta de vista activa: la verificación redirige al login y la confirmación no está registrada.)
 // TODO(contrato: RN-027: no existe operación de reorganización/reparentado ni campo de orden; no ofrecer arrastre que no se guarde.)
 // TODO(contrato: RN-025: subcategoria_id sigue nullable en registro/recurrencia del backend; el front exige subcategoría activa y bloquea categorías sin hijas.)
-// TODO(contrato: RN-025: no hay cotización por fecha; ENABLE_FOREIGN_CURRENCY permanece false sin tasas simuladas.)
 // TODO(contrato: RN-028: solo activa y eliminación de plantilla, sin estado terminal separado; falta paginación de plantillas y recordatorios de RF-058.)
 // TODO(contrato: un historial cronológico combinado necesita consulta, filtros, paginación y totales conjuntos; por ahora la página presenta los listados reales en pestañas.)
 // TODO(contrato: derivar también en servidor ultimos_digitos_nit desde numero_documento; la vista ya lo envía automáticamente sin campo editable.)
@@ -24,6 +23,12 @@ export function safeMessage(value, fallback = 'No fue posible completar la opera
 export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 export function validResourcePath(path) {
     const parts = path.split('/').filter(Boolean);
+    if (parts[0] === 'inversiones') {
+        if (parts.length < 2 || parts[1] === 'portafolio') return true;
+        if (parts[1] === 'simulaciones') return parts.length < 3 || parts[2] === 'calcular' || isUuid(parts[2]);
+        return isUuid(parts[1]) && (parts.length < 4 || isUuid(parts[3]));
+    }
+    if (parts[0] === 'seguridad-social' && parts[1] === 'pagos' && parts[2]) return isUuid(parts[2]);
     if (!['ingresos','gastos'].includes(parts[0]) || parts.length < 2) return true;
     if (['fuentes','categorias','recurrentes'].includes(parts[1])) return parts.length < 3 || isUuid(parts[2]);
     return ['crear', ...(parts[0] === 'gastos' ? ['indicadores','etiquetas','edicion-masiva'] : [])].includes(parts[1]) || isUuid(parts[1]);
@@ -33,14 +38,26 @@ export function contractPayload(path, method, values) {
     const income = ['fuente_id','fecha_recepcion','monto_original','moneda','retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
     const expense = ['fecha','monto_original','moneda','categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
     let allowed;
-    if (/\/(toggle|confirmar)$/.test(path) && !path.startsWith('/gastos/')) allowed = [];
+    if (path.startsWith('/seguridad-social')) {
+        allowed = path.includes('/pagos') ? (path.endsWith('/soporte') ? ['soporte'] : ['periodo','fecha_pago','numero_planilla','es_correccion','salud','pension','fsp','arl','intereses_mora','medio_pago','soporte']) : path.endsWith('/aplicar') ? ['ingreso_id'] : path.includes('/asalariado') ? ['salario','retencion_fuente','periodo'] : ['periodo','ingreso_base','es_voluntario'];
+    }
+    else if (path.startsWith('/inversiones')) {
+        allowed = path.endsWith('/rentabilidad') ? ['fecha_corte'] : path.includes('/simulaciones') ? ['nombre','alternativas'] : path.includes('/movimientos') ? ['tipo','fecha','monto','unidades','retencion','nota'] : path.includes('/valoraciones') ? ['fecha','valor','precio_unitario','usar_valor_causado'] : method === 'PUT' ? ['nombre','entidad','nivel_riesgo','simbolo','fecha_vencimiento','rentabilidad_esperada_porc','plazo_meses_esperado'] : ['nombre','tipo','entidad','moneda','fecha_apertura','monto_inicial','nivel_riesgo','tasa_ea','plazo_dias','periodicidad_intereses','fecha_vencimiento','simbolo','unidades','precio_unitario_compra','rentabilidad_esperada_porc','plazo_meses_esperado'];
+    }
+    else if (/\/(toggle|confirmar)$/.test(path) && !path.startsWith('/gastos/')) allowed = [];
     else if (method === 'DELETE' || /\/toggle$/.test(path)) allowed = [];
     else if (path.startsWith('/ingresos/fuentes')) allowed = ['nombre','tipo_fuente_id','clasificacion_tributaria','pagador_entidad'];
     else if (path.startsWith('/gastos/categorias')) allowed = path.endsWith('/fusionar') ? ['destino_id'] : ['nombre','categoria_padre_id','naturaleza_sugerida','necesidad_sugerida','icono','color_hex'];
     else if (path.startsWith('/ingresos')) allowed = path.includes('/recurrentes') ? [...income.filter(k=>k!=='fecha_recepcion'),...recurring] : income;
     else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
     else return values;
-    return Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?'COP':values[k]]));
+    if (method === 'DELETE') allowed = [];
+    const result = Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?'COP':values[k]]));
+    if (Array.isArray(result.alternativas)) {
+        const keys = ['nombre','monto_inicial','aporte_periodico','periodicidad_aporte','tasa_ea','plazo_meses','retencion_porc','comision_anual_porc'];
+        result.alternativas = result.alternativas.map(row => Object.fromEntries(keys.filter(key => Object.hasOwn(row,key)).map(key=>[key,row[key]])));
+    }
+    return result;
 }
 export function showRequestError(host, error) {
     if (!host) return;
@@ -53,14 +70,21 @@ export function showRequestError(host, error) {
 export async function request(url, { method = 'GET', data, signal } = {}) {
     const target = new URL(url, window.location.origin);
     if (!validResourcePath(target.pathname)) throw new ApiError(404, 'Recurso no encontrado');
-    if (data) data = contractPayload(target.pathname, method.toUpperCase(), data);
+    const multipart = typeof FormData !== 'undefined' && data instanceof FormData;
+    if (data) {
+        if (multipart) {
+            const permitted = contractPayload(target.pathname, method.toUpperCase(), Object.fromEntries(data));
+            data = new FormData();
+            for (const [key,value] of Object.entries(permitted)) data.append(key,value);
+        } else data = contractPayload(target.pathname, method.toUpperCase(), data);
+    }
     if (target.origin !== window.location.origin) throw new ApiError(0, 'No fue posible completar la operación.');
     let response;
     try {
         response = await fetch(target, {
             method, signal, credentials: 'same-origin',
-            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', ...(data ? { 'Content-Type': 'application/json' } : {}) },
-            ...(data ? { body: JSON.stringify(data) } : {}),
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', ...(data && !multipart ? { 'Content-Type': 'application/json' } : {}) },
+            ...(data ? { body: multipart ? data : JSON.stringify(data) } : {}),
         });
     } catch (error) {
         if (error.name === 'AbortError') throw error;
