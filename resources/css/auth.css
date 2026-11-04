@@ -8,7 +8,7 @@
 .auth-card > .auth-status { color: var(--ui-text); }
 .auth-brand-panel { display: grid; place-items: center; padding: clamp(2rem, 6vw, 7rem); border-left: 1px solid var(--ui-border); background-color: var(--ui-raised); }
 .auth-brand-panel > div { width: min(100%, 440px); }
-.auth-brand-panel img { width: 128px; height: 128px; margin-bottom: 2rem; }
+.auth-brand-panel img { width: 128px; height: 128px; margin-bottom: 2rem; filter: var(--ui-brand-filter); }
 .auth-brand-panel .auth-brand-name { font-size: clamp(2rem, 4vw, 3rem); font-weight: 650; letter-spacing: -.035em; margin: 0 0 1rem; }
 .auth-brand-panel p { font-size: 1.5rem; line-height: 1.5; color: var(--ui-text); }
 .auth-two-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }

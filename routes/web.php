@@ -25,7 +25,12 @@ use App\Http\Controllers\ValoracionInversionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    $usuario = auth()->user();
+    $destino = $usuario
+        ? ($usuario->esAdmin() ? 'admin.dashboard' : 'dashboard')
+        : 'login';
+
+    return redirect()->route($destino)->header('Cache-Control', 'no-store, private');
 });
 
 // Rutas de Usuario Autenticado

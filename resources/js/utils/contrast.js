@@ -26,11 +26,13 @@ export function maximumKitBackdrop(base, glowSource, gridSource, glowOpacity, gr
 export function contrastCases(resolve, backdropColor = null) {
     const cases = [];
     for (const background of ['ui-bg', 'ui-surface', 'ui-raised', ...(backdropColor ? ['backdrop'] : [])]) {
-        for (const foreground of ['ui-text', 'ui-muted', 'accent', 'ui-danger', 'ui-warning']) cases.push({ foreground, background, minimum: 4.5 });
+        for (const foreground of ['ui-text', 'ui-muted', 'accent', 'ui-success', 'ui-danger', 'ui-warning']) cases.push({ foreground, background, minimum: 4.5 });
         cases.push({ foreground: 'ui-border-strong', background, minimum: 3 });
         cases.push({ foreground: 'accent', background, minimum: 3, usage: 'foco' });
     }
     cases.push({ foreground: 'accent-contrast', background: 'accent', minimum: 4.5 });
-    cases.push({ foreground: 'ui-bg', background: 'ui-danger', minimum: 4.5 });
+    cases.push({ foreground: 'accent-secondary-contrast', background: 'accent-secondary', minimum: 4.5 });
+    cases.push({ foreground: 'ui-border-strong', background: 'accent-secondary', minimum: 3 });
+    cases.push({ foreground: 'ui-danger-contrast', background: 'ui-danger', minimum: 4.5 });
     return cases.map((item) => ({ ...item, ratio: contrastRatio(resolve(item.foreground), item.background === 'backdrop' ? backdropColor : resolve(item.background)) }));
 }

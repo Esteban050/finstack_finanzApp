@@ -50,6 +50,12 @@ export function deductionMode(amount, gross) {
 }
 export const percentageFrom = (amount, total) => decimal(total).isZero() ? '0' : decimal(amount).div(decimal(total)).times('100').toFixed(24);
 
+export function formatQuantity(amount) {
+    const [whole, fraction] = decimal(amount).toFixed(8).split('.');
+    const tail = fraction.replace(/0+$/, '');
+    return whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (tail ? ',' + tail : '');
+}
+
 export function normalizeMoneyInput(value) {
     return typeof value === 'string' ? value.replace(/[$\s\u00a0\u202f]/g, '') : value;
 }

@@ -158,7 +158,7 @@ class InversionController extends Controller
                 'tasa_cambio_usada' => $tasa,
                 'monto_cop' => $montoCop,
                 'unidades' => $conUnidades ? (string) $validated['unidades'] : null,
-                'nota' => 'Monto inicial (RN-037.4)',
+                'nota' => 'Aporte inicial de la inversión',
                 'es_inicial' => true,
             ]);
 

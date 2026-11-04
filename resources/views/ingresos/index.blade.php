@@ -3,6 +3,7 @@
 @section('content')
 <header class="income-page-header"><div><h1>Ingresos</h1><p>Movimientos y totales del conjunto filtrado, en pesos colombianos.</p></div><x-ui.button :href="route('ingresos.create')"><x-icon name="ui-mas" :size="18" />Registrar ingreso</x-ui.button></header>
 @include('ingresos.partials.authoritative-errors')
+<p class="ui-help">Los ingresos generados por rendimientos se gestionan desde <a href="{{ route('inversiones.index') }}">Inversiones</a>.</p>
 <x-ui.card>
 <details open><summary>Filtrar ingresos</summary>
 <form method="GET" action="{{ route('ingresos.index') }}" class="income-filters" data-income-filters novalidate>

@@ -13,15 +13,17 @@ import { moneyInputErrors } from './income/index.js';
 // Esta entrada solo es referenciada por el middleware de Vite en desarrollo.
 if (!import.meta.env.DEV) throw new Error('La guía de estilo es exclusiva de desarrollo.');
 
-const rootStyle = getComputedStyle(document.documentElement);
-const token = (name) => rootStyle.getPropertyValue('--' + name).trim();
+const token = (name) => getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
 const swatches = document.querySelector('[data-token-swatches]');
-for (const name of ['ui-bg', 'ui-surface', 'ui-raised', 'ui-text', 'ui-muted', 'accent', 'ui-border', 'ui-border-strong', 'ui-danger']) {
-    const item = document.createElement('div'); item.className = 'sg-swatch';
-    const color = document.createElement('span'); color.style.background = `var(--${name})`;
-    const label = document.createElement('code'); label.textContent = '--' + name;
-    const value = document.createElement('small'); value.textContent = token(name);
-    item.append(color, label, value); swatches.append(item);
+function renderTokenSwatches() {
+    swatches.replaceChildren();
+    for (const name of ['ui-bg', 'ui-surface', 'ui-raised', 'ui-text', 'ui-muted', 'accent', 'accent-contrast', 'accent-secondary', 'accent-secondary-contrast', 'ui-border', 'ui-border-strong', 'ui-success', 'ui-danger']) {
+        const item = document.createElement('div'); item.className = 'sg-swatch';
+        const color = document.createElement('span'); color.style.background = `var(--${name})`;
+        const label = document.createElement('code'); label.textContent = '--' + name;
+        const value = document.createElement('small'); value.textContent = token(name);
+        item.append(color, label, value); swatches.append(item);
+    }
 }
 for (const size of [1, 2, 3, 4, 6, 8, 12, 16]) {
     const item = document.createElement('div'); const bar = document.createElement('span');
@@ -30,22 +32,27 @@ for (const size of [1, 2, 3, 4, 6, 8, 12, 16]) {
     item.append(bar, label); document.querySelector('[data-spacing-swatches]').append(item);
 }
 
-const backdrop = document.querySelector('.ui-shell-backdrop');
-const backdropColor = maximumKitBackdrop(token('ui-bg'), glowSource, gridSource, Number(getComputedStyle(backdrop, '::before').opacity), Number(getComputedStyle(backdrop, '::after').opacity));
-const report = contrastCases(token, backdropColor);
-const reportTable = document.createElement('table'); reportTable.className = 'ui-table';
-const caption = document.createElement('caption'); caption.textContent = 'Contraste de los tokens reales. Texto: ≥4,5:1. Controles y foco: ≥3:1.'; reportTable.append(caption);
-const head = document.createElement('thead'); const headRow = document.createElement('tr');
-for (const text of ['Primer plano / fondo', 'Relación', 'Resultado']) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = text; headRow.append(th); }
-head.append(headRow); reportTable.append(head);
-const body = document.createElement('tbody');
-for (const item of report) {
-    const row = document.createElement('tr');
-    const values = [`${item.foreground} / ${item.background}${item.usage ? ' · ' + item.usage : ''}`, item.ratio.toFixed(2) + ':1', item.ratio >= item.minimum ? 'AA · Cumple' : 'No cumple'];
-    values.forEach((value, index) => { const cell = document.createElement('td'); cell.dataset.label = ['Combinación', 'Relación', 'Resultado'][index]; cell.textContent = value; row.append(cell); });
-    body.append(row);
+function renderContrastReport() {
+    const backdrop = document.querySelector('.ui-shell-backdrop');
+    const backdropColor = maximumKitBackdrop(token('ui-bg'), glowSource, gridSource, Number(getComputedStyle(backdrop, '::before').opacity), Number(getComputedStyle(backdrop, '::after').opacity));
+    const report = contrastCases(token, backdropColor);
+    const reportTable = document.createElement('table'); reportTable.className = 'ui-table';
+    const caption = document.createElement('caption'); caption.textContent = 'Contraste de los tokens reales. Texto: ≥4,5:1. Controles y foco: ≥3:1.'; reportTable.append(caption);
+    const head = document.createElement('thead'); const headRow = document.createElement('tr');
+    for (const text of ['Primer plano / fondo', 'Relación', 'Resultado']) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = text; headRow.append(th); }
+    head.append(headRow); reportTable.append(head);
+    const body = document.createElement('tbody');
+    for (const item of report) {
+        const row = document.createElement('tr');
+        const values = [`${item.foreground} / ${item.background}${item.usage ? ' · ' + item.usage : ''}`, item.ratio.toFixed(2) + ':1', item.ratio >= item.minimum ? 'AA · Cumple' : 'No cumple'];
+        values.forEach((value, index) => { const cell = document.createElement('td'); cell.dataset.label = ['Combinación', 'Relación', 'Resultado'][index]; cell.textContent = value; row.append(cell); });
+        body.append(row);
+    }
+    reportTable.append(body); document.querySelector('[data-contrast-report]').replaceChildren(reportTable);
 }
-reportTable.append(body); document.querySelector('[data-contrast-report]').append(reportTable);
+function renderThemeTokens() { renderTokenSwatches(); renderContrastReport(); }
+renderThemeTokens();
+new MutationObserver(renderThemeTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 function toast(message) {
     document.querySelector('[data-toast-message]').textContent = message;
@@ -62,6 +69,8 @@ document.querySelector('[data-show-field-errors]').addEventListener('click', (ev
 document.addEventListener('click', (event) => {
     const link = event.target.closest('a[href^="/"]');
     if (!link) return;
+    const target = new URL(link.href, location.href);
+    if (target.origin === location.origin && target.pathname === location.pathname && target.hash) return;
     event.preventDefault();
     toast('Enlace de ejemplo del AppShell. Estás en la guía de desarrollo.');
 });

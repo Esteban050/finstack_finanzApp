@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow"><title>FinanzApp · Guía de estilo</title>
+    <x-ui.theme-init />
     <script type="module" src="/resources/js/dev-styleguide.js"></script>
 </head>
 <body class="scfp-theme" data-styleguide>
@@ -23,7 +24,7 @@
             <div><p class="sg-eyebrow">Título · 30–40 px</p><p class="sg-type-title">Una jerarquía clara</p><p>Texto base de 16 px, interlineado generoso y líneas de longitud contenida.</p><p class="ui-help">Metadatos de 13 px. Etiquetas y controles de 14–16 px.</p></div>
         </div>
         <h3>Escala de espacio</h3><div class="sg-spacing" data-spacing-swatches></div>
-        <p class="ui-help">Radios de 8 y 14 px. Las sombras se reservan para mensajes flotantes y diálogos.</p>
+        <p class="ui-help">Temas Naranja neutro y Naranja nocturno. Radios de 12 px. Las sombras se reservan para mensajes flotantes y diálogos.</p>
         <details class="sg-contrast"><summary>Contraste medido con los tokens actuales</summary><div data-contrast-report></div></details>
     </section>
 

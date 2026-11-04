@@ -1,0 +1,10 @@
+@props(['payment' => null, 'prefix' => 'pila'])
+<div class="income-two-fields">
+<x-ui.field name="periodo" :id="$prefix.'-periodo'" label="Periodo cotizado" :required="true"><input id="{{ $prefix }}-periodo" name="periodo" type="month" required value="{{ old('periodo', $payment['periodo'] ?? now('America/Bogota')->startOfMonth()->subMonth()->format('Y-m')) }}"></x-ui.field>
+<x-ui.field name="fecha_pago" :id="$prefix.'-fecha'" label="Fecha de pago" :required="true"><input id="{{ $prefix }}-fecha" name="fecha_pago" type="date" data-date-no-future required value="{{ old('fecha_pago', substr($payment['fecha_pago'] ?? now('America/Bogota')->format('Y-m-d'),0,10)) }}"></x-ui.field>
+<x-ui.field name="numero_planilla" :id="$prefix.'-planilla'" label="Número de planilla" help="Opcional. Hasta 20 caracteres."><input id="{{ $prefix }}-planilla" name="numero_planilla" maxlength="20" value="{{ old('numero_planilla',$payment['numero_planilla'] ?? '') }}"></x-ui.field>
+@php($paymentLabels = require resource_path('views/components/expense/labels.php'))
+<x-ui.field name="medio_pago" :id="$prefix.'-medio'" label="Medio de pago"><select id="{{ $prefix }}-medio" name="medio_pago">@foreach(\App\Models\Gasto::MEDIOS_PAGO as $code)<option value="{{ $code }}" @selected(old('medio_pago', $payment['gasto']['medio_pago'] ?? 'TRANSFERENCIA') === $code)>{{ $paymentLabels[$code] ?? $code }}</option>@endforeach</select></x-ui.field>
+</div>
+<label class="ui-check"><input type="checkbox" name="es_correccion" value="1" @checked((string) old('es_correccion', $payment['es_correccion'] ?? false) === '1')> Planilla de corrección</label><p class="ui-help">La corrección registra la diferencia frente al pago original del periodo.</p>
+<h3>Valores pagados por concepto</h3><div class="income-two-fields">@foreach(['salud'=>'Salud','pension'=>'Pensión','fsp'=>'Fondo de Solidaridad Pensional','arl'=>'Riesgos laborales','intereses_mora'=>'Intereses de mora'] as $key=>$label)<x-ui.money-input :name="$key" :id="$prefix.'-'.$key" :label="$label" :allow-zero="true" :required="in_array($key,['salud','pension'],true)" :value="(string) ($payment[$key] ?? '0')" />@endforeach</div>
