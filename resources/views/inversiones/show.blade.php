@@ -58,7 +58,7 @@
         'valuations' => $valoracionesCronologicas->map(fn($v)=>['date'=>$v->fecha->format('Y-m-d'),'value'=>(string)$v->valor])->values()
     ];
 @endphp
-<x-ui.card title="Seguimiento diario y proyección" data-projection-view>
+<x-ui.card title="Seguimiento diario y proyección" class="finance-projection" data-projection-view>
 <p class="ui-help">El seguimiento usa tus movimientos y la última valoración registrada de cada día. Los días sin valoración no representan una cotización nueva. La trayectoria hacia la meta es una referencia lineal, no una predicción.</p>
 @if($inversion->rentabilidad_esperada_porc === null)<p class="ui-notice">Define una meta en «Editar datos descriptivos» para comparar tu avance.</p>@endif
 <x-ui.field name="projection_end" id="projection-end" label="Comparar hasta" help="Puedes elegir una fecha pasada o futura, hasta 30 años desde la apertura."><input id="projection-end" type="date" data-projection-end></x-ui.field><x-ui.button type="button" variant="secondary" data-update-projection>Actualizar comparación</x-ui.button><p data-projection-error class="ui-error" role="alert" hidden></p>

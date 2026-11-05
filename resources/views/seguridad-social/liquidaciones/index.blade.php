@@ -3,7 +3,7 @@
 @section('content')
 <div class="finance-page">
 <header class="income-page-header"><div><h1>Liquidaciones del independiente</h1><p>Consulta el ingreso base, el IBC y el desglose de aportes mensuales.</p></div></header>
-<div class="finance-grid">
+<div class="finance-grid finance-grid--forms">
 <x-ui.card title="Ingresos registrados"><form method="POST" action="{{ route('seguridad-social.liquidaciones.store') }}" data-finance-form="liquidation" data-finance-result="liquidation-result">@csrf
 <p class="ui-help">Se usan los ingresos confirmados de rentas de trabajo no asalariado del periodo seleccionado.</p>
 <x-ui.field name="periodo" label="Periodo a liquidar" :required="true"><input id="periodo" name="periodo" type="month" required value="{{ old('periodo', now('America/Bogota')->format('Y-m')) }}"></x-ui.field>
