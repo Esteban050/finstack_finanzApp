@@ -23,26 +23,28 @@ export function safeMessage(value, fallback = 'No fue posible completar la opera
 export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 export function validResourcePath(path) {
     const parts = path.split('/').filter(Boolean);
+    if (parts[0] === 'tasas-cambio') return ['trm', 'convertir'].includes(parts[1]);
     if (parts[0] === 'inversiones') {
         if (parts.length < 2 || parts[1] === 'portafolio') return true;
         if (parts[1] === 'simulaciones') return parts.length < 3 || parts[2] === 'calcular' || isUuid(parts[2]);
         return isUuid(parts[1]) && (parts.length < 4 || isUuid(parts[3]));
     }
-    if (parts[0] === 'seguridad-social' && parts[1] === 'pagos' && parts[2]) return isUuid(parts[2]);
+    if (parts[0] === 'seguridad-social' && parts[1] === 'pagos' && parts[2]) return parts[2] === 'ingresos-periodo' || isUuid(parts[2]);
     if (!['ingresos','gastos'].includes(parts[0]) || parts.length < 2) return true;
     if (['fuentes','categorias','recurrentes'].includes(parts[1])) return parts.length < 3 || isUuid(parts[2]);
     return ['crear', ...(parts[0] === 'gastos' ? ['indicadores','etiquetas','edicion-masiva'] : [])].includes(parts[1]) || isUuid(parts[1]);
 }
 export function contractPayload(path, method, values) {
+    const isUsd = values?.moneda === 'USD';
     const recurring = ['periodicidad','fecha_inicio','fecha_fin','max_ocurrencias','modo_confirmacion'];
-    const income = ['fuente_id','fecha_recepcion','monto_original','moneda','retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
-    const expense = ['fecha','monto_original','moneda','categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
+    const income = ['fuente_id','fecha_recepcion','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
+    const expense = ['fecha','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
     let allowed;
     if (path.startsWith('/seguridad-social')) {
         allowed = path.includes('/pagos') ? (path.endsWith('/soporte') ? ['soporte'] : ['periodo','fecha_pago','numero_planilla','es_correccion','salud','pension','fsp','arl','intereses_mora','medio_pago','soporte']) : path.endsWith('/aplicar') ? ['ingreso_id'] : path.includes('/asalariado') ? ['salario','retencion_fuente','periodo'] : ['periodo','ingreso_base','es_voluntario'];
     }
     else if (path.startsWith('/inversiones')) {
-        allowed = path.endsWith('/rentabilidad') ? ['fecha_corte'] : path.includes('/simulaciones') ? ['nombre','alternativas'] : path.includes('/movimientos') ? ['tipo','fecha','monto','unidades','retencion','nota'] : path.includes('/valoraciones') ? ['fecha','valor','precio_unitario','usar_valor_causado'] : method === 'PUT' ? ['nombre','entidad','nivel_riesgo','simbolo','fecha_vencimiento','rentabilidad_esperada_porc','plazo_meses_esperado'] : ['nombre','tipo','entidad','moneda','fecha_apertura','monto_inicial','nivel_riesgo','tasa_ea','plazo_dias','periodicidad_intereses','fecha_vencimiento','simbolo','unidades','precio_unitario_compra','rentabilidad_esperada_porc','plazo_meses_esperado'];
+        allowed = path.endsWith('/rentabilidad') ? ['fecha_corte'] : path.includes('/simulaciones') ? ['nombre','alternativas'] : path.includes('/movimientos') ? ['tipo','fecha','monto','unidades','retencion','nota'] : path.includes('/valoraciones') ? ['fecha','valor','precio_unitario','usar_valor_causado'] : method === 'PUT' ? ['nombre','entidad','nivel_riesgo','simbolo','fecha_vencimiento','rentabilidad_esperada_porc','plazo_meses_esperado'] : ['nombre','tipo','entidad','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'fecha_apertura','monto_inicial','nivel_riesgo','tasa_ea','plazo_dias','periodicidad_intereses','fecha_vencimiento','simbolo','unidades','precio_unitario_compra','rentabilidad_esperada_porc','plazo_meses_esperado'];
     }
     else if (/\/(toggle|confirmar)$/.test(path) && !path.startsWith('/gastos/')) allowed = [];
     else if (method === 'DELETE' || /\/toggle$/.test(path)) allowed = [];
@@ -52,7 +54,7 @@ export function contractPayload(path, method, values) {
     else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
     else return values;
     if (method === 'DELETE') allowed = [];
-    const result = Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?'COP':values[k]]));
+    const result = Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?(['COP','USD'].includes(values[k])?values[k]:'COP'):values[k]]));
     if (Array.isArray(result.alternativas)) {
         const keys = ['nombre','monto_inicial','aporte_periodico','periodicidad_aporte','tasa_ea','plazo_meses','retencion_porc','comision_anual_porc'];
         result.alternativas = result.alternativas.map(row => Object.fromEntries(keys.filter(key => Object.hasOwn(row,key)).map(key=>[key,row[key]])));

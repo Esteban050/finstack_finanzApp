@@ -6,8 +6,8 @@
 <x-ui.module-status />
 @if($esDobleObligacion)<p class="ui-notice">Tienes ingresos de salario y de trabajo independiente. Consulta por separado los aportes de cada actividad.</p>@elseif($esVoluntario)<p class="ui-notice">Puedes simular una cotización voluntaria según tu perfil.</p>@endif
 <div class="finance-grid">
-<x-ui.card title="Liquidación del independiente"><p>Calcula con tus ingresos registrados o simula con un monto manual.</p><x-ui.button :href="route('seguridad-social.liquidaciones.index')" variant="secondary">Consultar liquidaciones</x-ui.button></x-ui.card>
-<x-ui.card title="Aportes del asalariado"><p>Consulta el desglose de descuentos y aplica los aportes a un ingreso de salario.</p><x-ui.button :href="route('seguridad-social.asalariado.index')" variant="secondary">Calcular aportes</x-ui.button></x-ui.card>
+<x-ui.card title="Liquidación del independiente"><p class="finance-card-description">Calcula con tus ingresos registrados o simula con un monto manual.</p><x-ui.button :href="route('seguridad-social.liquidaciones.index')" variant="secondary">Consultar liquidaciones</x-ui.button></x-ui.card>
+<x-ui.card title="Aportes del asalariado"><p class="finance-card-description">Consulta el desglose de descuentos y aplica los aportes a un ingreso de salario.</p><x-ui.button :href="route('seguridad-social.asalariado.index')" variant="secondary">Calcular aportes</x-ui.button></x-ui.card>
 </div>
 <x-ui.card title="Fechas límite de pago PILA">
 @if(!$hayCalendario)<p role="status">No hay calendario disponible para esta vigencia.</p>

@@ -83,6 +83,12 @@ class MovimientoInversionController extends Controller
         }
 
         $tipo = $validated['tipo'];
+
+        if (! $inversion->permiteMovimiento($tipo)) {
+            throw ValidationException::withMessages([
+                'tipo' => "La inversión de tipo «{$inversion->tipo}» no admite movimientos de «{$tipo}». En activos como CDT o títulos a plazo fijo, el capital permanece congelado hasta su vencimiento.",
+            ]);
+        }
         $monto = (string) $validated['monto'];
         $fecha = $validated['fecha'];
 
@@ -176,6 +182,11 @@ class MovimientoInversionController extends Controller
                     justificacion: 'RN-038.3: liquidación total; la inversión queda Liquidada con valor actual 0.',
                     usuarioId: Auth::id()
                 );
+            }
+
+            // H-09: Sincronizar automáticamente la valoración de mercado tras Aporte o Retiro parcial
+            if (in_array($tipo, ['APORTE', 'RETIRO_PARCIAL'], true)) {
+                InversionService::sincronizarValoracionTrasMovimiento($inversion, $movimiento);
             }
 
             BitacoraService::registrar(
@@ -287,14 +298,19 @@ class MovimientoInversionController extends Controller
             }
 
             $anterior = $movimiento->toArray();
+            $tipoEliminado = $movimiento->tipo;
             $movimiento->delete();
+
+            if (in_array($tipoEliminado, ['APORTE', 'RETIRO_PARCIAL'], true)) {
+                InversionService::reconciliarValoraciones($inversion);
+            }
 
             BitacoraService::registrar(
                 accion: 'ELIMINAR_MOVIMIENTO_INVERSION',
                 entidadAfectada: 'movimientos_inversion',
                 entidadId: $movimiento->id,
                 valorAnterior: $anterior,
-                justificacion: "RNG-07: eliminación del movimiento {$movimiento->tipo} de la inversión {$inversion->id}.",
+                justificacion: "RNG-07: eliminación del movimiento {$tipoEliminado} de la inversión {$inversion->id}.",
                 usuarioId: Auth::id()
             );
         });
@@ -311,20 +327,30 @@ class MovimientoInversionController extends Controller
     }
 
     /**
-     * RN-038.4 / CA-038.1: ingreso de "Rentas de capital" por el rendimiento,
-     * con la retención informada, en la moneda y con la tasa del movimiento.
+     * RN-038.4 / CA-038.1 / H-02: ingreso automático por el rendimiento o dividendo,
+     * clasificado como "Dividendos y participaciones" para Acciones, ETF y Negocios,
+     * o "Rentas de capital" para el resto.
      */
     private function registrarIngresoDelRendimiento(Inversion $inversion, string $monto, string $retencion, string $tasa, string $fecha): Ingreso
     {
-        $fuente = InversionService::fuenteDeRendimientos(Auth::id());
+        $esDividendo = in_array($inversion->tipo, ['ACCIONES', 'ETF', 'NEGOCIO_PARTICIPACION'], true);
+        $clasificacion = $esDividendo ? 'DIVIDENDOS' : InversionService::CLASIFICACION_RENDIMIENTOS;
+        $nombreFuente = $esDividendo ? 'Dividendos y participaciones' : InversionService::FUENTE_RENDIMIENTOS;
+        $tipoFuente = $esDividendo ? 'Dividendos' : InversionService::TIPO_FUENTE_RENDIMIENTOS;
+
+        $fuente = InversionService::fuenteDeRendimientos(Auth::id(), $nombreFuente, $tipoFuente, $clasificacion);
 
         $montos = IngresoService::prepararMontos([
             'moneda' => $inversion->moneda,
             'monto_original' => $monto,
             'tasa_cambio_usada' => $tasa,
             'retencion_fuente' => $retencion,
-            'clasificacion_tributaria' => InversionService::CLASIFICACION_RENDIMIENTOS,
+            'clasificacion_tributaria' => $clasificacion,
         ], $fuente, $fecha);
+
+        $descripcion = $esDividendo
+            ? "Dividendo o participación de la inversión «{$inversion->nombre}»"
+            : "Rendimiento de la inversión «{$inversion->nombre}»";
 
         $ingreso = Ingreso::create(array_merge($montos, [
             'usuario_id' => Auth::id(),
@@ -332,7 +358,7 @@ class MovimientoInversionController extends Controller
             'fecha_recepcion' => $fecha,
             'origen' => 'MANUAL',
             'estado' => 'CONFIRMADO',
-            'descripcion' => "Rendimiento de la inversión «{$inversion->nombre}»",
+            'descripcion' => $descripcion,
         ]));
 
         BitacoraService::registrar(
@@ -366,13 +392,26 @@ class MovimientoInversionController extends Controller
             return bccomp($actuales, '0', 8) === 1 ? $actuales : null;
         }
 
-        if (! in_array($tipo, ['APORTE', 'RETIRO_PARCIAL'], true) || ! isset($validated['unidades'])) {
+        if (! in_array($tipo, ['APORTE', 'RETIRO_PARCIAL'], true)) {
             return null;
         }
 
-        $unidades = (string) $validated['unidades'];
+        if (isset($validated['unidades']) && bccomp((string) $validated['unidades'], '0', 8) === 1) {
+            $unidades = (string) $validated['unidades'];
+        } else {
+            // H-09: Si el usuario no especificó unidades en un aporte o retiro de activos con unidades,
+            // se infieren automáticamente a partir del último precio unitario de mercado conocido
+            $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
+                ->whereNotNull('precio_unitario')
+                ->orderByDesc('fecha')
+                ->first();
+            $precio = $ultimaVal?->precio_unitario ?? $inversion->precio_unitario_compra;
+            $unidades = ($precio !== null && bccomp((string) $precio, '0', 8) === 1)
+                ? bcdiv((string) $validated['monto'], (string) $precio, 8)
+                : null;
+        }
 
-        if ($tipo === 'RETIRO_PARCIAL' && bccomp($unidades, $actuales, 8) === 1) {
+        if ($tipo === 'RETIRO_PARCIAL' && $unidades !== null && bccomp($unidades, $actuales, 8) === 1) {
             throw ValidationException::withMessages([
                 'unidades' => "El retiro no puede llevarse más unidades de las que tiene la inversión ({$actuales}).",
             ]);

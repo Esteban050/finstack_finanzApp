@@ -20,6 +20,49 @@
                 </div>
             @endif
 
+            <!-- Resumen de Cuenta e Identidad -->
+            <div class="bg-white p-6 shadow sm:rounded-xl">
+                <div class="flex items-center justify-between border-b pb-4 mb-4">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900">{{ $usuario->nombres }} {{ $usuario->apellidos }}</h3>
+                        <p class="text-xs text-gray-500">Información de cuenta, datos tributarios y seguridad.</p>
+                    </div>
+                    <span class="px-3 py-1 text-xs font-bold bg-green-100 text-green-800 rounded-full">
+                        Cuenta {{ $usuario->estado }}
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                    <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Identificación</span>
+                        <p class="text-base font-bold text-gray-900 mt-1">{{ $usuario->tipo_documento }} {{ $usuario->numero_documento }}</p>
+                        <p class="text-xs text-gray-500">{{ $usuario->correo }}</p>
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Perfil Tributario</span>
+                        @if ($perfilActivo)
+                            <p class="text-sm font-bold text-indigo-700 mt-1">
+                                {{ implode(', ', $perfilActivo->ocupaciones ?? []) }}
+                            </p>
+                            <p class="text-xs text-gray-500">
+                                Responsable IVA: {{ $perfilActivo->responsable_iva ? 'Sí (Declara Renta)' : 'No' }}
+                            </p>
+                        @else
+                            <p class="text-xs text-amber-600 font-semibold mt-2">Pendiente por diligenciar</p>
+                        @endif
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Seguridad (2FA)</span>
+                        <p class="text-base font-bold text-gray-900 mt-1">
+                            {{ $usuario->mfa_activo ? '✓ 2FA Activado' : '✕ 2FA Desactivado' }}
+                        </p>
+                        <a href="#mfa-section" class="text-xs text-indigo-600 font-semibold hover:underline">Gestionar en sección 3 &rarr;</a>
+                    </div>
+                </div>
+            </div>
+
             <!-- 1. GESTIÓN DEL PERFIL TRIBUTARIO Y PERSONAL (RF-008) -->
             <div class="bg-white p-8 shadow sm:rounded-xl">
                 <div class="border-b pb-3 mb-6">
@@ -130,7 +173,7 @@
             </div>
 
             <!-- 3. VERIFICACIÓN EN DOS PASOS (MFA) -->
-            <div class="bg-white p-8 shadow sm:rounded-xl">
+            <div id="mfa-section" class="bg-white p-8 shadow sm:rounded-xl">
                 <div class="flex items-center justify-between border-b pb-3 mb-4">
                     <div>
                         <h3 class="text-lg font-bold text-gray-900">3. Verificación en Dos Pasos (MFA)</h3>

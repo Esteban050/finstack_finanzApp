@@ -2,8 +2,23 @@
 <div class="income-editor expense-editor" data-expense-editor>
     <div class="income-form-main">
         <x-ui.card title="Identificación del gasto">
-            <input type="hidden" name="moneda" value="COP">
-            <x-ui.money-input name="monto_original" :id="$prefix.'-amount'" label="Monto" :value="(string) ($record['monto_original'] ?? '')" />
+            <div class="income-two-fields">
+                <x-ui.field name="moneda" :id="$prefix.'-currency'" label="Moneda" :required="true">
+                    <div class="ui-inline" role="group" aria-label="Moneda del gasto">
+                        <label class="ui-check"><input type="radio" name="moneda" value="COP" data-currency-radio @checked(old('moneda', $record['moneda'] ?? 'COP') === 'COP')> COP (Pesos)</label>
+                        <label class="ui-check"><input type="radio" name="moneda" value="USD" data-currency-radio @checked(old('moneda', $record['moneda'] ?? '') === 'USD')> USD (Dólares)</label>
+                    </div>
+                </x-ui.field>
+                <div data-exchange-rate-field @if(old('moneda', $record['moneda'] ?? 'COP') !== 'USD') hidden @endif>
+                    <x-ui.field name="tasa_cambio_usada" :id="$prefix.'-rate'" label="Tasa de cambio (TRM)" help="Opcional. Si se deja vacía, se aplicará automáticamente la TRM oficial de la fecha del gasto.">
+                        <input id="{{ $prefix }}-rate" type="text" inputmode="decimal" name="tasa_cambio_usada" data-decimal-input data-precision="4" data-min="1" placeholder="Ej: 4150.00" value="{{ old('tasa_cambio_usada', $record['tasa_cambio_usada'] ?? '') }}">
+                    </x-ui.field>
+                </div>
+            </div>
+            <div data-trm-suggestion class="ui-notice" @if(old('moneda', $record['moneda'] ?? 'COP') !== 'USD') hidden @endif>
+                <p class="ui-help" data-trm-hint>TRM aplicable: Si no indicas una tasa personalizada, se usará la TRM oficial de la fecha consultada automáticamente.</p>
+            </div>
+            <x-ui.money-input name="monto_original" :id="$prefix.'-amount'" label="Monto" :value="(string) ($record['monto_original'] ?? '')" :currency="old('moneda', $record['moneda'] ?? 'COP')" />
             @if(!$recurrent)<x-ui.field name="fecha" :id="$prefix.'-date'" label="Fecha" :required="true" help="No puede ser posterior a hoy."><input type="date" name="fecha" id="{{ $prefix }}-date" data-expense-date value="{{ old('fecha', $record['fecha'] ?? '') }}" required aria-describedby="{{ $prefix }}-date-help {{ $prefix }}-date-error"></x-ui.field>@endif
             <x-expense.select name="medio_pago" label="Medio de pago" :prefix="$prefix" :options="['EFECTIVO', 'TARJETA_DEBITO', 'TARJETA_CREDITO', 'TRANSFERENCIA', 'BILLETERA_DIGITAL', 'OTRO']" :value="$record['medio_pago'] ?? ''" :required="true" />
             <x-ui.field name="comercio_beneficiario" :id="$prefix.'-merchant'" label="Comercio o beneficiario" help="Opcional. Máximo 80 caracteres."><input id="{{ $prefix }}-merchant" name="comercio_beneficiario" value="{{ old('comercio_beneficiario', $record['comercio_beneficiario'] ?? '') }}" maxlength="80" aria-describedby="{{ $prefix }}-merchant-help {{ $prefix }}-merchant-error"></x-ui.field>
@@ -25,7 +40,7 @@
         {{ $slot }}
     </div>
     <aside class="income-summary" aria-label="Resumen de clasificación"><x-ui.card title="Resumen de clasificación">
-        <div class="income-net"><span>Monto del gasto</span><output data-expense-amount aria-live="polite">—</output><span class="ui-help">COP</span></div>
+        <div class="income-net"><span>Monto del gasto</span><output data-expense-amount aria-live="polite">—</output><span class="ui-help" data-currency-summary-unit>COP</span></div>
         <dl>@foreach(['categoria_id' => 'Categoría', 'subcategoria_id' => 'Subcategoría', 'naturaleza' => 'Naturaleza', 'necesidad' => 'Necesidad', 'medio_pago' => 'Medio de pago', 'relevancia_tributaria' => 'Relevancia tributaria'] as $key => $label)<div><dt>{{ $label }}</dt><dd data-expense-summary="{{ $key }}">—</dd></div>@endforeach</dl>
     </x-ui.card></aside>
 </div>

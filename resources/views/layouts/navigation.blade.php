@@ -7,6 +7,7 @@
     ['gastos.categorias.index', 'Categorías', 'cls-etiqueta', request()->routeIs('gastos.categorias.*')],
     ['seguridad-social.index', 'Seguridad social', 'cat-seguridad-social', request()->routeIs('seguridad-social.*')],
     ['inversiones.index', 'Inversiones', 'src-rendimientos-financieros', request()->routeIs('inversiones.*')],
+    ['profile.show', 'Mi perfil', 'ui-usuario', request()->routeIs('profile.*')],
 ] as [$route, $label, $icon, $active])
     <a href="{{ route($route) }}" @if($active) aria-current="page" @endif>
         @switch($route)
@@ -16,6 +17,7 @@
             @case('gastos.categorias.index')<x-icon name="cls-etiqueta" :size="20" />@break
             @case('seguridad-social.index')<x-icon name="cat-seguridad-social" :size="20" />@break
             @case('inversiones.index')<x-icon name="src-rendimientos-financieros" :size="20" />@break
+            @case('profile.show')<x-icon name="ui-usuario" :size="20" />@break
         @endswitch
         {{ $label }}
     </a>

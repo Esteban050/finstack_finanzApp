@@ -60,6 +60,36 @@ class Inversion extends Model
     /** RN-037.5 */
     public const ESTADOS = ['ACTIVA', 'VENCIDA', 'LIQUIDADA'];
 
+    /** Movimientos financieramente admitidos por tipo de activo según guía SCFP-GI-INV */
+    public const MOVIMIENTOS_PERMITIDOS = [
+        'CDT' => ['RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'BONOS_TES' => ['RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'CUENTA_AHORRO_ALTO_RENDIMIENTO' => ['APORTE', 'RETIRO_PARCIAL', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'FONDO_INVERSION_COLECTIVA' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'ACCIONES' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'ETF' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'CRIPTOACTIVO' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
+        'INMUEBLE_RENTA' => ['APORTE', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
+        'NEGOCIO_PARTICIPACION' => ['APORTE', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
+        'FONDO_VOLUNTARIO_PENSION' => ['APORTE', 'RETIRO_PARCIAL', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
+        'OTRO' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
+    ];
+
+    /** Nivel de riesgo típico sugerido por tipo (sección 4.12) */
+    public const RIESGOS_SUGERIDOS = [
+        'CDT' => 'BAJO',
+        'BONOS_TES' => 'BAJO',
+        'CUENTA_AHORRO_ALTO_RENDIMIENTO' => 'BAJO',
+        'FONDO_INVERSION_COLECTIVA' => 'MEDIO',
+        'INMUEBLE_RENTA' => 'MEDIO',
+        'ACCIONES' => 'ALTO',
+        'ETF' => 'MEDIO',
+        'CRIPTOACTIVO' => 'ALTO',
+        'NEGOCIO_PARTICIPACION' => 'ALTO',
+        'FONDO_VOLUNTARIO_PENSION' => 'MEDIO',
+        'OTRO' => 'MEDIO',
+    ];
+
     protected $fillable = [
         'usuario_id',
         'nombre',
@@ -129,5 +159,20 @@ class Inversion extends Model
     public function estaLiquidada(): bool
     {
         return $this->estado === 'LIQUIDADA';
+    }
+
+    public function movimientosPermitidos(): array
+    {
+        return self::MOVIMIENTOS_PERMITIDOS[$this->tipo] ?? MovimientoInversion::TIPOS;
+    }
+
+    public function permiteMovimiento(string $tipo): bool
+    {
+        return in_array($tipo, $this->movimientosPermitidos(), true);
+    }
+
+    public static function riesgoSugerido(string $tipo): ?string
+    {
+        return self::RIESGOS_SUGERIDOS[$tipo] ?? null;
     }
 }

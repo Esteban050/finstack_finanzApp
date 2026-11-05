@@ -14,7 +14,7 @@ test('catálogo: los 12 hex usan tokens y los valores desconocidos usan slate', 
     }
     assert.deepEqual(catalogVisual({ icono: 'desconocido', color_hex: '#000000' }, palette), { iconName: 'cat-otros', colorVar: 'var(--cat-slate)' });
     assert.equal(catalogVisual({}, palette).colorVar, 'var(--cat-slate)');
-    assert.equal(ENABLE_FOREIGN_CURRENCY, false);
+    assert.equal(ENABLE_FOREIGN_CURRENCY, true);
 });
 test('catálogos heredados mantienen sus valores y se presentan con íconos del kit', () => {
     assert.equal(catalogVisual({ icono: 'home' }, {}).iconName, 'cat-vivienda');

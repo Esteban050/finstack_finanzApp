@@ -204,6 +204,9 @@ class InversionController extends Controller
         $inversion = $this->inversionPropia($id);
         $hoy = CarbonImmutable::today();
 
+        // H-09: Asegurar que las valoraciones estén reconciliadas con los movimientos
+        InversionService::reconciliarValoraciones($inversion);
+
         $movimientos = MovimientoInversion::where('inversion_id', $inversion->id)
             ->orderByDesc('fecha')
             ->orderByDesc('creado_en')
