@@ -4,6 +4,14 @@
 .finance-page details > form { margin-top: 1.5rem; }
 .finance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-6, 1.5rem); align-items: start; }
 .finance-grid > *, .finance-stats > *, .finance-alternative { min-width: 0; }
+.finance-grid--forms { align-items: stretch; }
+.finance-grid--forms > .ui-card { display: flex; flex-direction: column; }
+.finance-page .finance-grid--forms form[data-finance-form] { display: flex; flex-direction: column; flex: 1; }
+.finance-grid--forms form > button[type=submit] { margin-top: auto; }
+.finance-goal-control { display: grid; gap: var(--ui-space-4, 1rem); }
+.finance-projection { display: grid; gap: var(--ui-space-6, 1.5rem); }
+.finance-projection > * { margin-block: 0; }
+.finance-projection > .ui-notice { text-align: left; letter-spacing: normal; }
 .finance-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 2rem; margin: 1rem 0; }
 .finance-stat dt { font-size: var(--ui-text-small); color: var(--ui-muted); }
 .finance-stat dd { margin: .75rem 0 0; font-size: clamp(1.125rem, 2.5vw, 2rem); font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
