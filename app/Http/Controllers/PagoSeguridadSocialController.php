@@ -90,6 +90,29 @@ class PagoSeguridadSocialController extends Controller
     }
 
     /**
+     * Consulta los ingresos de honorarios o servicios del periodo cotizado
+     * y los aportes sugeridos para autocompletar el formulario de pago PILA.
+     */
+    public function ingresosPeriodo(Request $request): JsonResponse
+    {
+        $request->validate([
+            'periodo' => ['required', 'string', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
+        ], [
+            'periodo.required' => 'El periodo cotizado es obligatorio.',
+            'periodo.regex' => 'El periodo debe tener el formato AAAA-MM.',
+        ]);
+
+        $periodo = (string) $request->query('periodo');
+        $resultado = SeguridadSocialService::consultarIngresosPeriodoCotizado(Auth::id(), $periodo);
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => $resultado['mensaje'],
+            'data' => $resultado,
+        ]);
+    }
+
+    /**
      * RN-035.1 / RN-035.3: Registrar el pago y, en la misma transacción, el
      * gasto de "Seguridad social" por el total (CA-035.1) y el soporte, si se
      * adjuntó (RF-030). Un soporte inválido rechaza el registro completo.

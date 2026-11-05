@@ -155,6 +155,7 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::post('/asalariado/aplicar', [SeguridadSocialController::class, 'aplicarAsalariado'])->name('asalariado.aplicar');
 
         // RF-035: pagos por PILA, cada uno con su gasto (RN-035.3)
+        Route::get('/pagos/ingresos-periodo', [PagoSeguridadSocialController::class, 'ingresosPeriodo'])->name('pagos.ingresos-periodo');
         Route::get('/pagos', [PagoSeguridadSocialController::class, 'index'])->name('pagos.index');
         Route::post('/pagos', [PagoSeguridadSocialController::class, 'store'])->name('pagos.store');
         Route::get('/pagos/{id}', [PagoSeguridadSocialController::class, 'show'])->name('pagos.show');

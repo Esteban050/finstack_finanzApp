@@ -122,6 +122,90 @@ class SeguridadSocialService
         return bcadd((string) $suma, '0', 2);
     }
 
+    /**
+     * Consulta los ingresos por honorarios o servicios (rentas de trabajo no asalariadas)
+     * del periodo cotizado y calcula los aportes sugeridos para el pago PILA.
+     *
+     * Como PILA se paga mes vencido, el periodo cotizado (AAAA-MM) corresponde al mes en
+     * el que se devengaron los ingresos.
+     */
+    public static function consultarIngresosPeriodoCotizado(string $usuarioId, string $periodo): array
+    {
+        $inicioMes = self::inicioDelPeriodo($periodo);
+        $finMes = $inicioMes->endOfMonth();
+
+        $ingresos = Ingreso::query()
+            ->where('usuario_id', $usuarioId)
+            ->confirmados()
+            ->where('clasificacion_tributaria', 'RENTAS_TRABAJO')
+            ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $finMes->toDateString()])
+            ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario())
+            ->with('fuente:id,nombre')
+            ->orderBy('fecha_recepcion')
+            ->get();
+
+        $suma = $ingresos->sum('monto_bruto_cop');
+        $totalIngresos = bcadd((string) $suma, '0', 2);
+        $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
+
+        if (! $tieneIngresos) {
+            return [
+                'periodo' => $periodo,
+                'tiene_ingresos' => false,
+                'cantidad_ingresos' => 0,
+                'total_ingresos' => '0.00',
+                'ingresos' => [],
+                'calculo' => null,
+                'liquidacion' => null,
+                'mensaje' => "No se encontraron ingresos de honorarios o servicios (rentas de trabajo) asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.",
+            ];
+        }
+
+        $parametro = self::parametrosDe($inicioMes->year);
+        $perfil = self::perfilDelPeriodo($usuarioId, $inicioMes);
+
+        $liquidacion = LiquidacionSeguridadSocial::where('usuario_id', $usuarioId)
+            ->where('periodo', $periodo)
+            ->first();
+
+        $calculo = self::calcularIndependiente($totalIngresos, $parametro, $perfil);
+
+        $listaIngresos = $ingresos->map(fn ($ing) => [
+            'id' => $ing->id,
+            'fecha' => $ing->fecha_recepcion->format('d/m/Y'),
+            'fuente' => $ing->fuente?->nombre ?? 'Sin fuente',
+            'monto' => (string) $ing->monto_bruto_cop,
+            'descripcion' => $ing->descripcion ?? '',
+        ])->values()->all();
+
+        return [
+            'periodo' => $periodo,
+            'tiene_ingresos' => true,
+            'cantidad_ingresos' => $ingresos->count(),
+            'total_ingresos' => $totalIngresos,
+            'ingresos' => $listaIngresos,
+            'calculo' => [
+                'ingreso_base' => $calculo['ingreso_base'],
+                'ibc' => $calculo['ibc'],
+                'salud' => $calculo['salud'],
+                'pension' => $calculo['pension'],
+                'fsp' => $calculo['fsp'],
+                'arl' => $calculo['arl'],
+                'total' => $calculo['total'],
+                'avisos' => $calculo['avisos'] ?? [],
+            ],
+            'liquidacion' => $liquidacion ? [
+                'id' => $liquidacion->id,
+                'salud' => (string) $liquidacion->salud,
+                'pension' => (string) $liquidacion->pension,
+                'fsp' => (string) $liquidacion->fsp,
+                'arl' => (string) $liquidacion->arl,
+                'total' => (string) $liquidacion->total,
+            ] : null,
+            'mensaje' => "Se encontraron {$ingresos->count()} ingreso(s) de rentas de trabajo en el periodo {$periodo}.",
+        ];
+    }
+
     /** RN-034.5: solo un ingreso de fuente "Salario" lleva aportes de nómina. */
     public static function esIngresoDeSalario(Ingreso $ingreso): bool
     {

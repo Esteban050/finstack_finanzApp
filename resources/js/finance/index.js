@@ -2,10 +2,11 @@ import Chart from 'chart.js/auto';
 import { request, showRequestError, contractPayload } from '../api/index.js';
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { moneyInputErrors } from '../income/index.js';
-import { decimal, formatMoney, formatQuantity } from '../utils/money.js';
+import { decimal, formatMoney, formatQuantity, parseMoneyInput } from '../utils/money.js';
 import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText, financeMessage } from './rules.js';
 import { mountInvestmentGoals } from './projections.js';
 import { mountProjectionViews } from './projection-view.js';
+import { mountPilaAutofill } from './pila.js';
 
 function formValues(form) {
     const entries = new FormData(form);
@@ -52,6 +53,8 @@ export function mountFinance() {
     updateFormats();
     mountInvestmentGoals();
     mountProjectionViews();
+    mountPilaAutofill();
+    mountPortfolioPieCharts();
     const notice={'#cambios-guardados':'Los cambios se guardaron correctamente.','#registro-eliminado':'El registro se eliminó correctamente.'}[window.location.hash];
     if(notice){const toast=document.getElementById('ui-toast');if(toast){toast.querySelector('[data-toast-message]').textContent=notice;toast.hidden=false;}window.history.replaceState(null,'',window.location.pathname+window.location.search);}
     document.querySelectorAll('[data-finance-form]').forEach(form => {
@@ -121,17 +124,157 @@ export function mountFinance() {
     });
     const type = document.querySelector('[data-investment-type]');
     if (type) {
-        const apply = () => {
-            for(const section of document.querySelectorAll('[data-investment-fields]')) {
-                const visible = section.dataset.investmentFields.split(' ').includes(type.value);
-                section.hidden=!visible;
-                for(const input of section.querySelectorAll('input,select')) input.disabled=!visible;
-            }
+        const form = type.closest('form');
+        const riskSuggestions = JSON.parse(form?.dataset?.riskSuggestions || '{}');
+        const descBox = form?.querySelector('[data-type-description]');
+        const descText = form?.querySelector('[data-type-description-text]');
+        const descriptions = {
+            CDT: 'Título a plazo fijo respaldado por Fogafín. El capital permanece inmutable hasta el vencimiento. No admite retiros parciales ni aportes adicionales durante su vigencia.',
+            BONOS_TES: 'Título de renta fija soberana o corporativa con tasa cupón y pago de intereses pactados periódicos.',
+            CUENTA_AHORRO_ALTO_RENDIMIENTO: 'Cuenta con disponibilidad inmediata. Los rendimientos diarios se capitalizan directamente en el saldo de tu cuenta (se reflejan actualizando el valor de mercado).',
+            FONDO_INVERSION_COLECTIVA: 'Fondo administrado por fiduciarias o comisionistas. La rentabilidad se manifiesta mediante la valorización de la unidad.',
+            ACCIONES: 'Renta variable con cotización bursátil. Rentabilidad sujeta a la valorización del precio y dividendos en efectivo.',
+            ETF: 'Fondo cotizado indexado a un índice o canasta. Rentabilidad sujeta al precio de cotización y tipo de cambio (USD/COP).',
+            CRIPTOACTIVO: 'Activo digital descentralizado con cotización continua 24/7 y alta volatilidad.',
+            INMUEBLE_RENTA: 'Inversión inmobiliaria física. Retorno vía cánones de arrendamiento y plusvalía por valorización.',
+            NEGOCIO_PARTICIPACION: 'Participación en sociedad o negocio comercial. Rendimiento vía reparto periódico de utilidades.',
+            FONDO_VOLUNTARIO_PENSION: 'Ahorro a largo plazo con beneficios tributarios de renta exenta.',
+            OTRO: 'Otras alternativas informales o esquemas cooperativos.'
         };
-        type.addEventListener('change',apply);apply();
+
+        const updateCdtPreview = () => {
+            const preview = form.querySelector('[data-cdt-preview]');
+            if (!preview) return;
+            const isCdt = ['CDT', 'BONOS_TES'].includes(type.value);
+            if (!isCdt) { preview.hidden = true; return; }
+            const montoVal = parseMoneyInput(form.querySelector('[name=monto_inicial]')?.value || '0');
+            const tasaInput = form.querySelector('[name=tasa_ea]')?.value || '';
+            const plazoInput = form.querySelector('[name=plazo_dias]')?.value || '';
+            const aperturaInput = form.querySelector('[name=fecha_apertura]')?.value || '';
+            const vencimientoInput = form.querySelector('[name=fecha_vencimiento]');
+
+            if (aperturaInput && plazoInput) {
+                const days = parseInt(plazoInput, 10);
+                if (days > 0) {
+                    const start = new Date(aperturaInput + 'T12:00:00Z');
+                    const end = new Date(start.getTime() + days * 86400000);
+                    const yyyy = end.getUTCFullYear();
+                    const mm = String(end.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(end.getUTCDate()).padStart(2, '0');
+                    const endStr = `${yyyy}-${mm}-${dd}`;
+                    const targetEl = form.querySelector('[data-cdt-calculated-maturity]');
+                    if (targetEl) targetEl.textContent = `${dd}/${mm}/${yyyy}`;
+                    if (vencimientoInput && !vencimientoInput.value) {
+                        vencimientoInput.value = endStr;
+                    }
+                }
+            }
+
+            if (montoVal && tasaInput && plazoInput) {
+                try {
+                    const capital = decimal(montoVal);
+                    const tasa = decimal(tasaInput.replace(',', '.'));
+                    const days = decimal(plazoInput);
+                    if (capital.gt('0') && tasa.gte('0') && days.gt('0')) {
+                        const factor = decimal('1').plus(tasa.div('100')).pow(days.div('365'));
+                        const estimated = capital.times(factor.minus('1')).toFixed(2);
+                        const yieldEl = form.querySelector('[data-cdt-estimated-yield]');
+                        if (yieldEl) yieldEl.textContent = formatMoney(estimated);
+                        preview.hidden = false;
+                        return;
+                    }
+                } catch {}
+            }
+            preview.hidden = true;
+        };
+
+        const updateUnitsCalc = () => {
+            const isUnits = ['ACCIONES', 'ETF', 'CRIPTOACTIVO'].includes(type.value);
+            const notice = form.querySelector('[data-units-calc-notice]');
+            if (!isUnits || !notice) return;
+            const unidades = form.querySelector('[name=unidades]')?.value?.replace(',', '.');
+            const precio = form.querySelector('[name=precio_unitario_compra]')?.value?.replace(',', '.');
+            if (unidades && precio) {
+                try {
+                    const u = decimal(unidades), p = decimal(precio);
+                    if (u.gt('0') && p.gt('0')) {
+                        const total = u.times(p).toFixed(2);
+                        const montoInput = form.querySelector('[name=monto_inicial]');
+                        if (montoInput) {
+                            montoInput.value = formatMoney(total).replace(/^\$\s*/, '');
+                            form.dispatchEvent(new CustomEvent('money-change', { detail: { name: 'monto_inicial' } }));
+                        }
+                        const amountEl = form.querySelector('[data-units-calculated-amount]');
+                        if (amountEl) amountEl.textContent = formatMoney(total);
+                        notice.hidden = false;
+                        return;
+                    }
+                } catch {}
+            }
+            notice.hidden = true;
+        };
+
+        const apply = () => {
+            const selected = type.value;
+            for(const section of form.querySelectorAll('[data-investment-fields]')) {
+                const visible = section.dataset.investmentFields.split(' ').includes(selected);
+                section.hidden = !visible;
+                for(const input of section.querySelectorAll('input,select')) input.disabled = !visible;
+            }
+            if (descBox && descText) {
+                if (descriptions[selected]) {
+                    descText.textContent = descriptions[selected];
+                    descBox.hidden = false;
+                } else {
+                    descBox.hidden = true;
+                }
+            }
+            const riskSelect = form.querySelector('#nivel_riesgo');
+            if (riskSelect && riskSuggestions[selected] && !riskSelect.value) {
+                riskSelect.value = riskSuggestions[selected];
+            }
+            updateCdtPreview();
+            updateUnitsCalc();
+        };
+
+        type.addEventListener('change', apply);
+        form.addEventListener('input', (e) => {
+            if (['tasa_ea', 'plazo_dias', 'fecha_apertura'].includes(e.target.name)) updateCdtPreview();
+            if (['unidades', 'precio_unitario_compra'].includes(e.target.name)) updateUnitsCalc();
+        });
+        form.addEventListener('money-change', (e) => {
+            if (e.detail?.name === 'monto_inicial') updateCdtPreview();
+        });
+        apply();
     }
     const movementType=document.querySelector('[data-movement-type]');
     if(movementType){const apply=()=>{const panel=document.querySelector('[data-movement-retention]');panel.hidden=movementType.value!=='RENDIMIENTO';panel.querySelectorAll('input').forEach(input=>{input.disabled=panel.hidden;});};movementType.addEventListener('change',apply);apply();}
+
+    const movementForm = document.querySelector('[data-finance-form="movement"]');
+    if (movementForm) {
+        const montoInput = movementForm.querySelector('[name=monto]');
+        const unidadesInput = movementForm.querySelector('[name=unidades]');
+        const preview = movementForm.querySelector('[data-movement-units-preview]');
+
+        const updateMovementPreview = () => {
+            if (!preview) return;
+            const monto = parseMoneyInput(montoInput?.value || '0');
+            const unidades = unidadesInput?.value?.replace(',', '.');
+            if (monto && unidades && Number(monto) > 0 && Number(unidades) > 0) {
+                try {
+                    const implied = decimal(monto).div(decimal(unidades)).toFixed(2);
+                    preview.textContent = `Precio unitario implícito: ${formatMoney(implied)}`;
+                    preview.hidden = false;
+                    return;
+                } catch {}
+            }
+            preview.hidden = true;
+        };
+
+        montoInput?.addEventListener('input', updateMovementPreview);
+        unidadesInput?.addEventListener('input', updateMovementPreview);
+        movementForm.addEventListener('money-change', updateMovementPreview);
+    }
     document.querySelectorAll('[data-finance-chart]').forEach(canvas => drawChart(canvas));
     new MutationObserver(()=>document.querySelectorAll('[data-finance-chart]').forEach(canvas=>{
         const chart=Chart.getChart(canvas);if(!chart)return;
@@ -179,15 +322,74 @@ function updateAlternativeButtons(host) {
     document.querySelector('[data-alternative-count]').textContent=`${count} de 4 alternativas`;
 }
 function drawChart(canvas) {
-    const rows=JSON.parse(document.getElementById(canvas.dataset.financeChart).textContent);
-    const style=getComputedStyle(document.documentElement);
+    const rows = JSON.parse(document.getElementById(canvas.dataset.financeChart).textContent);
+    const style = getComputedStyle(document.documentElement);
+    const color = key => style.getPropertyValue(key).trim();
+    const initialCost = canvas.dataset.chartCost ? Number(canvas.dataset.chartCost) : null;
+
+    const datasets = [{
+        label: canvas.dataset.chartLabel,
+        data: rows.map(row => row.value),
+        borderColor: color('--accent'),
+        backgroundColor: color('--accent-secondary'),
+        tension: 0,
+        fill: false,
+        pointRadius: rows.length <= 1 ? 6 : 4,
+        pointHoverRadius: 8,
+        pointBackgroundColor: initialCost !== null ? (ctx => {
+            const y = Number(ctx.raw?.y ?? ctx.raw ?? 0);
+            return y < initialCost ? color('--ui-danger') : color('--ui-success');
+        }) : color('--accent'),
+        segment: initialCost !== null ? {
+            borderColor: ctx => {
+                const y0 = Number(ctx.p0.parsed.y);
+                const y1 = Number(ctx.p1.parsed.y);
+                return (y0 < initialCost || y1 < initialCost) ? color('--ui-danger') : color('--ui-success');
+            }
+        } : undefined
+    }];
+
+    if (initialCost !== null && rows.length > 0) {
+        datasets.push({
+            label: 'Capital neto aportado (referencia)',
+            data: rows.map(() => initialCost),
+            borderColor: color('--ui-muted'),
+            borderDash: [5, 5],
+            pointRadius: rows.length <= 1 ? 4 : 0,
+            borderWidth: 1.5,
+            fill: false
+        });
+    }
+
     new Chart(canvas, {
         type: 'line',
-        data: {labels: rows.map(row=>row.label), datasets: [{label:canvas.dataset.chartLabel, data:rows.map(row=>row.value), borderColor:style.getPropertyValue('--accent').trim(), backgroundColor:style.getPropertyValue('--accent-secondary').trim(), tension:0, fill:false}]},
+        data: { labels: rows.map(row => row.label), datasets },
         options: {
-            responsive:true, maintainAspectRatio:false, animation:false,
-            plugins:{legend:{display:false},tooltip:{callbacks:{label:context=>formatMoney(String(context.raw))}}},
-            scales:{x:{ticks:{color:style.getPropertyValue('--ui-muted').trim()}},y:{ticks:{color:style.getPropertyValue('--ui-muted').trim(),callback:value=>formatMoney(String(value))}}},
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: { display: Boolean(initialCost) },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const val = Number(context.raw);
+                            if (context.dataset.label.includes('referencia') || context.dataset.label.includes('Costo')) {
+                                return `Capital de referencia: ${formatMoney(String(val))}`;
+                            }
+                            const diff = initialCost !== null ? val - initialCost : 0;
+                            const diffText = initialCost !== null
+                                ? (diff > 0 ? ` (+${formatMoney(String(diff))} de ganancia)` : diff < 0 ? ` (${formatMoney(String(diff))} por desvalorización)` : ' (al equilibrio)')
+                                : '';
+                            return `${context.dataset.label}: ${formatMoney(String(val))}${diffText}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: color('--ui-muted') } },
+                y: { ticks: { color: color('--ui-muted'), callback: value => formatMoney(String(value)) } },
+            },
         },
     });
 }
@@ -213,4 +415,112 @@ function renderComparison(form,data,alternatives) {
     alternatives.forEach((row,index)=>Object.entries(row).forEach(([key,value])=>{const input=document.createElement('input');input.type='hidden';input.name=`alternativas[${index}][${key}]`;input.value=value;input.dataset.simulationValue='';save.append(input);}));
     const notices=host.querySelector('[data-comparison-notices]');notices.textContent=(data.mensajes || []).map(financeMessage).join(' ');
     host.hidden=false;host.focus();
+}
+
+export function mountPortfolioPieCharts() {
+    const containers = document.querySelectorAll('[data-portfolio-distribution]');
+    if (!containers.length) return;
+
+    const style = getComputedStyle(document.documentElement);
+    const color = key => style.getPropertyValue(key).trim();
+
+    const RISK_COLORS = {
+        'BAJO': '#10b981',
+        'MEDIO': '#f59e0b',
+        'ALTO': '#ef4444',
+        'SIN_DECLARAR': '#64748b'
+    };
+
+    const TYPE_PALETTE = [
+        '#2563eb',
+        '#10b981',
+        '#f59e0b',
+        '#8b5cf6',
+        '#06b6d4',
+        '#ec4899',
+        '#f97316',
+        '#14b8a6',
+        '#6366f1',
+        '#64748b'
+    ];
+
+    containers.forEach(container => {
+        const type = container.dataset.portfolioDistribution;
+        const script = document.getElementById(`pie-data-${type}`);
+        const canvas = container.querySelector(`[data-portfolio-pie="${type}"]`);
+        if (!script || !canvas) return;
+
+        let data = [];
+        try {
+            data = JSON.parse(script.textContent);
+        } catch {
+            return;
+        }
+        if (!Array.isArray(data) || data.length === 0) return;
+
+        const isRisk = type === 'por_riesgo';
+        const backgroundColors = data.map((item, idx) => {
+            if (isRisk && RISK_COLORS[item.key]) {
+                return RISK_COLORS[item.key];
+            }
+            return TYPE_PALETTE[idx % TYPE_PALETTE.length];
+        });
+
+        const badges = container.querySelectorAll('.portfolio-pie-badge');
+        badges.forEach((badge, idx) => {
+            if (backgroundColors[idx]) {
+                badge.style.backgroundColor = backgroundColors[idx];
+            }
+        });
+
+        const surfaceColor = color('--ui-surface') || '#ffffff';
+
+        const chart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(d => d.label),
+                datasets: [{
+                    data: data.map(d => d.value),
+                    backgroundColor: backgroundColors,
+                    borderColor: surfaceColor,
+                    borderWidth: 2,
+                    hoverOffset: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '62%',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: context => {
+                                const idx = context.dataIndex;
+                                const item = data[idx];
+                                const formattedMoney = formatMoney(String(item.value));
+                                return ` ${item.label}: ${formattedMoney} (${item.percentage.toFixed(2).replace('.', ',')} %)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const items = container.querySelectorAll('.portfolio-pie-item');
+        items.forEach((itemEl, idx) => {
+            itemEl.addEventListener('mouseenter', () => {
+                chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+                chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }]);
+                chart.update();
+            });
+            itemEl.addEventListener('mouseleave', () => {
+                chart.setActiveElements([]);
+                chart.tooltip.setActiveElements([]);
+                chart.update();
+            });
+        });
+    });
 }

@@ -166,16 +166,133 @@ class InversionService
     }
 
     /**
-     * RN-038.4: fuente "Rendimientos de inversiones" del Usuario. Se crea la
-     * primera vez que registra un rendimiento; si ya tiene una fuente con ese
-     * nombre (RN-020.1: único por Usuario), se usa esa.
+     * H-09: Sincronizar automáticamente la valoración tras un Aporte o Retiro parcial.
+     * Evita desfases de sobrevaloración o desvalorización artificial en el portafolio.
+     */
+    public static function sincronizarValoracionTrasMovimiento(Inversion $inversion, MovimientoInversion $movimiento): ?ValoracionInversion
+    {
+        if (! in_array($movimiento->tipo, ['APORTE', 'RETIRO_PARCIAL'], true) || $movimiento->es_inicial) {
+            return null;
+        }
+
+        $fecha = CarbonImmutable::parse($movimiento->fecha);
+
+        if ($inversion->tieneUnidades()) {
+            $unidadesActuales = self::unidadesActuales($inversion, $fecha);
+
+            $precioUnitario = null;
+            if ($movimiento->unidades !== null && bccomp((string) $movimiento->unidades, '0', 8) === 1) {
+                $precioUnitario = bcdiv((string) $movimiento->monto, (string) $movimiento->unidades, 8);
+            } else {
+                $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
+                    ->where('fecha', '<=', $fecha->toDateString())
+                    ->whereNotNull('precio_unitario')
+                    ->orderByDesc('fecha')
+                    ->first();
+                $precioUnitario = $ultimaVal?->precio_unitario ?? $inversion->precio_unitario_compra;
+            }
+
+            if ($precioUnitario === null || bccomp((string) $precioUnitario, '0', 8) <= 0) {
+                return null;
+            }
+
+            $nuevoValor = IngresoService::redondear(bcmul($unidadesActuales, (string) $precioUnitario, 10));
+
+            $valoracion = ValoracionInversion::updateOrCreate(
+                ['inversion_id' => $inversion->id, 'fecha' => $fecha->toDateString()],
+                [
+                    'usuario_id' => $inversion->usuario_id,
+                    'valor' => $nuevoValor,
+                    'precio_unitario' => (string) $precioUnitario,
+                    'unidades' => $unidadesActuales,
+                    'origen' => 'MANUAL',
+                ]
+            );
+
+            // Reajustar valoraciones futuras que tengan precio unitario con la nueva cantidad de unidades acumuladas
+            ValoracionInversion::where('inversion_id', $inversion->id)
+                ->where('fecha', '>', $fecha->toDateString())
+                ->whereNotNull('precio_unitario')
+                ->each(function (ValoracionInversion $val) use ($inversion) {
+                    $units = self::unidadesActuales($inversion, CarbonImmutable::parse($val->fecha));
+                    $val->update([
+                        'unidades' => $units,
+                        'valor' => IngresoService::redondear(bcmul($units, (string) $val->precio_unitario, 10)),
+                    ]);
+                });
+
+            return $valoracion;
+        }
+
+        // Inversiones sin unidades (cuentas de ahorro, fondos, etc.)
+        $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
+            ->where('fecha', '<=', $fecha->toDateString())
+            ->orderByDesc('fecha')
+            ->first();
+
+        $valorBase = $ultimaVal !== null ? (string) $ultimaVal->valor : (string) $inversion->monto_inicial;
+        $nuevoValor = $movimiento->tipo === 'APORTE'
+            ? bcadd($valorBase, (string) $movimiento->monto, 2)
+            : bcsub($valorBase, (string) $movimiento->monto, 2);
+
+        if (bccomp($nuevoValor, '0', 2) < 0) {
+            $nuevoValor = '0.00';
+        }
+
+        return ValoracionInversion::updateOrCreate(
+            ['inversion_id' => $inversion->id, 'fecha' => $fecha->toDateString()],
+            [
+                'usuario_id' => $inversion->usuario_id,
+                'valor' => $nuevoValor,
+                'precio_unitario' => null,
+                'unidades' => null,
+                'origen' => 'MANUAL',
+            ]
+        );
+    }
+
+    /**
+     * H-09: Reconciliar valoraciones existentes si hubo movimientos posteriores que desactualizaron
+     * el conteo de unidades o el saldo sin que se registrara una valoración explícita.
+     */
+    public static function reconciliarValoraciones(Inversion $inversion): void
+    {
+        if ($inversion->estaLiquidada()) {
+            return;
+        }
+
+        if ($inversion->tieneUnidades()) {
+            $unidadesActuales = self::unidadesActuales($inversion);
+            $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
+                ->orderByDesc('fecha')
+                ->first();
+
+            if ($ultimaVal !== null && $ultimaVal->precio_unitario !== null) {
+                if (bccomp((string) $ultimaVal->unidades, (string) $unidadesActuales, 8) !== 0) {
+                    $nuevoValor = IngresoService::redondear(bcmul((string) $unidadesActuales, (string) $ultimaVal->precio_unitario, 10));
+                    $ultimaVal->update([
+                        'unidades' => $unidadesActuales,
+                        'valor' => $nuevoValor,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * RN-038.4 / H-02: fuente "Rendimientos de inversiones" o "Dividendos y participaciones".
+     * Se crea la primera vez que registra un rendimiento según la cédula tributaria.
      *
      * @throws ValidationException
      */
-    public static function fuenteDeRendimientos(string $usuarioId): FuenteIngreso
-    {
+    public static function fuenteDeRendimientos(
+        string $usuarioId,
+        string $nombreFuente = self::FUENTE_RENDIMIENTOS,
+        string $tipoFuente = self::TIPO_FUENTE_RENDIMIENTOS,
+        string $clasificacion = self::CLASIFICACION_RENDIMIENTOS
+    ): FuenteIngreso {
         $existente = FuenteIngreso::where('usuario_id', $usuarioId)
-            ->where('nombre', self::FUENTE_RENDIMIENTOS)
+            ->where('nombre', $nombreFuente)
             ->first();
 
         if ($existente !== null) {
@@ -185,8 +302,15 @@ class InversionService
         $tipo = Categoria::where('tipo', 'INGRESO')
             ->where('es_predeterminada', true)
             ->whereNull('categoria_padre_id')
-            ->where('nombre', self::TIPO_FUENTE_RENDIMIENTOS)
+            ->where('nombre', $tipoFuente)
             ->first();
+
+        if ($tipo === null) {
+            $tipo = Categoria::where('tipo', 'INGRESO')
+                ->where('es_predeterminada', true)
+                ->whereNull('categoria_padre_id')
+                ->first();
+        }
 
         if ($tipo === null) {
             throw ValidationException::withMessages([
@@ -197,8 +321,8 @@ class InversionService
         return FuenteIngreso::create([
             'usuario_id' => $usuarioId,
             'tipo_fuente_id' => $tipo->id,
-            'nombre' => self::FUENTE_RENDIMIENTOS,
-            'clasificacion_tributaria' => self::CLASIFICACION_RENDIMIENTOS,
+            'nombre' => $nombreFuente,
+            'clasificacion_tributaria' => $clasificacion,
             'activa' => true,
         ]);
     }

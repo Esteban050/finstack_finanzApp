@@ -338,6 +338,16 @@ class RentabilidadService
         $valoracion = self::valoracionHasta($inversion, $corte);
         $valor ??= $valoracion === null ? '0.00' : (string) $valoracion->valor;
 
+        // H-09: Si la inversión tiene unidades y la última valoración registrada
+        // tenía un conteo de unidades diferente al vigente a la fecha de corte,
+        // recalculamos el valor con las unidades reales y el último precio conocido.
+        if ($inversion->tieneUnidades() && $valoracion !== null && $valoracion->precio_unitario !== null) {
+            $unidadesAlCorte = InversionService::unidadesActuales($inversion, $corte);
+            if (bccomp((string) $valoracion->unidades, (string) $unidadesAlCorte, 8) !== 0) {
+                $valor = IngresoService::redondear(bcmul((string) $unidadesAlCorte, (string) $valoracion->precio_unitario, 10));
+            }
+        }
+
         // RN-040.1: aportes, comisiones y retenciones negativos (la retención,
         // por decisión del equipo, SC-001); retiros, rendimientos y el valor
         // actual a la fecha de corte, positivos.
