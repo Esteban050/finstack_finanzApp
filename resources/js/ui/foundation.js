@@ -93,6 +93,7 @@ export function registerFoundation(Alpine) {
 }
 
 export function mountFoundation() {
+    mountHelpTips();
     for (const link of document.querySelectorAll('a[href]')) {
         const url = new URL(link.href, window.location.origin);
         if (url.origin === window.location.origin && !validResourcePath(url.pathname)) {link.removeAttribute('href'); link.setAttribute('aria-disabled','true'); link.title = 'Recurso no encontrado';}
@@ -200,6 +201,36 @@ function resetLoading() {
     const loading = document.querySelector('[data-page-loading]');
     if (loading) loading.hidden = true;
     document.querySelector('#main-content')?.setAttribute('aria-busy', 'false');
+}
+
+function mountHelpTips() {
+    const tips = [...document.querySelectorAll('.ui-help-tip')];
+    const position = tip => {
+        const trigger = tip.querySelector('summary').getBoundingClientRect();
+        const note = tip.querySelector('p');
+        const width = document.documentElement.clientWidth;
+        const height = window.innerHeight;
+        if (trigger.bottom < 0 || trigger.top > height) { tip.open = false; return; }
+        const bounds = note.getBoundingClientRect();
+        note.style.left = Math.max(16, Math.min(trigger.left, width - bounds.width - 16)) + 'px';
+        const below = trigger.bottom + 8;
+        note.style.top = Math.max(16, Math.min(below + bounds.height <= height - 16 ? below : trigger.top - bounds.height - 8, height - bounds.height - 16)) + 'px';
+    };
+    for (const tip of tips) tip.addEventListener('toggle', () => {
+        if (!tip.open) return;
+        for (const other of tips) if (other !== tip) other.open = false;
+        position(tip);
+    });
+    document.addEventListener('pointerdown', event => {
+        for (const tip of tips) if (tip.open && !tip.contains(event.target)) tip.open = false;
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        for (const tip of tips) if (tip.open) { tip.open = false; tip.querySelector('summary').focus(); }
+    });
+    const reposition = () => { for (const tip of tips) if (tip.open) position(tip); };
+    window.addEventListener('resize', reposition);
+    document.addEventListener('scroll', reposition, true);
 }
 
 function installConfirmation() {

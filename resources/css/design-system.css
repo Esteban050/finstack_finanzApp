@@ -146,7 +146,7 @@ html:has(dialog[open]) { overflow: hidden; }
 .ui-help-tip summary { display: inline-flex; min-height: 44px; min-width: 44px; align-items: center; justify-content: center; color: var(--accent); list-style: none; border-radius: var(--ui-radius); }
 .ui-help-tip summary:hover { background: var(--ui-raised); }
 .ui-help-tip summary::-webkit-details-marker { display: none; }
-.ui-help-tip p { margin: .5rem 0 0; background: var(--ui-raised); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); padding: 1.25rem; max-width: min(320px, 100%); font-size: var(--ui-text-small); }
+.ui-help-tip p { position: fixed; z-index: 70; margin: 0; background: var(--ui-raised); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); padding: 1.25rem; width: min(320px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; box-shadow: var(--ui-shadow); font-size: var(--ui-text-small); }
 .ui-table { width: 100%; table-layout: auto; border-collapse: collapse; text-align: left; font-size: var(--ui-text-small); }
 .ui-table td { display: table-cell; }
 .ui-table .whitespace-nowrap { white-space: nowrap; }
