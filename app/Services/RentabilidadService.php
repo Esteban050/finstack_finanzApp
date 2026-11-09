@@ -29,17 +29,23 @@ class RentabilidadService
     public const NO_CALCULABLE = 'No calculable';
 
     /** RN-040.1: flujos que salen del bolsillo del Usuario (negativos en la XIRR). */
-    private const SALIDAS = ['APORTE', 'COMISION', 'RETENCION'];
+    private const SALIDAS = ['APORTE', 'COMPRA', 'COMISION', 'RETENCION'];
 
     /**
-     * RN-040.1: Capital aportado neto = Σ Aportes − Σ Retiros parciales, hasta
+     * RN-040.1: Capital aportado neto = Σ Aportes/Compras − Σ Retiros/Ventas/Redenciones, hasta
      * la fecha, en la moneda de la inversión.
      */
     public static function capitalAportadoNeto(Inversion $inversion, CarbonImmutable $fecha): string
     {
         $sumas = self::sumas(self::movimientosHasta($inversion, $fecha), 'monto');
+        $aportes = bcadd($sumas['APORTE'] ?? '0.00', $sumas['COMPRA'] ?? '0.00', 2);
+        $retiros = bcadd(
+            bcadd($sumas['RETIRO_PARCIAL'] ?? '0.00', $sumas['RETIRO'] ?? '0.00', 2),
+            bcadd($sumas['VENTA'] ?? '0.00', $sumas['REDENCION'] ?? '0.00', 2),
+            2
+        );
 
-        return bcsub($sumas['APORTE'], $sumas['RETIRO_PARCIAL'], 2);
+        return bcsub($aportes, $retiros, 2);
     }
 
     /**
@@ -50,7 +56,7 @@ class RentabilidadService
     public static function indicadores(Inversion $inversion, CarbonImmutable $corte): array
     {
         $datos = self::datos($inversion, $corte, 'monto', null);
-        $calculo = self::calcular($datos['sumas'], $datos['valor'], $datos['flujos']);
+        $calculo = self::calcular($datos['sumas'], $datos['valor'], $datos['flujos'], $inversion);
 
         $mensajes = $calculo['xirr'] === null ? [self::motivoXirr($datos['flujos'])] : [];
 
@@ -68,14 +74,26 @@ class RentabilidadService
             }
         }
 
+        $totalAportes = bcadd($datos['sumas']['APORTE'] ?? '0.00', $datos['sumas']['COMPRA'] ?? '0.00', 2);
+        $totalRetiros = bcadd(
+            bcadd($datos['sumas']['RETIRO_PARCIAL'] ?? '0.00', $datos['sumas']['LIQUIDACION_TOTAL'] ?? '0.00', 2),
+            bcadd(bcadd($datos['sumas']['RETIRO'] ?? '0.00', $datos['sumas']['VENTA'] ?? '0.00', 2), $datos['sumas']['REDENCION'] ?? '0.00', 2),
+            2
+        );
+        $totalRendimientos = bcadd(
+            bcadd($datos['sumas']['RENDIMIENTO'] ?? '0.00', $datos['sumas']['ABONO_INTERES'] ?? '0.00', 2),
+            $datos['sumas']['DIVIDENDO'] ?? '0.00',
+            2
+        );
+
         return [
             'fecha_corte' => $corte->toDateString(),
             'moneda' => $inversion->moneda,
-            'total_aportes' => $datos['sumas']['APORTE'],
-            'total_retiros' => bcadd($datos['sumas']['RETIRO_PARCIAL'], $datos['sumas']['LIQUIDACION_TOTAL'], 2),
-            'total_rendimientos' => $datos['sumas']['RENDIMIENTO'],
-            'total_comisiones' => $datos['sumas']['COMISION'],
-            'total_retenciones' => $datos['sumas']['RETENCION'],
+            'total_aportes' => $totalAportes,
+            'total_retiros' => $totalRetiros,
+            'total_rendimientos' => $totalRendimientos,
+            'total_comisiones' => $datos['sumas']['COMISION'] ?? '0.00',
+            'total_retenciones' => $datos['sumas']['RETENCION'] ?? '0.00',
             'capital_aportado_neto' => $calculo['capital_aportado_neto'],
             'valor_actual' => $datos['valor'],
             'fecha_valor_actual' => $datos['valoracion']?->fecha?->toDateString(),
@@ -131,7 +149,7 @@ class RentabilidadService
             $valorCop = $inversion->moneda === 'COP' ? $valor : IngresoService::convertirACop($valor, (string) $trm->valor);
 
             $datosCop = self::datos($inversion, $corte, 'monto_cop', $valorCop);
-            $calculoCop = self::calcular($datosCop['sumas'], $valorCop, $datosCop['flujos']);
+            $calculoCop = self::calcular($datosCop['sumas'], $valorCop, $datosCop['flujos'], $inversion);
 
             foreach ($datosCop['sumas'] as $tipo => $suma) {
                 $sumas[$tipo] = bcadd($sumas[$tipo], $suma, 2);
@@ -141,7 +159,7 @@ class RentabilidadService
 
             // RN-041.3: ROI y XIRR de cada inversión en su moneda (decisión 4).
             $propios = self::datos($inversion, $corte, 'monto', $valor);
-            $calculoPropio = self::calcular($propios['sumas'], $valor, $propios['flujos']);
+            $calculoPropio = self::calcular($propios['sumas'], $valor, $propios['flujos'], $inversion);
 
             $filas[] = [
                 'id' => $inversion->id,
@@ -170,15 +188,23 @@ class RentabilidadService
 
         $xirr = self::xirr($flujos);
 
+        $totalAportesPortafolio = bcadd($sumas['APORTE'] ?? '0.00', $sumas['COMPRA'] ?? '0.00', 2);
+        $totalRetirosPortafolio = bcadd(
+            bcadd($sumas['RETIRO_PARCIAL'] ?? '0.00', $sumas['LIQUIDACION_TOTAL'] ?? '0.00', 2),
+            bcadd(bcadd($sumas['RETIRO'] ?? '0.00', $sumas['VENTA'] ?? '0.00', 2), $sumas['REDENCION'] ?? '0.00', 2),
+            2
+        );
+        $capitalAportadoNetoPortafolio = bcsub($totalAportesPortafolio, $totalRetirosPortafolio, 2);
+
         return [
             'fecha_corte' => $corte->toDateString(),
             'moneda' => 'COP',
             'trm' => $trm === null ? null : TrmService::presentar($trm, $corte),
             'cantidad_inversiones' => count($filas),
             'valor_total' => $valorTotal,
-            'capital_aportado_neto' => bcsub($sumas['APORTE'], $sumas['RETIRO_PARCIAL'], 2),
+            'capital_aportado_neto' => $capitalAportadoNetoPortafolio,
             'ganancia' => $ganancia,
-            'roi' => bccomp($sumas['APORTE'], '0', 2) === 1 ? self::redondear(bcdiv(bcmul($ganancia, '100', 10), $sumas['APORTE'], 10)) : null,
+            'roi' => bccomp($totalAportesPortafolio, '0', 2) === 1 ? self::redondear(bcdiv(bcmul($ganancia, '100', 10), $totalAportesPortafolio, 10)) : null,
             'xirr' => $xirr === null ? self::NO_CALCULABLE : self::porcentaje($xirr),
             'resultado' => self::resultado($ganancia),
             // RN-041.2: distribución del valor actual.
@@ -351,10 +377,19 @@ class RentabilidadService
         // RN-040.1: aportes, comisiones y retenciones negativos (la retención,
         // por decisión del equipo, SC-001); retiros, rendimientos y el valor
         // actual a la fecha de corte, positivos.
-        $flujos = $movimientos->map(fn (MovimientoInversion $movimiento) => [
-            CarbonImmutable::parse($movimiento->fecha),
-            (in_array($movimiento->tipo, self::SALIDAS, true) ? -1 : 1) * (float) $movimiento->{$campo},
-        ])->all();
+        $flujos = $movimientos
+            ->filter(function (MovimientoInversion $m) use ($inversion) {
+                // En cuentas de alto rendimiento, los intereses abonados se capitalizan en el saldo de la cuenta
+                // (ya incluido en el valor actual al corte), por lo que no constituyen un flujo de entrada externo.
+                if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $m->tipo === 'ABONO_INTERES') {
+                    return false;
+                }
+                return true;
+            })
+            ->map(fn (MovimientoInversion $movimiento) => [
+                CarbonImmutable::parse($movimiento->fecha),
+                (in_array($movimiento->tipo, self::SALIDAS, true) ? -1 : 1) * (float) $movimiento->{$campo},
+            ])->values()->all();
         $flujos[] = [$corte, (float) $valor];
 
         return [
@@ -381,23 +416,48 @@ class RentabilidadService
      * RN-040.1: capital aportado neto, ganancia, ROI y XIRR a partir de las
      * sumas, el valor actual y los flujos.
      */
-    private static function calcular(array $sumas, string $valor, array $flujos): array
+    private static function calcular(array $sumas, string $valor, array $flujos, ?Inversion $inversion = null): array
     {
-        $retiros = bcadd($sumas['RETIRO_PARCIAL'], $sumas['LIQUIDACION_TOTAL'], 2);
+        $retiros = bcadd(
+            bcadd($sumas['RETIRO_PARCIAL'] ?? '0.00', $sumas['LIQUIDACION_TOTAL'] ?? '0.00', 2),
+            bcadd(
+                bcadd($sumas['RETIRO'] ?? '0.00', $sumas['VENTA'] ?? '0.00', 2),
+                $sumas['REDENCION'] ?? '0.00',
+                2
+            ),
+            2
+        );
+
+        $aportes = bcadd($sumas['APORTE'] ?? '0.00', $sumas['COMPRA'] ?? '0.00', 2);
+
+        $rendimientos = bcadd(
+            $sumas['RENDIMIENTO'] ?? '0.00',
+            $sumas['DIVIDENDO'] ?? '0.00',
+            2
+        );
+
+        // En cuentas de alto rendimiento, el abono de intereses se capitaliza directamente en el saldo (valor actual),
+        // por lo que sumarlo como flujo adicional causaría doble contabilización del rendimiento.
+        if ($inversion?->tipo !== 'CUENTA_ALTO_RENDIMIENTO') {
+            $rendimientos = bcadd($rendimientos, $sumas['ABONO_INTERES'] ?? '0.00', 2);
+        }
+
+        $comisiones = $sumas['COMISION'] ?? '0.00';
+        $retenciones = bcadd($sumas['RETENCION'] ?? '0.00', $sumas['GMF'] ?? '0.00', 2);
 
         // Ganancia = Valor actual + Σ Retiros + Σ Rendimientos − Σ Aportes − Σ Comisiones − Σ Retenciones
         $ganancia = bcsub(
-            bcadd(bcadd($valor, $retiros, 2), $sumas['RENDIMIENTO'], 2),
-            bcadd(bcadd($sumas['APORTE'], $sumas['COMISION'], 2), $sumas['RETENCION'], 2),
+            bcadd(bcadd($valor, $retiros, 2), $rendimientos, 2),
+            bcadd(bcadd($aportes, $comisiones, 2), $retenciones, 2),
             2
         );
 
         return [
-            'capital_aportado_neto' => bcsub($sumas['APORTE'], $sumas['RETIRO_PARCIAL'], 2),
+            'capital_aportado_neto' => bcsub($aportes, $retiros, 2),
             'ganancia' => $ganancia,
             // ROI (%) = Ganancia total / Σ Aportes × 100
-            'roi' => bccomp($sumas['APORTE'], '0', 2) === 1
-                ? self::redondear(bcdiv(bcmul($ganancia, '100', 10), $sumas['APORTE'], 10))
+            'roi' => bccomp($aportes, '0', 2) === 1
+                ? self::redondear(bcdiv(bcmul($ganancia, '100', 10), $aportes, 10))
                 : null,
             'xirr' => self::xirr($flujos),
         ];

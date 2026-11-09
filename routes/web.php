@@ -17,6 +17,7 @@ use App\Http\Controllers\MovimientoInversionController;
 use App\Http\Controllers\PagoSeguridadSocialController;
 use App\Http\Controllers\PoliticaTratamientoController;
 use App\Http\Controllers\RentabilidadController;
+use App\Http\Controllers\ReporteInversionController;
 use App\Http\Controllers\SeguridadSocialController;
 use App\Http\Controllers\SimulacionInversionController;
 use App\Http\Controllers\TasaCambioController;
@@ -183,7 +184,15 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         // RF-041: consolidado del portafolio a una fecha de corte
         Route::get('/portafolio', [RentabilidadController::class, 'portafolio'])->name('portafolio');
 
-        // RF-042: simulación de hasta 4 alternativas; se guardan hasta 20 (RN-042.4)
+        // RF-REP-02 / RF-REP-03 / RF-REP-04: Reportes tributarios y exportación
+        Route::get('/reportes/retenciones', [ReporteInversionController::class, 'retenciones'])->name('reportes.retenciones');
+        Route::get('/reportes/retenciones/exportar', [ReporteInversionController::class, 'exportarRetencionesCsv'])->name('reportes.retenciones.exportar');
+        Route::get('/reportes/utilidades', [ReporteInversionController::class, 'utilidades'])->name('reportes.utilidades');
+        Route::get('/reportes/utilidades/exportar', [ReporteInversionController::class, 'exportarUtilidadesCsv'])->name('reportes.utilidades.exportar');
+
+        // RF-042 / RF-SIM-01 a 08: Simulaciones
+        Route::post('/simulaciones/producto', [SimulacionInversionController::class, 'simularProducto'])->name('simulaciones.producto');
+        Route::post('/simulaciones/instantanea', [SimulacionInversionController::class, 'guardarInstantanea'])->name('simulaciones.instantanea');
         Route::post('/simulaciones/calcular', [SimulacionInversionController::class, 'calcular'])->name('simulaciones.calcular');
         Route::get('/simulaciones', [SimulacionInversionController::class, 'index'])->name('simulaciones.index');
         Route::post('/simulaciones', [SimulacionInversionController::class, 'store'])->name('simulaciones.store');

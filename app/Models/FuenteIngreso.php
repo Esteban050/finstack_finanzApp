@@ -35,6 +35,7 @@ class FuenteIngreso extends Model
         'RENTAS_NO_LABORALES',
         'PENSIONES',
         'DIVIDENDOS',
+        'GANANCIA_OCASIONAL',
     ];
 
     protected $fillable = [

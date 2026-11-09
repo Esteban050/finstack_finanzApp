@@ -2,7 +2,16 @@
 @section('title', 'Simulaciones de inversión')
 @section('content')
 <div class="finance-page">
-<header class="income-page-header"><div><h1>Simulaciones de inversión</h1><p>Compara hasta cuatro alternativas sin afectar tus inversiones ni movimientos reales.</p></div></header>
+<header class="income-page-header">
+    <div>
+        <h1>Simulador de Inversiones</h1>
+        <p>Compara hasta cuatro alternativas sin afectar tus inversiones ni movimientos reales.</p>
+    </div>
+    <div class="ui-inline" style="gap: 0.5rem; flex-wrap: wrap;">
+        <x-ui.button :href="route('inversiones.index')" variant="secondary">Ver inversiones</x-ui.button>
+        <x-ui.button :href="route('inversiones.portafolio')" variant="secondary">Portafolio</x-ui.button>
+    </div>
+</header>
 <x-ui.card title="Configurar alternativas"><form method="POST" action="{{ route('inversiones.simulaciones.calcular') }}" data-finance-form="simulation" data-finance-compare>@csrf
 <div data-alternatives>@foreach(old('alternativas', [[]]) as $index=>$alternative)<x-ui.investment-alternative :index="$index" :alternative="$alternative" />@endforeach</div>
 <template data-alternative-template><x-ui.investment-alternative :index="0" /></template>

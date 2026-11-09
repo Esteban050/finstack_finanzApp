@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BitacoraAuditoria;
+use App\Models\Usuario;
 use Illuminate\Support\Facades\Request;
 
 class BitacoraService
@@ -19,8 +20,14 @@ class BitacoraService
         ?string $justificacion = null,
         ?string $usuarioId = null
     ): BitacoraAuditoria {
+        $resolvedUserId = $usuarioId ?? (auth()->check() ? auth()->id() : null);
+
+        if ($resolvedUserId !== null && ! Usuario::where('id', $resolvedUserId)->exists()) {
+            $resolvedUserId = null;
+        }
+
         return BitacoraAuditoria::create([
-            'usuario_id' => $usuarioId ?? auth()->id(),
+            'usuario_id' => $resolvedUserId,
             'accion' => $accion,
             'entidad_afectada' => $entidadAfectada,
             'entidad_id' => $entidadId,

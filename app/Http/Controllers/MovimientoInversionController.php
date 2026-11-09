@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Ingreso;
 use App\Models\Inversion;
 use App\Models\MovimientoInversion;
 use App\Models\Scopes\DelUsuarioAutenticado;
+use App\Models\UsuarioPerfilTributario;
 use App\Models\ValoracionInversion;
+use App\Models\ValorDeducibleRegistro;
 use App\Services\BitacoraService;
+use App\Services\CalculoImpuestoInversionService;
 use App\Services\IngresoService;
 use App\Services\InversionService;
+use App\Services\ParametroTributarioService;
+use App\Services\RentabilidadService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -21,24 +25,14 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * MOD-06 — RF-038: Movimientos de una inversión, base del cálculo de
- * rentabilidad (RF-040).
- *
- * Un rendimiento crea su ingreso de "Rentas de capital" en la misma
- * transacción (RN-038.4), y ese ingreso no se toca desde /ingresos
- * (IngresoController lo rechaza). Los movimientos no se editan: se eliminan y
- * se vuelven a registrar.
- *
- * Solo responde JSON: esta entrega no incluye interfaz Blade.
+ * MOD-06 — RF-038 / v1.1: Movimientos/Transacciones de inversiones.
+ * Gestiona COMPRA, VENTA, APORTE, RETIRO, ABONO_INTERES, DIVIDENDO, COMISION, REDENCION
+ * aplicando las deducciones en el momento (retención, GMF) y registrando los puentes tributarios.
  */
 class MovimientoInversionController extends Controller
 {
-    /** RNG-10: Tamaños de página admitidos. */
     private const POR_PAGINA = [10, 20, 50, 100];
 
-    /**
-     * RF-038: Movimientos de la inversión, del más reciente al más antiguo.
-     */
     public function index(Request $request, string $id): JsonResponse
     {
         $inversion = $this->inversionPropia($id);
@@ -68,65 +62,375 @@ class MovimientoInversionController extends Controller
         ]);
     }
 
-    /**
-     * RN-038.1 a RN-038.4: Registrar un movimiento.
-     */
     public function store(Request $request, string $id): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
-        $validated = $request->validate($this->reglas($inversion), $this->mensajes());
 
         if ($inversion->estaLiquidada()) {
             throw ValidationException::withMessages([
-                'inversion' => 'La inversión está liquidada: no admite movimientos nuevos (RN-038.3).',
+                'inversion' => 'La inversión está cerrada o liquidada: no admite transacciones nuevas.',
             ]);
         }
+
+        if (! $request->filled('monto') && $request->filled('unidades') && $request->filled('valor_unidad')) {
+            $montoCalc = IngresoService::redondear(bcmul((string) $request->input('unidades'), (string) $request->input('valor_unidad'), 4));
+            $request->merge(['monto' => $montoCalc]);
+        }
+
+        $validated = $request->validate($this->reglas($inversion), $this->mensajes());
 
         $tipo = $validated['tipo'];
-
         if (! $inversion->permiteMovimiento($tipo)) {
             throw ValidationException::withMessages([
-                'tipo' => "La inversión de tipo «{$inversion->tipo}» no admite movimientos de «{$tipo}». En activos como CDT o títulos a plazo fijo, el capital permanece congelado hasta su vencimiento.",
+                'tipo' => "La inversión de tipo «{$inversion->tipo}» no admite transacciones de tipo «{$tipo}».",
             ]);
         }
-        $monto = (string) $validated['monto'];
+
         $fecha = $validated['fecha'];
+        $monto = (string) ($validated['monto'] ?? '0');
+        $unidades = isset($validated['unidades']) ? (string) $validated['unidades'] : null;
+        $valorUnidad = isset($validated['valor_unidad']) ? (string) $validated['valor_unidad'] : null;
+        $comision = (string) ($validated['comision'] ?? '0.00');
+        $impuestoOrigen = (string) ($validated['impuesto_origen'] ?? '0.00');
 
-        // RNG-09: solo la liquidación total admite 0 (la inversión se perdió).
-        if ($tipo !== 'LIQUIDACION_TOTAL' && bccomp($monto, '0', 2) !== 1) {
-            throw ValidationException::withMessages([
-                'monto' => 'El monto debe ser mayor que cero.',
-            ]);
-        }
+        // TRM para transacciones
+        $tasa = TrmService::tasaPara($inversion->moneda, $validated['tasa_cambio_usada'] ?? null, $fecha);
 
-        $retencion = $tipo === 'RENDIMIENTO' ? (string) ($validated['retencion'] ?? '0') : '0';
-        $unidades = $this->unidadesDelMovimiento($inversion, $tipo, $validated);
+        // Variables de liquidación tributaria
+        $retencionAplicada = '0.00';
+        $gmfAplicado = '0.00';
+        $montoBruto = $monto;
+        $datosPuente = [];
 
-        // RN-038.3: un retiro no puede superar el último valor de mercado registrado.
-        if ($tipo === 'RETIRO_PARCIAL') {
-            $valoracion = InversionService::valorActual($inversion);
+        // Perfil tributario para tarifas marginales
+        $perfil = UsuarioPerfilTributario::where('usuario_id', Auth::id())
+            ->where('anio_gravable', CarbonImmutable::parse($fecha)->year)
+            ->first();
+        $tarifaMarginal = $perfil ? (string) $perfil->tarifa_marginal_estimada : '0.00';
 
-            if ($valoracion !== null && bccomp($monto, (string) $valoracion->valor, 2) === 1) {
-                throw ValidationException::withMessages([
-                    'monto' => 'El retiro no puede superar el último valor de mercado registrado.',
-                ]);
+        // ----------------------------------------------------
+        // Lógica específica por producto y tipo de transacción
+        // ----------------------------------------------------
+
+        // 1. COMPRA en ACCION_ETF
+        if ($inversion->tipo === 'ACCION_ETF' && in_array($tipo, ['COMPRA', 'APORTE'], true)) {
+            $detalle = $inversion->detalleRentaVariable;
+            if ($detalle && $unidades !== null && $valorUnidad !== null) {
+                $montoBruto = IngresoService::redondear(bcmul($unidades, $valorUnidad, 4));
+                $monto = bcadd($montoBruto, $comision, 2);
             }
         }
 
-        // RN-038.3: la liquidación total es lo último que le pasa a la inversión.
-        if ($tipo === 'LIQUIDACION_TOTAL') {
-            $this->validarLiquidacionAlFinal($inversion, CarbonImmutable::parse($fecha));
+        // 2. VENTA en ACCION_ETF
+        if ($inversion->tipo === 'ACCION_ETF' && $tipo === 'VENTA') {
+            $detalle = $inversion->detalleRentaVariable;
+            if (! $detalle) {
+                throw new \RuntimeException('No se encontró el detalle de renta variable.');
+            }
+
+            // RF-INV-05: Validar que no se vendan más unidades de las disponibles
+            if (bccomp($unidades, (string) $detalle->unidades_total, 8) === 1) {
+                throw ValidationException::withMessages([
+                    'unidades' => "No puede vender más unidades de las disponibles. Saldo actual: {$detalle->unidades_total} unidades.",
+                ]);
+            }
+
+            $liquidacionVenta = CalculoImpuestoInversionService::calcularVentaAcciones(
+                unidadesVendidas: $unidades,
+                precioVenta: $valorUnidad,
+                costoPromedioUnitario: (string) $detalle->costo_promedio_unitario,
+                comisionVenta: $comision,
+                estaInscritoBvc: (bool) $detalle->esta_inscrito_bvc,
+                porcentajeCirculacionVendidoAnio: (string) ($detalle->porcentaje_circulacion_vendido_anio ?? '0.00'),
+                fechaPrimeraCompra: $detalle->fecha_primera_compra ? $detalle->fecha_primera_compra->toDateString() : $fecha,
+                fechaVenta: $fecha,
+                tarifaMarginalUsuario: $tarifaMarginal,
+                trmVenta: $tasa,
+                trmCompra: (string) ($detalle->trm_compra ?? '1.0000')
+            );
+
+            if ($inversion->moneda === 'USD') {
+                $montoBruto = $liquidacionVenta['ingreso_bruto_original'];
+                $monto = $liquidacionVenta['neto_antes_impuesto_original'];
+            } else {
+                $montoBruto = $liquidacionVenta['ingreso_bruto_cop'];
+                $monto = $liquidacionVenta['neto_antes_impuesto'];
+            }
+
+            $datosPuente = [
+                'utilidad_cop' => $liquidacionVenta['utilidad_cop'],
+                'utilidad_original' => $liquidacionVenta['utilidad_original'] ?? $liquidacionVenta['utilidad_cop'],
+                'clase_fiscal' => $liquidacionVenta['clase_fiscal'],
+                'anios_tenencia' => $liquidacionVenta['anios_tenencia'] ?? 0,
+                'impuesto_estimado' => $liquidacionVenta['impuesto_renta_estimado'],
+            ];
         }
 
-        // RN-021.3 / RN-041.4: el monto en COP con la tasa de la fecha del movimiento.
-        $tasa = TrmService::tasaPara($inversion->moneda, $validated['tasa_cambio_usada'] ?? null, $fecha);
+        // 3. DIVIDENDO en ACCION_ETF
+        if ($inversion->tipo === 'ACCION_ETF' && $tipo === 'DIVIDENDO') {
+            $detalle = $inversion->detalleRentaVariable;
+            $tipoReparto = $detalle?->tipo_reparto ?? 'DISTRIBUTIVO';
+
+            $valDivUnit = $valorUnidad ?? ($detalle?->valor_dividendo_por_unidad ? (string) $detalle->valor_dividendo_por_unidad : '0');
+            $unidadesBase = $unidades ?? ($detalle?->unidades_total ? (string) $detalle->unidades_total : '0');
+
+            // Moneda y TRM del dividendo
+            $monedaDiv = strtoupper((string) ($request->input('moneda') ?? $detalle?->moneda_dividendo ?? $inversion->moneda ?? 'COP'));
+            $trmDiv = $request->input('tasa_cambio_usada') ?? $request->input('trm') ?? $detalle?->trm_dividendo;
+
+            if ($monedaDiv === 'USD') {
+                $trmDiv = TrmService::tasaPara('USD', $trmDiv, $fecha);
+            } else {
+                $trmDiv = '1.0000';
+            }
+
+            $liquidacionDiv = CalculoImpuestoInversionService::calcularDividendo(
+                unidades: $unidadesBase,
+                valorDividendoPorUnidad: $valDivUnit,
+                tipoReparto: $tipoReparto,
+                impuestoOrigen: $impuestoOrigen,
+                fecha: $fecha,
+                mercado: $detalle?->mercado ?? 'BVC',
+                subtipo: $detalle?->tipo ?? 'ACCION',
+                moneda: $monedaDiv,
+                trm: $trmDiv
+            );
+
+            if ($inversion->moneda === 'USD') {
+                $montoBruto = $liquidacionDiv['bruto_original'];
+                $retencionAplicada = $liquidacionDiv['retencion_aplicada_original'];
+                $impuestoOrigen = $liquidacionDiv['impuesto_origen_original'];
+                $monto = $liquidacionDiv['neto_original'];
+                $tasa = $trmDiv;
+            } else {
+                $montoBruto = $liquidacionDiv['bruto_cop'];
+                $retencionAplicada = $liquidacionDiv['retencion_aplicada'];
+                $impuestoOrigen = $liquidacionDiv['impuesto_origen'];
+                $monto = $liquidacionDiv['neto_cop'];
+                $tasa = '1.0000';
+            }
+        }
+
+        // 4. ABONO_INTERES en CUENTA_ALTO_RENDIMIENTO o CDT
+        if ($tipo === 'ABONO_INTERES') {
+            if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO') {
+                $detalle = $inversion->detalleCuenta;
+                $tasaEa = (string) ($detalle?->tasa_ea ?? $inversion->tasa_ea ?? '0');
+                $dias = (int) ($validated['dias'] ?? 30);
+
+                // Si no se suministra monto bruto directo, se calcula
+                if (bccomp($monto, '0', 2) === 0) {
+                    $valoracionActual = InversionService::valorActual($inversion);
+                    $saldoBase = $valoracionActual ? (string) $valoracionActual->valor : (string) ($detalle?->saldo_inicial ?? $inversion->monto_inicial);
+                    $liqAbono = CalculoImpuestoInversionService::calcularAbonoCuenta($saldoBase, $tasaEa, $dias, $detalle?->base_dias ?? 365, $fecha);
+                    $montoBruto = $liqAbono['bruto'];
+                    $retencionAplicada = $liqAbono['retencion_total'];
+                    $monto = $liqAbono['neto'];
+                } else {
+                    $baseDiariaUvt = ParametroTributarioService::obtenerValor('RETEFUENTE_CUENTA_AHORRO_BASE_DIARIA_UVT', $fecha);
+                    $uvt = ParametroTributarioService::obtenerUvt($fecha);
+                    $topeMinimo = IngresoService::redondear(bcmul(bcmul((string) $dias, $baseDiariaUvt, 6), $uvt, 4));
+
+                    if (bccomp($monto, $topeMinimo, 2) < 0) {
+                        $retencionAplicada = '0.00';
+                    } else {
+                        $tarifaRet = ParametroTributarioService::obtenerValor('RETEFUENTE_REND_FINANCIEROS', $fecha);
+                        $retencionAplicada = IngresoService::redondear(bcmul($monto, bcdiv($tarifaRet, '100', 6), 4));
+                    }
+                    $montoBruto = $monto;
+                    $monto = bcsub($montoBruto, $retencionAplicada, 2);
+                }
+            } elseif ($inversion->tipo === 'CDT') {
+                $tarifaRet = ParametroTributarioService::obtenerValor('RETEFUENTE_RENTA_FIJA', $fecha);
+                $montoBruto = $monto;
+                $retencionAplicada = IngresoService::redondear(bcmul($montoBruto, bcdiv($tarifaRet, '100', 6), 4));
+                $monto = bcsub($montoBruto, $retencionAplicada, 2);
+            }
+        }
+
+        // 5. RETIRO en CUENTA_ALTO_RENDIMIENTO (GMF y tope 350 UVT)
+        if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+            $detalle = $inversion->detalleCuenta;
+            $esExenta = (bool) ($detalle?->es_cuenta_gmf_exenta ?? false);
+
+            // Validar saldo disponible
+            $valoracion = InversionService::valorActual($inversion);
+            $saldoDisponible = $valoracion ? (string) $valoracion->valor : (string) ($detalle?->saldo_inicial ?? $inversion->monto_inicial);
+            if (bccomp($monto, $saldoDisponible, 2) === 1) {
+                throw ValidationException::withMessages([
+                    'monto' => "No puede retirar más del saldo disponible. Saldo actual: $" . number_format((float) $saldoDisponible, 2),
+                ]);
+            }
+
+            // Calcular retiros acumulados del mes calendario actual para esta inversión
+            $fechaCarbon = CarbonImmutable::parse($fecha);
+            $retirosMesPrevios = MovimientoInversion::where('inversion_id', $inversion->id)
+                ->whereIn('tipo', ['RETIRO', 'RETIRO_PARCIAL'])
+                ->whereYear('fecha', $fechaCarbon->year)
+                ->whereMonth('fecha', $fechaCarbon->month)
+                ->sum('monto_bruto');
+
+            $liqRetiro = CalculoImpuestoInversionService::calcularRetiroCuenta(
+                montoRetiro: $monto,
+                esCuentaGmfExenta: $esExenta,
+                retirosMesAcumuladosPrevios: (string) $retirosMesPrevios,
+                fecha: $fecha
+            );
+
+            $gmfAplicado = $liqRetiro['gmf_aplicado'];
+            $montoBruto = $monto;
+            $monto = $liqRetiro['neto_desembolsado'];
+        }
+
+        // 6. REDENCION en FIC
+        if ($inversion->tipo === 'FIC' && in_array($tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true)) {
+            $detalle = $inversion->detalleFic;
+            if (! $detalle) {
+                throw new \RuntimeException('No se encontró el detalle de FIC.');
+            }
+
+            $valoracion = InversionService::valorActual($inversion);
+            $valorActualFondo = $valoracion ? (string) $valoracion->valor : '0.00';
+            $totalAportesNetos = RentabilidadService::capitalAportadoNeto($inversion, CarbonImmutable::parse($fecha));
+
+            // Suma de utilidad ya redimida en movimientos anteriores
+            $utilidadYaRedimida = DB::table('ingreso_inversion')
+                ->where('inversion_id', $inversion->id)
+                ->where('tipo', 'RENDIMIENTO')
+                ->sum('valor_bruto');
+
+            $tarifaPonderada = $detalle->catalogo ? $detalle->catalogo->tarifaPonderada() : '6.10';
+
+            $liqRedencion = CalculoImpuestoInversionService::calcularRedencionFic(
+                montoRedencion: $monto,
+                valorActualFondo: $valorActualFondo,
+                totalAportesNetos: $totalAportesNetos,
+                utilidadYaRedimida: (string) $utilidadYaRedimida,
+                tarifaPonderada: $tarifaPonderada,
+                comisionSalida: $comision
+            );
+
+            $montoBruto = $monto;
+            $retencionAplicada = $liqRedencion['retencion_aplicada'];
+            $monto = $liqRedencion['neto'];
+            $datosPuente = [
+                'parte_utilidad' => $liqRedencion['parte_utilidad'],
+            ];
+
+            // Descontar unidades del FIC
+            $valUnidadAct = $detalle->valor_unidad_actual ?? '1.00000000';
+            if (bccomp((string) $valUnidadAct, '0', 8) > 0) {
+                $unidadesRedimidas = bcdiv($montoBruto, (string) $valUnidadAct, 8);
+                $unidades = $unidadesRedimidas;
+            }
+        }
+
+        // 7. APORTE / RETIRO en FPV
+        if ($inversion->tipo === 'FPV') {
+            if (in_array($tipo, ['APORTE', 'COMPRA'], true)) {
+                $ingresoAnual = (string) ($perfil?->ingreso_anual_estimado ?? '0');
+                $aportesPrevios = MovimientoInversion::where('usuario_id', Auth::id())
+                    ->where('tipo', 'APORTE')
+                    ->whereYear('fecha', CarbonImmutable::parse($fecha)->year)
+                    ->whereHas('inversion', fn ($q) => $q->where('tipo', 'FPV'))
+                    ->sum('monto_cop');
+
+                $datosPuente = CalculoImpuestoInversionService::validarTopeAporteFpv(
+                    montoAporte: $monto,
+                    ingresoAnual: $ingresoAnual,
+                    aportesAfcAnio: '0.00',
+                    aportesFpvAnio: (string) $aportesPrevios,
+                    fecha: $fecha
+                );
+                $montoBruto = $monto;
+            } elseif (in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+                $cumplePermanencia = $request->boolean('cumple_permanencia', false);
+
+                // Calcular aportes con y sin beneficio disponibles en este FPV
+                $totalAportesFpv = MovimientoInversion::where('inversion_id', $inversion->id)
+                    ->whereIn('tipo', ['APORTE', 'COMPRA'])
+                    ->sum('monto_cop');
+
+                $beneficioRegistrado = ValorDeducibleRegistro::where('inversion_id', $inversion->id)
+                    ->where('concepto', 'APORTE_FPV')
+                    ->sum('valor');
+
+                $reversionesPrevias = abs((float) ValorDeducibleRegistro::where('inversion_id', $inversion->id)
+                    ->where('concepto', 'AJUSTE_FPV_RETIRO')
+                    ->sum('valor'));
+
+                $retirosPrevios = MovimientoInversion::where('inversion_id', $inversion->id)
+                    ->whereIn('tipo', ['RETIRO', 'RETIRO_PARCIAL'])
+                    ->sum('monto_bruto');
+
+                $aportesSinBeneficioOriginales = bcsub((string) $totalAportesFpv, (string) $beneficioRegistrado, 2);
+                if (bccomp($aportesSinBeneficioOriginales, '0', 2) < 0) {
+                    $aportesSinBeneficioOriginales = '0.00';
+                }
+
+                $sinBeneficioConsumido = bcsub((string) $retirosPrevios, (string) $reversionesPrevias, 2);
+                if (bccomp($sinBeneficioConsumido, '0', 2) < 0) {
+                    $sinBeneficioConsumido = '0.00';
+                }
+
+                $aportesSinBeneficioDisponibles = bcsub((string) $aportesSinBeneficioOriginales, (string) $sinBeneficioConsumido, 2);
+                if (bccomp($aportesSinBeneficioDisponibles, '0', 2) < 0) {
+                    $aportesSinBeneficioDisponibles = '0.00';
+                }
+
+                // Si no se digitó manualmente la proporción de rendimientos, se calcula a partir de la valorización actual vs costo base
+                $proporcionRendimiento = (string) ($validated['proporcion_rendimiento'] ?? '0.00');
+                if (bccomp($proporcionRendimiento, '0', 4) === 0) {
+                    $valoracionActual = InversionService::valorActual($inversion);
+                    $valorMercado = $valoracionActual ? (string) $valoracionActual->valor : (string) ($inversion->detalleFpv?->saldo_actual ?? $inversion->monto_inicial);
+                    $costoBase = (string) ($inversion->detalleFpv?->saldo_actual ?? $inversion->monto_inicial);
+                    if (bccomp($valorMercado, $costoBase, 2) > 0 && bccomp($valorMercado, '0', 2) > 0) {
+                        $gananciaTotal = bcsub($valorMercado, $costoBase, 2);
+                        $proporcionRendimiento = bcdiv($gananciaTotal, $valorMercado, 8);
+                    }
+                }
+
+                $liqRetiroFpv = CalculoImpuestoInversionService::calcularRetiroFpv(
+                    montoRetiro: $monto,
+                    cumplePermanenciaODestino: $cumplePermanencia,
+                    proporcionRendimiento: $proporcionRendimiento,
+                    fecha: $fecha,
+                    aportesSinBeneficioDisponibles: $aportesSinBeneficioDisponibles
+                );
+
+                $montoBruto = $monto;
+                $retencionAplicada = $liqRetiroFpv['retencion_aplicada'];
+                $monto = $liqRetiroFpv['neto'];
+                $datosPuente = [
+                    'cumple_permanencia' => $cumplePermanencia,
+                    'aportes_retirados' => $liqRetiroFpv['aportes_retirados'],
+                ];
+            }
+        }
+
+        // 8. RETIRO en CESANTIAS
+        if ($inversion->tipo === 'CESANTIAS' && in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+            $ingresoPromedio6m = (string) ($perfil?->ingreso_laboral_promedio_6m ?? $inversion->detalleCesantias?->salario_promedio_6m_override ?? '0');
+            $liqCesantias = CalculoImpuestoInversionService::calcularRetiroCesantias(
+                montoRetirado: $monto,
+                ingresoLaboralPromedio6m: $ingresoPromedio6m,
+                fecha: $fecha
+            );
+
+            $montoBruto = $monto;
+            $retencionAplicada = '0.00';
+            $datosPuente = [
+                'parte_exenta' => $liqCesantias['parte_exenta'],
+            ];
+        }
+
         $montoCop = IngresoService::convertirACop($monto, $tasa);
 
-        [$movimiento, $movimientoRetencion, $ingreso] = DB::transaction(function () use ($inversion, $validated, $tipo, $monto, $fecha, $retencion, $unidades, $tasa, $montoCop) {
-            $ingreso = $tipo === 'RENDIMIENTO'
-                ? $this->registrarIngresoDelRendimiento($inversion, $monto, $retencion, $tasa, $fecha)
-                : null;
-
+        [$movimiento] = DB::transaction(function () use (
+            $inversion, $tipo, $fecha, $monto, $tasa, $montoCop, $montoBruto,
+            $valorUnidad, $unidades, $comision, $retencionAplicada, $gmfAplicado,
+            $impuestoOrigen, $validated, $datosPuente
+        ) {
             $movimiento = MovimientoInversion::create([
                 'usuario_id' => Auth::id(),
                 'inversion_id' => $inversion->id,
@@ -135,319 +439,219 @@ class MovimientoInversionController extends Controller
                 'monto' => $monto,
                 'tasa_cambio_usada' => $tasa,
                 'monto_cop' => $montoCop,
+                'monto_bruto' => $montoBruto,
+                'valor_unidad' => $valorUnidad,
+                'trm' => $tasa,
+                'comision' => $comision,
+                'retencion_aplicada' => $retencionAplicada,
+                'gmf_aplicado' => $gmfAplicado,
+                'impuesto_origen' => $impuestoOrigen,
                 'unidades' => $unidades,
                 'nota' => $validated['nota'] ?? null,
-                'ingreso_id' => $ingreso?->id,
+                'es_inicial' => false,
             ]);
 
-            // RN-038.4: la retención informada queda también como movimiento,
-            // atado al mismo ingreso (RN-040.1 la resta de la ganancia).
-            $movimientoRetencion = null;
-            if (bccomp($retencion, '0', 2) === 1) {
-                $movimientoRetencion = MovimientoInversion::create([
-                    'usuario_id' => Auth::id(),
-                    'inversion_id' => $inversion->id,
-                    'tipo' => 'RETENCION',
-                    'fecha' => $fecha,
-                    'monto' => $retencion,
-                    'tasa_cambio_usada' => $tasa,
-                    'monto_cop' => IngresoService::convertirACop($retencion, $tasa),
-                    'nota' => 'Retención en la fuente del rendimiento',
-                    'ingreso_id' => $ingreso->id,
-                ]);
+            // Actualizar inventario / detalle según tipo
+            if ($inversion->tipo === 'ACCION_ETF' && $inversion->detalleRentaVariable) {
+                $det = $inversion->detalleRentaVariable;
+                if (in_array($tipo, ['COMPRA', 'APORTE'], true) && $unidades !== null && $valorUnidad !== null) {
+                    $recalculo = CalculoImpuestoInversionService::recalcularCostoPromedio(
+                        unidadesPrevias: (string) $det->unidades_total,
+                        costoPromedioPrevio: (string) $det->costo_promedio_unitario,
+                        unidadesNuevas: $unidades,
+                        precioNuevo: $valorUnidad,
+                        comision: $comision,
+                        trm: $tasa
+                    );
+                    $det->update([
+                        'unidades_total' => $recalculo['unidades_total'],
+                        'costo_promedio_unitario' => $recalculo['costo_promedio_unitario'],
+                        'valor_actual_unidad' => $valorUnidad,
+                    ]);
+                } elseif ($tipo === 'VENTA' && $unidades !== null) {
+                    $nuevasUnidades = bcsub((string) $det->unidades_total, $unidades, 8);
+                    $det->update([
+                        'unidades_total' => $nuevasUnidades,
+                        'valor_actual_unidad' => $valorUnidad ?? $det->valor_actual_unidad,
+                    ]);
+                    if (bccomp($nuevasUnidades, '0', 8) <= 0) {
+                        $inversion->update(['estado' => 'CERRADA']);
+                    }
+                }
+            } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic) {
+                $det = $inversion->detalleFic;
+                if (in_array($tipo, ['APORTE', 'COMPRA'], true) && $unidades !== null) {
+                    $det->update([
+                        'unidades' => bcadd((string) $det->unidades, $unidades, 8),
+                        'valor_unidad_actual' => $valorUnidad ?? $det->valor_unidad_actual,
+                    ]);
+                } elseif (in_array($tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true) && $unidades !== null) {
+                    $nuevasUnidades = bcsub((string) $det->unidades, $unidades, 8);
+                    $det->update([
+                        'unidades' => $nuevasUnidades,
+                    ]);
+                    if (bccomp($nuevasUnidades, '0', 8) <= 0) {
+                        $inversion->update(['estado' => 'CERRADA']);
+                    }
+                }
+            } elseif ($inversion->tipo === 'CDT' && $tipo === 'REDENCION') {
+                $inversion->update(['estado' => 'LIQUIDADA']);
+            } elseif ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $inversion->detalleCuenta) {
+                $det = $inversion->detalleCuenta;
+                if (in_array($tipo, ['APORTE', 'ABONO_INTERES'], true)) {
+                    $det->update(['saldo_inicial' => bcadd((string) $det->saldo_inicial, $monto, 2)]);
+                } elseif (in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+                    $det->update(['saldo_inicial' => bcsub((string) $det->saldo_inicial, $montoBruto, 2)]);
+                }
+            } elseif ($inversion->tipo === 'CESANTIAS' && $inversion->detalleCesantias) {
+                $det = $inversion->detalleCesantias;
+                if ($tipo === 'APORTE') {
+                    $det->update(['saldo' => bcadd((string) $det->saldo, $monto, 2)]);
+                } elseif (in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+                    $det->update(['saldo' => bcsub((string) $det->saldo, $montoBruto, 2)]);
+                }
+            } elseif ($inversion->tipo === 'FPV' && $inversion->detalleFpv) {
+                $det = $inversion->detalleFpv;
+                $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)->orderByDesc('fecha')->first();
+                $valorUnidad = $ultimaVal?->precio_unitario ?? $det->valor_unidad ?? $movimiento->valor_unidad;
+
+                if (in_array($tipo, ['APORTE', 'COMPRA'], true)) {
+                    if ($unidades === null && $valorUnidad !== null && bccomp((string) $valorUnidad, '0', 8) > 0) {
+                        $unidades = bcdiv($monto, (string) $valorUnidad, 8);
+                        $movimiento->update([
+                            'unidades' => $unidades,
+                            'valor_unidad' => $valorUnidad,
+                        ]);
+                    }
+                    $nuevasUnidades = $unidades !== null ? bcadd((string) ($det->unidades ?? '0'), $unidades, 8) : null;
+                    $det->update([
+                        'saldo_actual' => bcadd((string) $det->saldo_actual, $monto, 2),
+                        'unidades' => $nuevasUnidades,
+                    ]);
+                } elseif (in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+                    if ($unidades === null && $valorUnidad !== null && bccomp((string) $valorUnidad, '0', 8) > 0) {
+                        $unidades = bcdiv($montoBruto, (string) $valorUnidad, 8);
+                        $movimiento->update([
+                            'unidades' => $unidades,
+                            'valor_unidad' => $valorUnidad,
+                        ]);
+                    }
+                    $nuevasUnidades = $unidades !== null ? bcsub((string) ($det->unidades ?? '0'), $unidades, 8) : null;
+                    $det->update([
+                        'saldo_actual' => bcsub((string) $det->saldo_actual, $montoBruto, 2),
+                        'unidades' => $nuevasUnidades,
+                    ]);
+                    if ($nuevasUnidades !== null && bccomp($nuevasUnidades, '0', 8) <= 0) {
+                        $inversion->update(['estado' => 'CERRADA']);
+                    }
+                }
             }
 
-            // RN-038.3: la liquidación total deja la inversión "Liquidada" con valor actual 0.
-            if ($tipo === 'LIQUIDACION_TOTAL') {
-                $anterior = $inversion->toArray();
-                $inversion->update(['estado' => 'LIQUIDADA', 'liquidada_en' => $fecha]);
+            // Sincronizar valoración
+            InversionService::sincronizarValoracionTrasMovimiento($inversion, $movimiento);
 
-                ValoracionInversion::updateOrCreate(
-                    ['inversion_id' => $inversion->id, 'fecha' => $fecha],
-                    [
-                        'usuario_id' => Auth::id(),
-                        'valor' => '0',
-                        'precio_unitario' => null,
-                        'unidades' => null,
-                        'origen' => 'LIQUIDACION',
-                    ]
-                );
-
-                BitacoraService::registrar(
-                    accion: 'LIQUIDAR_INVERSION',
-                    entidadAfectada: 'inversiones',
-                    entidadId: $inversion->id,
-                    valorAnterior: $anterior,
-                    valorNuevo: $inversion->fresh()->toArray(),
-                    justificacion: 'RN-038.3: liquidación total; la inversión queda Liquidada con valor actual 0.',
-                    usuarioId: Auth::id()
-                );
-            }
-
-            // H-09: Sincronizar automáticamente la valoración de mercado tras Aporte o Retiro parcial
-            if (in_array($tipo, ['APORTE', 'RETIRO_PARCIAL'], true)) {
-                InversionService::sincronizarValoracionTrasMovimiento($inversion, $movimiento);
-            }
+            // Registrar en tablas puente hacia Ingresos
+            InversionService::registrarPuentesTributarios($movimiento, $inversion, $datosPuente);
 
             BitacoraService::registrar(
-                accion: 'REGISTRAR_MOVIMIENTO_INVERSION',
+                accion: 'REGISTRAR_MOVIMIENTO',
                 entidadAfectada: 'movimientos_inversion',
                 entidadId: $movimiento->id,
                 valorNuevo: $movimiento->fresh()->toArray(),
-                justificacion: "RF-038: movimiento {$tipo} de la inversión {$inversion->id}.",
+                justificacion: "Transacción {$tipo} con retención $" . number_format((float) $retencionAplicada, 2) . " y GMF $" . number_format((float) $gmfAplicado, 2),
                 usuarioId: Auth::id()
             );
 
-            return [$movimiento->fresh(), $movimientoRetencion?->fresh(), $ingreso?->fresh()];
+            return [$movimiento];
         });
 
         if ($request->expectsJson()) {
             return response()->json([
-                'mensaje' => $ingreso === null
-                    ? 'Movimiento registrado.'
-                    : 'Movimiento registrado. Se creó su ingreso en "Rentas de capital".',
+                'mensaje' => 'Transacción registrada con éxito.',
                 'data' => [
                     'movimiento' => $movimiento,
-                    'retencion' => $movimientoRetencion,
-                    'ingreso' => $ingreso,
-                    'inversion' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
+                    'retencion_aplicada' => $retencionAplicada,
+                    'gmf_aplicado' => $gmfAplicado,
+                    'monto_desembolsado' => $monto,
                 ],
             ], 201);
         }
 
         return redirect()->route('inversiones.show', $inversion->id)
-            ->with('status', 'Movimiento registrado con éxito.' . ($ingreso !== null ? ' Se creó automáticamente el ingreso en rentas de capital.' : ''));
+            ->with('status', "Transacción de {$tipo} registrada con éxito.");
     }
 
-    /**
-     * RNG-07: Eliminación lógica de un movimiento.
-     *
-     * - El aporte inicial no se elimina (RN-037.4).
-     * - Una inversión liquidada solo admite eliminar su liquidación, que la
-     *   devuelve a Activa (o Vencida) y quita su valoración en 0.
-     * - Un rendimiento se lleva su ingreso y su retención (RN-038.4); la
-     *   retención atada a un ingreso no se elimina sola.
-     */
     public function destroy(Request $request, string $id, string $movimientoId): JsonResponse|RedirectResponse
     {
         $inversion = $this->inversionPropia($id);
 
         $movimiento = MovimientoInversion::where('inversion_id', $inversion->id)
             ->whereKey($movimientoId)
-            ->first();
-
-        if ($movimiento === null) {
-            abort(404);
-        }
+            ->firstOrFail();
 
         if ($movimiento->es_inicial) {
             throw ValidationException::withMessages([
-                'movimiento' => 'El aporte inicial no se elimina: es el monto inicial de la inversión (RN-037.4).',
+                'movimiento' => 'El aporte inicial no se puede eliminar. Para eliminar la inversión, hágalo desde la pantalla principal.',
             ]);
         }
 
-        if ($inversion->estaLiquidada() && $movimiento->tipo !== 'LIQUIDACION_TOTAL') {
-            throw ValidationException::withMessages([
-                'movimiento' => 'La inversión está liquidada: elimine primero la liquidación total.',
-            ]);
-        }
+        DB::transaction(function () use ($movimiento, $inversion) {
+            $anterior = $movimiento->toArray();
 
-        if ($movimiento->tipo === 'RETENCION' && $movimiento->ingreso_id !== null) {
-            throw ValidationException::withMessages([
-                'movimiento' => 'Esta retención pertenece a un rendimiento: elimine el rendimiento y se eliminará con él.',
-            ]);
-        }
-
-        DB::transaction(function () use ($inversion, $movimiento) {
-            if ($movimiento->tipo === 'RENDIMIENTO' && $movimiento->ingreso_id !== null) {
-                MovimientoInversion::where('ingreso_id', $movimiento->ingreso_id)
-                    ->whereKeyNot($movimiento->id)
-                    ->get()
-                    ->each(fn (MovimientoInversion $retencion) => $retencion->delete());
-
-                $ingreso = Ingreso::find($movimiento->ingreso_id);
-
-                if ($ingreso !== null) {
-                    $ingresoAnterior = $ingreso->toArray();
-                    $ingreso->delete();
-
-                    BitacoraService::registrar(
-                        accion: 'ELIMINAR_INGRESO',
-                        entidadAfectada: 'ingresos',
-                        entidadId: $ingreso->id,
-                        valorAnterior: $ingresoAnterior,
-                        justificacion: 'RN-038.4: ingreso eliminado junto con el rendimiento de la inversión.',
-                        usuarioId: Auth::id()
-                    );
+            // Revertir inventario si era VENTA o REDENCION
+            if ($inversion->tipo === 'ACCION_ETF' && $inversion->detalleRentaVariable) {
+                $det = $inversion->detalleRentaVariable;
+                if ($movimiento->tipo === 'VENTA' && $movimiento->unidades) {
+                    $det->increment('unidades_total', (float) $movimiento->unidades);
+                    if ($inversion->estado === 'CERRADA') {
+                        $inversion->update(['estado' => 'ACTIVA']);
+                    }
+                } elseif (in_array($movimiento->tipo, ['COMPRA', 'APORTE'], true) && $movimiento->unidades) {
+                    $nuevas = bcsub((string) $det->unidades_total, (string) $movimiento->unidades, 8);
+                    $det->update(['unidades_total' => bccomp($nuevas, '0', 8) > 0 ? $nuevas : '0.00000000']);
+                }
+            } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic) {
+                $det = $inversion->detalleFic;
+                if (in_array($movimiento->tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true) && $movimiento->unidades) {
+                    $det->increment('unidades', (float) $movimiento->unidades);
+                    if ($inversion->estado === 'CERRADA') {
+                        $inversion->update(['estado' => 'ACTIVA']);
+                    }
+                }
+            } elseif ($inversion->tipo === 'CDT' && $movimiento->tipo === 'REDENCION') {
+                if (in_array($inversion->estado, ['LIQUIDADA', 'CERRADA'], true)) {
+                    $inversion->update(['estado' => 'ACTIVA']);
                 }
             }
 
-            if ($movimiento->tipo === 'LIQUIDACION_TOTAL') {
-                ValoracionInversion::where('inversion_id', $inversion->id)
-                    ->where('origen', 'LIQUIDACION')
-                    ->where('fecha', $movimiento->fecha->toDateString())
-                    ->delete();
+            // Eliminar registros puente asociados
+            $movimiento->valoresDeducibles()->delete();
+            $movimiento->ingresosInversion()->delete();
 
-                $inversion->update([
-                    'estado' => InversionService::estadoSegunVencimiento(
-                        $inversion->fecha_vencimiento === null ? null : CarbonImmutable::parse($inversion->fecha_vencimiento),
-                        CarbonImmutable::today()
-                    ),
-                    'liquidada_en' => null,
-                ]);
+            if ($movimiento->ingreso_id) {
+                \App\Models\Ingreso::where('id', $movimiento->ingreso_id)->delete();
             }
 
-            $anterior = $movimiento->toArray();
-            $tipoEliminado = $movimiento->tipo;
             $movimiento->delete();
 
-            if (in_array($tipoEliminado, ['APORTE', 'RETIRO_PARCIAL'], true)) {
-                InversionService::reconciliarValoraciones($inversion);
-            }
-
             BitacoraService::registrar(
-                accion: 'ELIMINAR_MOVIMIENTO_INVERSION',
+                accion: 'ELIMINAR_MOVIMIENTO',
                 entidadAfectada: 'movimientos_inversion',
                 entidadId: $movimiento->id,
                 valorAnterior: $anterior,
-                justificacion: "RNG-07: eliminación del movimiento {$tipoEliminado} de la inversión {$inversion->id}.",
+                justificacion: 'Eliminación lógica de transacción.',
                 usuarioId: Auth::id()
             );
         });
 
         if ($request->expectsJson()) {
-            return response()->json([
-                'mensaje' => 'Movimiento eliminado.',
-                'data' => InversionService::presentar($inversion->fresh(), CarbonImmutable::today()),
-            ]);
+            return response()->json(['mensaje' => 'Movimiento eliminado.']);
         }
 
         return redirect()->route('inversiones.show', $inversion->id)
-            ->with('status', 'Movimiento eliminado.');
+            ->with('status', 'Transacción eliminada con éxito.');
     }
 
-    /**
-     * RN-038.4 / CA-038.1 / H-02: ingreso automático por el rendimiento o dividendo,
-     * clasificado como "Dividendos y participaciones" para Acciones, ETF y Negocios,
-     * o "Rentas de capital" para el resto.
-     */
-    private function registrarIngresoDelRendimiento(Inversion $inversion, string $monto, string $retencion, string $tasa, string $fecha): Ingreso
-    {
-        $esDividendo = in_array($inversion->tipo, ['ACCIONES', 'ETF', 'NEGOCIO_PARTICIPACION'], true);
-        $clasificacion = $esDividendo ? 'DIVIDENDOS' : InversionService::CLASIFICACION_RENDIMIENTOS;
-        $nombreFuente = $esDividendo ? 'Dividendos y participaciones' : InversionService::FUENTE_RENDIMIENTOS;
-        $tipoFuente = $esDividendo ? 'Dividendos' : InversionService::TIPO_FUENTE_RENDIMIENTOS;
-
-        $fuente = InversionService::fuenteDeRendimientos(Auth::id(), $nombreFuente, $tipoFuente, $clasificacion);
-
-        $montos = IngresoService::prepararMontos([
-            'moneda' => $inversion->moneda,
-            'monto_original' => $monto,
-            'tasa_cambio_usada' => $tasa,
-            'retencion_fuente' => $retencion,
-            'clasificacion_tributaria' => $clasificacion,
-        ], $fuente, $fecha);
-
-        $descripcion = $esDividendo
-            ? "Dividendo o participación de la inversión «{$inversion->nombre}»"
-            : "Rendimiento de la inversión «{$inversion->nombre}»";
-
-        $ingreso = Ingreso::create(array_merge($montos, [
-            'usuario_id' => Auth::id(),
-            'fuente_id' => $fuente->id,
-            'fecha_recepcion' => $fecha,
-            'origen' => 'MANUAL',
-            'estado' => 'CONFIRMADO',
-            'descripcion' => $descripcion,
-        ]));
-
-        BitacoraService::registrar(
-            accion: 'CREAR_INGRESO',
-            entidadAfectada: 'ingresos',
-            entidadId: $ingreso->id,
-            valorNuevo: $ingreso->fresh()->toArray(),
-            justificacion: 'RN-038.4: ingreso creado automáticamente por el rendimiento de la inversión '.$inversion->id.'.',
-            usuarioId: Auth::id()
-        );
-
-        return $ingreso;
-    }
-
-    /**
-     * RN-037.3 / RN-038.2: unidades del movimiento, solo en inversiones con
-     * unidades. Un retiro no puede llevarse más de las que hay, y la
-     * liquidación total se lleva todas.
-     *
-     * @throws ValidationException
-     */
-    private function unidadesDelMovimiento(Inversion $inversion, string $tipo, array $validated): ?string
-    {
-        if (! $inversion->tieneUnidades()) {
-            return null;
-        }
-
-        $actuales = InversionService::unidadesActuales($inversion);
-
-        if ($tipo === 'LIQUIDACION_TOTAL') {
-            return bccomp($actuales, '0', 8) === 1 ? $actuales : null;
-        }
-
-        if (! in_array($tipo, ['APORTE', 'RETIRO_PARCIAL'], true)) {
-            return null;
-        }
-
-        if (isset($validated['unidades']) && bccomp((string) $validated['unidades'], '0', 8) === 1) {
-            $unidades = (string) $validated['unidades'];
-        } else {
-            // H-09: Si el usuario no especificó unidades en un aporte o retiro de activos con unidades,
-            // se infieren automáticamente a partir del último precio unitario de mercado conocido
-            $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
-                ->whereNotNull('precio_unitario')
-                ->orderByDesc('fecha')
-                ->first();
-            $precio = $ultimaVal?->precio_unitario ?? $inversion->precio_unitario_compra;
-            $unidades = ($precio !== null && bccomp((string) $precio, '0', 8) === 1)
-                ? bcdiv((string) $validated['monto'], (string) $precio, 8)
-                : null;
-        }
-
-        if ($tipo === 'RETIRO_PARCIAL' && $unidades !== null && bccomp($unidades, $actuales, 8) === 1) {
-            throw ValidationException::withMessages([
-                'unidades' => "El retiro no puede llevarse más unidades de las que tiene la inversión ({$actuales}).",
-            ]);
-        }
-
-        return $unidades;
-    }
-
-    /**
-     * RN-038.3: "Una 'Liquidación total' deja la inversión ... con valor
-     * actual 0". El valor actual es la valoración más reciente (RN-039.3), así
-     * que una valoración o un movimiento con fecha posterior a la liquidación
-     * la dejaría con otro valor. La misma fecha sí se admite: la valoración en
-     * 0 reemplaza a la de ese día.
-     *
-     * @throws ValidationException
-     */
-    private function validarLiquidacionAlFinal(Inversion $inversion, CarbonImmutable $fecha): void
-    {
-        $ultimaFecha = collect([
-            ValoracionInversion::where('inversion_id', $inversion->id)->max('fecha'),
-            MovimientoInversion::where('inversion_id', $inversion->id)->max('fecha'),
-        ])->filter()->max();
-
-        if ($ultimaFecha !== null && CarbonImmutable::parse($ultimaFecha)->gt($fecha)) {
-            throw ValidationException::withMessages([
-                'fecha' => 'La liquidación total no puede ser anterior al '.CarbonImmutable::parse($ultimaFecha)->format('d/m/Y')
-                    .': la inversión tiene una valoración o un movimiento de esa fecha (RN-038.3). Liquídela en esa fecha o después.',
-            ]);
-        }
-    }
-
-    /**
-     * RNG-01: El global scope ya devolvió 404 para recursos ajenos. Aquí solo se
-     * distingue el caso que la regla manda registrar en bitácora (RF-019).
-     */
     private function inversionPropia(string $id): Inversion
     {
         $inversion = Inversion::find($id);
@@ -456,64 +660,39 @@ class MovimientoInversionController extends Controller
             return $inversion;
         }
 
-        $esDeOtro = Inversion::withoutGlobalScope(DelUsuarioAutenticado::class)
-            ->whereKey($id)
-            ->exists();
-
-        if ($esDeOtro) {
-            BitacoraService::registrar(
-                accion: 'ACCESO_DENEGADO_RECURSO_AJENO',
-                entidadAfectada: 'inversiones',
-                entidadId: $id,
-                justificacion: 'RNG-01: intento de acceso a un recurso de otro usuario.',
-                usuarioId: Auth::id()
-            );
-        }
-
         abort(404);
     }
 
-    /**
-     * RN-038.2: fecha igual o posterior a la apertura (CA-038.2) y no futura.
-     */
     private function reglas(Inversion $inversion): array
     {
-        $apertura = $inversion->fecha_apertura->toDateString();
-
         return [
-            'tipo' => ['required', Rule::in(MovimientoInversion::TIPOS)],
-            'fecha' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:'.$apertura],
-            'monto' => ['required', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
-            'unidades' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
-            // RN-038.4: la retención informada del rendimiento.
-            'retencion' => ['nullable', 'numeric', 'min:0', 'lte:monto', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'tipo' => ['required', Rule::in(Inversion::MOVIMIENTOS_PERMITIDOS[$inversion->tipo] ?? MovimientoInversion::TIPOS)],
+            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString(), 'before_or_equal:today'],
+            'monto' => ['required', 'numeric', 'gt:0', 'max:999999999999.99'],
+            'unidades' => ['nullable', 'numeric', 'gt:0'],
+            'valor_unidad' => ['nullable', 'numeric', 'gt:0'],
+            'comision' => ['nullable', 'numeric', 'gte:0'],
+            'impuesto_origen' => ['nullable', 'numeric', 'gte:0'],
+            'moneda' => ['nullable', Rule::in(['COP', 'USD'])],
+            'trm' => ['nullable', 'numeric', 'gt:0'],
+            'tasa_cambio_usada' => ['nullable', 'numeric', 'gt:0'],
             'nota' => ['nullable', 'string', 'max:255'],
-            'tasa_cambio_usada' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,14}(\.\d{1,4})?$/'],
+            'cumple_permanencia' => ['nullable', 'boolean'],
+            'proporcion_rendimiento' => ['nullable', 'numeric', 'between:0,1'],
+            'dias' => ['nullable', 'integer', 'between:1,365'],
         ];
     }
 
     private function mensajes(): array
     {
         return [
-            'tipo.required' => 'Indique el tipo de movimiento.',
-            'tipo.in' => 'El tipo de movimiento no es válido (RN-038.1).',
-            'fecha.required' => 'Indique la fecha del movimiento.',
-            'fecha.date' => 'La fecha no tiene un formato válido (AAAA-MM-DD).',
-            'fecha.before_or_equal' => 'La fecha del movimiento no puede ser posterior a hoy.',
-            'fecha.after_or_equal' => 'La fecha del movimiento no puede ser anterior a la apertura de la inversión (CA-038.2).',
-            'monto.required' => 'Indique el monto del movimiento.',
-            'monto.numeric' => 'El monto debe ser un número.',
-            'monto.min' => 'El monto no puede ser negativo.',
-            'monto.max' => 'El monto no puede superar $ 999.999.999.999,99.',
-            'monto.regex' => 'El monto admite hasta 12 dígitos enteros y 2 decimales.',
-            'unidades.gt' => 'Las unidades deben ser mayores que cero.',
-            'unidades.regex' => 'Las unidades admiten hasta 8 decimales.',
-            'retencion.min' => 'La retención no puede ser negativa.',
-            'retencion.lte' => 'La retención no puede superar el monto del rendimiento.',
-            'retencion.regex' => 'La retención admite hasta 12 dígitos enteros y 2 decimales.',
-            'nota.max' => 'La nota admite máximo 255 caracteres.',
-            'tasa_cambio_usada.gt' => 'La tasa de cambio debe ser mayor que cero.',
-            'tasa_cambio_usada.regex' => 'La tasa de cambio admite hasta 4 decimales.',
+            'tipo.required' => 'Indique el tipo de transacción.',
+            'tipo.in' => 'El tipo de transacción no está permitido para este producto.',
+            'fecha.required' => 'Indique la fecha de la transacción.',
+            'fecha.after_or_equal' => 'La fecha no puede ser anterior a la apertura de la inversión.',
+            'fecha.before_or_equal' => 'La fecha no puede ser futura.',
+            'monto.required' => 'Indique el monto de la transacción.',
+            'monto.gt' => 'El monto debe ser mayor que cero.',
         ];
     }
 }

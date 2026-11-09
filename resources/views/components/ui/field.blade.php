@@ -1,6 +1,6 @@
 @props(['name', 'label', 'required' => false, 'help' => null, 'error' => null, 'id' => null])
 @php
-    $fieldError = $error ?? $errors->first($name);
+    $fieldError = $error ?? (isset($errors) ? $errors->first($name) : null);
     $fieldId = $id ?? $name;
     if (preg_match('/^validation\.|^[a-z][a-z_-]*(?:\.[a-z_\d-]+)+$/i', (string) $fieldError)) $fieldError = 'Revisa este campo';
     if (preg_match('/SQL|trace|exception|stack|server|servidor|\.php\b/i', (string) $fieldError)) $fieldError = 'Revisa los datos de este campo.';

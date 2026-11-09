@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Inversion;
 use App\Models\ParametroNormativo;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\SimulacionInversion;
@@ -50,6 +51,66 @@ class SimulacionInversionController extends Controller
             ->with('status', 'Simulación calculada con éxito.')
             ->with('comparacion', $resultado)
             ->with('alternativas_enviadas', $validated['alternativas']);
+    }
+
+    /**
+     * RF-SIM-01 / RF-SIM-02: Simulación específica por producto financiero.
+     */
+    public function simularProducto(Request $request): JsonResponse
+    {
+        $tipo = $request->input('tipo');
+        if (! in_array($tipo, Inversion::TIPOS, true)) {
+            throw ValidationException::withMessages([
+                'tipo' => 'El tipo de producto no es válido para simulación.',
+            ]);
+        }
+
+        $resultado = SimulacionInversionService::simularPorProducto($tipo, $request->all(), Auth::id());
+
+        return response()->json([
+            'mensaje' => 'Simulación tributaria calculada.',
+            'data' => $resultado,
+        ]);
+    }
+
+    /**
+     * RF-SIM-07 / RF-PAR-05: Guardar instantánea de simulación específica por producto.
+     */
+    public function guardarInstantanea(Request $request): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'nombre' => ['required', 'string', 'min:3', 'max:60'],
+            'tipo' => ['required', Rule::in(Inversion::TIPOS)],
+            'inversion_id' => ['nullable', 'uuid', 'exists:inversiones,id'],
+            'datos_entrada' => ['required', 'array'],
+            'resultado' => ['required', 'array'],
+        ]);
+
+        if (SimulacionInversion::count() >= SimulacionInversionService::MAX_GUARDADAS) {
+            throw ValidationException::withMessages([
+                'nombre' => 'Puede guardar máximo '.SimulacionInversionService::MAX_GUARDADAS.' simulaciones. Elimine alguna para guardar esta.',
+            ]);
+        }
+
+        $simulacion = DB::transaction(function () use ($validated) {
+            return SimulacionInversionService::guardarInstantanea(
+                usuarioId: Auth::id(),
+                nombre: $validated['nombre'],
+                tipo: $validated['tipo'],
+                datosEntrada: $validated['datos_entrada'],
+                resultado: $validated['resultado'],
+                inversionId: $validated['inversion_id'] ?? null
+            );
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Instantánea de simulación guardada con éxito.',
+                'data' => $simulacion,
+            ], 201);
+        }
+
+        return redirect()->back()->with('status', 'Instantánea de simulación guardada con éxito.');
     }
 
     /**
@@ -302,7 +363,7 @@ class SimulacionInversionController extends Controller
     private function reglasAlternativas(): array
     {
         $monto = ['numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'];
-        $porcentaje = 'regex:/^-?\d{1,3}(\.\d{1,4})?$/';
+        $porcentaje = 'regex:/^-?\d{1,3}(\.\d{1,8})?$/';
 
         return [
             'alternativas' => ['required', 'array', 'min:1', 'max:'.SimulacionInversionService::MAX_ALTERNATIVAS],
