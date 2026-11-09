@@ -93,6 +93,21 @@ class ValoracionInversionController extends Controller
                 array_merge($atributos, ['usuario_id' => Auth::id()])
             );
 
+            // Sincronizar valor actual en el detalle específico
+            if ($inversion->tipo === 'ACCION_ETF' && $inversion->detalleRentaVariable && !empty($atributos['precio_unitario'])) {
+                $inversion->detalleRentaVariable->update([
+                    'valor_actual_unidad' => $atributos['precio_unitario'],
+                ]);
+            } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic && !empty($atributos['precio_unitario'])) {
+                $inversion->detalleFic->update([
+                    'valor_unidad_actual' => $atributos['precio_unitario'],
+                ]);
+            } elseif ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $inversion->detalleCuenta && !empty($atributos['valor'])) {
+                $inversion->detalleCuenta->update([
+                    'saldo_inicial' => $atributos['valor'],
+                ]);
+            }
+
             BitacoraService::registrar(
                 accion: 'REGISTRAR_VALORACION_INVERSION',
                 entidadAfectada: 'valoraciones_inversion',

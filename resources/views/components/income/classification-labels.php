@@ -5,4 +5,5 @@ return [
     'RENTAS_NO_LABORALES' => 'Rentas no laborales',
     'PENSIONES' => 'Pensiones',
     'DIVIDENDOS' => 'Dividendos y participaciones',
+    'GANANCIA_OCASIONAL' => 'Ganancia ocasional (≥ 2 años)',
 ];

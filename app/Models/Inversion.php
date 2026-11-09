@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * RF-037: Inversión del Usuario, con sus movimientos (RF-038) y sus
- * valoraciones de mercado (RF-039).
+ * RF-037 / v1.1: Inversión del Usuario con soporte formal para los 6 productos tributarios:
+ * CDT, ACCION_ETF, FIC, CUENTA_ALTO_RENDIMIENTO, FPV, CESANTIAS.
  */
 #[ScopedBy([DelUsuarioAutenticado::class])]
 class Inversion extends Model
@@ -29,65 +30,47 @@ class Inversion extends Model
     /** RNG-07: La eliminación de registros financieros es lógica. */
     const DELETED_AT = 'eliminado_en';
 
-    /** RN-037.1 */
+    /** Catálogo oficial v1.1 */
     public const TIPOS = [
         'CDT',
-        'CUENTA_AHORRO_ALTO_RENDIMIENTO',
-        'FONDO_INVERSION_COLECTIVA',
-        'ACCIONES',
-        'ETF',
-        'BONOS_TES',
-        'FONDO_VOLUNTARIO_PENSION',
-        'CRIPTOACTIVO',
-        'INMUEBLE_RENTA',
-        'NEGOCIO_PARTICIPACION',
-        'OTRO',
+        'ACCION_ETF',
+        'FIC',
+        'CUENTA_ALTO_RENDIMIENTO',
+        'FPV',
+        'CESANTIAS',
     ];
 
-    /** RN-037.2: tipos con tasa pactada, plazo y vencimiento. */
-    public const CON_TASA = ['CDT', 'BONOS_TES'];
+    /** Tipos con tasa pactada o esperada */
+    public const CON_TASA = ['CDT', 'CUENTA_ALTO_RENDIMIENTO', 'CESANTIAS'];
 
-    /** RN-037.3: tipos con símbolo, unidades y precio de compra. */
-    public const CON_UNIDADES = ['ACCIONES', 'ETF', 'CRIPTOACTIVO'];
+    /** Tipos con valor por unidad y cantidad de unidades */
+    public const CON_UNIDADES = ['ACCION_ETF', 'FIC', 'FPV'];
 
-    /** RN-041.4: solo el USD tiene TRM para convertir el portafolio. */
     public const MONEDAS = ['COP', 'USD'];
 
     public const NIVELES_RIESGO = ['BAJO', 'MEDIO', 'ALTO'];
 
     public const PERIODICIDADES = ['AL_VENCIMIENTO', 'MENSUAL', 'TRIMESTRAL', 'SEMESTRAL', 'ANUAL'];
 
-    /** RN-037.5 */
-    public const ESTADOS = ['ACTIVA', 'VENCIDA', 'LIQUIDADA'];
+    public const ESTADOS = ['ACTIVA', 'CERRADA', 'VENCIDA', 'LIQUIDADA'];
 
-    /** Movimientos financieramente admitidos por tipo de activo según guía SCFP-GI-INV */
+    /** Movimientos estrictos permitidos por producto en v1.1 */
     public const MOVIMIENTOS_PERMITIDOS = [
-        'CDT' => ['RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'BONOS_TES' => ['RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'CUENTA_AHORRO_ALTO_RENDIMIENTO' => ['APORTE', 'RETIRO_PARCIAL', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'FONDO_INVERSION_COLECTIVA' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'ACCIONES' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'ETF' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'CRIPTOACTIVO' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'RETENCION', 'COMISION', 'LIQUIDACION_TOTAL'],
-        'INMUEBLE_RENTA' => ['APORTE', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
-        'NEGOCIO_PARTICIPACION' => ['APORTE', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
-        'FONDO_VOLUNTARIO_PENSION' => ['APORTE', 'RETIRO_PARCIAL', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
-        'OTRO' => ['APORTE', 'RETIRO_PARCIAL', 'RENDIMIENTO', 'COMISION', 'RETENCION', 'LIQUIDACION_TOTAL'],
+        'CDT' => ['ABONO_INTERES', 'REDENCION'],
+        'CUENTA_ALTO_RENDIMIENTO' => ['APORTE', 'RETIRO', 'ABONO_INTERES'],
+        'ACCION_ETF' => ['COMPRA', 'VENTA', 'DIVIDENDO'],
+        'FIC' => ['APORTE', 'REDENCION'],
+        'FPV' => ['APORTE', 'RETIRO'],
+        'CESANTIAS' => ['APORTE', 'RETIRO'],
     ];
 
-    /** Nivel de riesgo típico sugerido por tipo (sección 4.12) */
     public const RIESGOS_SUGERIDOS = [
         'CDT' => 'BAJO',
-        'BONOS_TES' => 'BAJO',
-        'CUENTA_AHORRO_ALTO_RENDIMIENTO' => 'BAJO',
-        'FONDO_INVERSION_COLECTIVA' => 'MEDIO',
-        'INMUEBLE_RENTA' => 'MEDIO',
-        'ACCIONES' => 'ALTO',
-        'ETF' => 'MEDIO',
-        'CRIPTOACTIVO' => 'ALTO',
-        'NEGOCIO_PARTICIPACION' => 'ALTO',
-        'FONDO_VOLUNTARIO_PENSION' => 'MEDIO',
-        'OTRO' => 'MEDIO',
+        'CUENTA_ALTO_RENDIMIENTO' => 'BAJO',
+        'FIC' => 'MEDIO',
+        'ACCION_ETF' => 'ALTO',
+        'FPV' => 'MEDIO',
+        'CESANTIAS' => 'BAJO',
     ];
 
     protected $fillable = [
@@ -95,6 +78,7 @@ class Inversion extends Model
         'nombre',
         'tipo',
         'entidad',
+        'entidad_id',
         'moneda',
         'fecha_apertura',
         'monto_inicial',
@@ -136,6 +120,11 @@ class Inversion extends Model
         return $this->belongsTo(Usuario::class, 'usuario_id');
     }
 
+    public function entidadFinanciera(): BelongsTo
+    {
+        return $this->belongsTo(EntidadFinanciera::class, 'entidad_id');
+    }
+
     public function movimientos(): HasMany
     {
         return $this->hasMany(MovimientoInversion::class, 'inversion_id');
@@ -146,6 +135,66 @@ class Inversion extends Model
         return $this->hasMany(ValoracionInversion::class, 'inversion_id');
     }
 
+    public function simulaciones(): HasMany
+    {
+        return $this->hasMany(SimulacionInversion::class, 'inversion_id');
+    }
+
+    // Relaciones 1:1 especializadas
+    public function detalleCdt(): HasOne
+    {
+        return $this->hasOne(DetalleCdt::class, 'inversion_id');
+    }
+
+    public function detalleCuenta(): HasOne
+    {
+        return $this->hasOne(DetalleCuenta::class, 'inversion_id');
+    }
+
+    public function detalleRentaVariable(): HasOne
+    {
+        return $this->hasOne(DetalleRentaVariable::class, 'inversion_id');
+    }
+
+    public function detalleFic(): HasOne
+    {
+        return $this->hasOne(DetalleFic::class, 'inversion_id');
+    }
+
+    public function detalleFpv(): HasOne
+    {
+        return $this->hasOne(DetalleFpv::class, 'inversion_id');
+    }
+
+    public function detalleCesantias(): HasOne
+    {
+        return $this->hasOne(DetalleCesantias::class, 'inversion_id');
+    }
+
+    // Puentes con módulo de Ingresos
+    public function valoresDeducibles(): HasMany
+    {
+        return $this->hasMany(ValorDeducibleRegistro::class, 'inversion_id');
+    }
+
+    public function ingresosInversion(): HasMany
+    {
+        return $this->hasMany(IngresoInversion::class, 'inversion_id');
+    }
+
+    public function detalle(): mixed
+    {
+        return match ($this->tipo) {
+            'CDT' => $this->detalleCdt,
+            'CUENTA_ALTO_RENDIMIENTO' => $this->detalleCuenta,
+            'ACCION_ETF' => $this->detalleRentaVariable,
+            'FIC' => $this->detalleFic,
+            'FPV' => $this->detalleFpv,
+            'CESANTIAS' => $this->detalleCesantias,
+            default => null,
+        };
+    }
+
     public function tieneTasa(): bool
     {
         return in_array($this->tipo, self::CON_TASA, true);
@@ -153,16 +202,28 @@ class Inversion extends Model
 
     public function tieneUnidades(): bool
     {
+        if ($this->tipo === 'FPV') {
+            return $this->detalleFpv && $this->detalleFpv->unidades !== null && bccomp((string) $this->detalleFpv->unidades, '0', 8) > 0;
+        }
+
         return in_array($this->tipo, self::CON_UNIDADES, true);
     }
 
     public function estaLiquidada(): bool
     {
-        return $this->estado === 'LIQUIDADA';
+        return in_array($this->estado, ['CERRADA', 'LIQUIDADA'], true);
     }
 
     public function movimientosPermitidos(): array
     {
+        if ($this->tipo === 'CDT') {
+            $detalle = $this->detalleCdt;
+            if ($detalle && in_array(strtoupper((string) $detalle->periodicidad_pago), ['VENCIMIENTO', 'AL_VENCIMIENTO'], true)) {
+                return ['REDENCION'];
+            }
+            return ['ABONO_INTERES', 'REDENCION'];
+        }
+
         return self::MOVIMIENTOS_PERMITIDOS[$this->tipo] ?? MovimientoInversion::TIPOS;
     }
 

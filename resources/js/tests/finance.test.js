@@ -38,6 +38,10 @@ test('C/D: payload permite solo campos reales y metas del contrato, COP fijo y s
     assert.equal(validResourcePath('/inversiones/no-uuid/movimientos'),false);
     assert.equal(validResourcePath('/seguridad-social/pagos/no-uuid/soporte'),false);
     assert.equal(validResourcePath('/inversiones/simulaciones/calcular'),true);
+    assert.equal(validResourcePath('/inversiones/reportes/retenciones'),true);
+    assert.equal(validResourcePath('/inversiones/reportes/utilidades'),true);
+    assert.equal(validResourcePath('/inversiones/reportes/retenciones/exportar'),true);
+    assert.equal(validResourcePath('/inversiones/reportes/no-existe'),false);
 });
 test('C/D: soporte multipart usa CSRF y omite archivos/campos fuera de contrato',async()=>{
     const previous={window:globalThis.window,document:globalThis.document,fetch:globalThis.fetch};

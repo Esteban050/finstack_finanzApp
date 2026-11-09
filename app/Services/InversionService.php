@@ -4,82 +4,58 @@ namespace App\Services;
 
 use App\Models\Categoria;
 use App\Models\FuenteIngreso;
+use App\Models\Ingreso;
+use App\Models\IngresoInversion;
 use App\Models\Inversion;
 use App\Models\MovimientoInversion;
 use App\Models\ValoracionInversion;
+use App\Models\ValorDeducibleRegistro;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 
 /**
- * MOD-06 — Reglas de las inversiones (RF-037) y de sus movimientos (RF-038).
- *
- * Los montos se calculan con bcmath sobre cadenas (RNG-02). Las potencias con
- * exponente fraccionario, que bcmath no tiene, se calculan en punto flotante y
- * solo como factor: el monto resultante se redondea a 2 decimales (decisión 8,
- * SC-001).
+ * MOD-06 — Reglas de las inversiones (RF-037) y de sus transacciones (RF-038).
+ * Soporta el ciclo de vida de los 6 productos tributarios y puente con el módulo de Ingresos.
  */
 class InversionService
 {
-    /**
-     * RN-038.4: fuente de ingreso de los rendimientos (decisión 2, SC-001): una
-     * por Usuario, del tipo "Rendimientos financieros" del catálogo (RN-015.2).
-     */
     public const FUENTE_RENDIMIENTOS = 'Rendimientos de inversiones';
     public const TIPO_FUENTE_RENDIMIENTOS = 'Rendimientos financieros';
-
-    /** RN-038.4 / CA-038.1: los rendimientos son rentas de capital (decisión 1, SC-001). */
     public const CLASIFICACION_RENDIMIENTOS = 'RENTAS_CAPITAL';
 
-    /** RN-039.4 */
     public const DIAS_VALORACION_VIGENTE = 35;
-
-    /** Escala de las unidades (RN-037.3: hasta 8 decimales). */
     private const ESCALA_UNIDADES = 8;
 
-    /** CA-037.1: el vencimiento es la apertura más el plazo en días. */
     public static function fechaVencimiento(CarbonImmutable $apertura, int $plazoDias): CarbonImmutable
     {
         return $apertura->addDays($plazoDias);
     }
 
-    /**
-     * CA-037.1 / RN-039.2: (1 + EA)^(días/365), con la tasa EA en porcentaje.
-     */
-    public static function factorCapitalizacion(string $tasaEaPorc, int $dias): string
+    public static function factorCapitalizacion(string $tasaEaPorc, int $dias, int $baseDias = 365): string
     {
-        $factor = (1 + ((float) $tasaEaPorc) / 100) ** ($dias / 365);
-
+        $factor = (1 + ((float) $tasaEaPorc) / 100) ** ($dias / $baseDias);
         return sprintf('%.15F', $factor);
     }
 
-    /**
-     * CA-037.1: rendimiento estimado al vencimiento = capital × ((1 + EA)^(días/365) − 1).
-     */
-    public static function rendimientoEstimado(string $capital, string $tasaEaPorc, int $dias): string
+    public static function rendimientoEstimado(string $capital, string $tasaEaPorc, int $dias, int $baseDias = 365): string
     {
-        $rendimiento = bcmul($capital, bcsub(self::factorCapitalizacion($tasaEaPorc, $dias), '1', 15), 6);
-
+        $rendimiento = bcmul($capital, bcsub(self::factorCapitalizacion($tasaEaPorc, $dias, $baseDias), '1', 15), 6);
         return IngresoService::redondear($rendimiento);
     }
 
-    /** RN-037.5: un CDT o bono cuya fecha de vencimiento ya pasó está vencido. */
     public static function estadoSegunVencimiento(?CarbonImmutable $vencimiento, CarbonImmutable $hoy): string
     {
         return $vencimiento !== null && $vencimiento->lt($hoy) ? 'VENCIDA' : 'ACTIVA';
     }
 
-    /** RN-039.3: la valoración más reciente es el valor actual. */
     public static function valorActual(Inversion $inversion): ?ValoracionInversion
     {
         return ValoracionInversion::where('inversion_id', $inversion->id)
             ->orderByDesc('fecha')
+            ->orderByDesc('creado_en')
             ->first();
     }
 
-    /**
-     * RN-039.4: una inversión activa con más de 35 días sin valoración muestra
-     * "Valoración desactualizada".
-     */
     public static function valoracionDesactualizada(Inversion $inversion, ?ValoracionInversion $valoracion, CarbonImmutable $hoy): bool
     {
         if ($inversion->estado !== 'ACTIVA') {
@@ -90,31 +66,22 @@ class InversionService
             || CarbonImmutable::parse($valoracion->fecha)->addDays(self::DIAS_VALORACION_VIGENTE)->lt($hoy);
     }
 
-    /**
-     * RN-039.2 / CA-039.1: valor causado propuesto para CDT y bonos =
-     * capital × (1 + tasa EA)^(días transcurridos/365), con el capital aportado
-     * neto a la fecha. El Usuario lo acepta o lo reemplaza.
-     */
     public static function valorCausado(Inversion $inversion, CarbonImmutable $fecha): array
     {
         $dias = (int) CarbonImmutable::parse($inversion->fecha_apertura)->diffInDays($fecha);
         $capital = RentabilidadService::capitalAportadoNeto($inversion, $fecha);
+        $tasaEa = (string) ($inversion->detalleCdt?->tasa_valor ?? $inversion->tasa_ea ?? '0');
+        $baseDias = (int) ($inversion->detalleCdt?->base_dias ?? 365);
 
         return [
             'fecha' => $fecha->toDateString(),
             'capital' => $capital,
-            'tasa_ea' => (string) $inversion->tasa_ea,
+            'tasa_ea' => $tasaEa,
             'dias_transcurridos' => $dias,
-            'valor_causado' => IngresoService::redondear(bcmul($capital, self::factorCapitalizacion((string) $inversion->tasa_ea, $dias), 6)),
+            'valor_causado' => IngresoService::redondear(bcmul($capital, self::factorCapitalizacion($tasaEa, $dias, $baseDias), 6)),
         ];
     }
 
-    /**
-     * RN-037.5: "Vencida (la marca el Sistema al pasar la fecha de
-     * vencimiento)". Pasa a Vencida toda inversión activa, de cualquier
-     * Usuario, cuya fecha de vencimiento ya pasó. Lo ejecuta a diario
-     * `scfp:marcar-inversiones-vencidas`.
-     */
     public static function marcarVencidas(CarbonImmutable $hoy): int
     {
         $vencidas = Inversion::withoutGlobalScopes()
@@ -142,11 +109,6 @@ class InversionService
         return $vencidas->count();
     }
 
-    /**
-     * RN-037.3: unidades de una inversión con unidades, hoy o a una fecha: las
-     * de los aportes (el inicial incluido) menos las de los retiros y la
-     * liquidación.
-     */
     public static function unidadesActuales(Inversion $inversion, ?CarbonImmutable $fecha = null): ?string
     {
         if (! $inversion->tieneUnidades()) {
@@ -159,19 +121,89 @@ class InversionService
             ->get(['tipo', 'unidades']);
 
         return $movimientos->reduce(function (string $total, MovimientoInversion $movimiento) {
-            return $movimiento->tipo === 'APORTE'
-                ? bcadd($total, (string) $movimiento->unidades, self::ESCALA_UNIDADES)
-                : bcsub($total, (string) $movimiento->unidades, self::ESCALA_UNIDADES);
+            if (in_array($movimiento->tipo, ['APORTE', 'COMPRA'], true)) {
+                return bcadd($total, (string) $movimiento->unidades, self::ESCALA_UNIDADES);
+            }
+            if (in_array($movimiento->tipo, ['VENTA', 'REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true)) {
+                return bcsub($total, (string) $movimiento->unidades, self::ESCALA_UNIDADES);
+            }
+            return $total;
         }, bcadd('0', '0', self::ESCALA_UNIDADES));
     }
 
     /**
-     * H-09: Sincronizar automáticamente la valoración tras un Aporte o Retiro parcial.
-     * Evita desfases de sobrevaloración o desvalorización artificial en el portafolio.
+     * RF-VAL-02: Mostrar valorización no realizada = (valor actual - costo) * unidades
+     */
+    public static function valoracionNoRealizada(Inversion $inversion): ?array
+    {
+        if ($inversion->tipo === 'ACCION_ETF') {
+            $detalle = $inversion->detalleRentaVariable;
+            if (! $detalle || bccomp((string) $detalle->unidades_total, '0', 8) <= 0) {
+                return null;
+            }
+            $precioActual = $detalle->valor_actual_unidad ?? $detalle->costo_promedio_unitario;
+            $diferenciaUnit = bcsub((string) $precioActual, (string) $detalle->costo_promedio_unitario, 8);
+            $valor = IngresoService::redondear(bcmul($diferenciaUnit, (string) $detalle->unidades_total, 4));
+            $porcentaje = bccomp((string) $detalle->costo_promedio_unitario, '0', 8) > 0
+                ? bcdiv(bcmul($diferenciaUnit, '100', 4), (string) $detalle->costo_promedio_unitario, 2)
+                : '0.00';
+
+            return [
+                'valor' => $valor,
+                'porcentaje' => $porcentaje,
+                'unidades' => (string) $detalle->unidades_total,
+                'costo_unitario' => (string) $detalle->costo_promedio_unitario,
+                'precio_actual' => (string) $precioActual,
+            ];
+        }
+
+        if ($inversion->tipo === 'FIC') {
+            $detalle = $inversion->detalleFic;
+            if (! $detalle || bccomp((string) $detalle->unidades, '0', 8) <= 0) {
+                return null;
+            }
+            $diferenciaUnit = bcsub((string) $detalle->valor_unidad_actual, (string) $detalle->valor_unidad_compra, 8);
+            $valor = IngresoService::redondear(bcmul($diferenciaUnit, (string) $detalle->unidades, 4));
+            $porcentaje = bccomp((string) $detalle->valor_unidad_compra, '0', 8) > 0
+                ? bcdiv(bcmul($diferenciaUnit, '100', 4), (string) $detalle->valor_unidad_compra, 2)
+                : '0.00';
+
+            return [
+                'valor' => $valor,
+                'porcentaje' => $porcentaje,
+                'unidades' => (string) $detalle->unidades,
+                'costo_unitario' => (string) $detalle->valor_unidad_compra,
+                'precio_actual' => (string) $detalle->valor_unidad_actual,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * RF-VAL-05: Proyección automática de rendimiento para cuenta de alto rendimiento.
+     */
+    public static function proyeccionCuenta(Inversion $inversion, int $dias = 30): ?array
+    {
+        if ($inversion->tipo !== 'CUENTA_ALTO_RENDIMIENTO') {
+            return null;
+        }
+
+        $detalle = $inversion->detalleCuenta;
+        $tasaEa = (string) ($detalle?->tasa_ea ?? $inversion->tasa_ea ?? '0');
+        $valoracion = self::valorActual($inversion);
+        $saldo = $valoracion ? (string) $valoracion->valor : (string) ($detalle?->saldo_inicial ?? $inversion->monto_inicial);
+
+        return CalculoImpuestoInversionService::calcularAbonoCuenta($saldo, $tasaEa, $dias, $detalle?->base_dias ?? 365);
+    }
+
+    /**
+     * Sincronizar automáticamente la valoración tras una transacción.
      */
     public static function sincronizarValoracionTrasMovimiento(Inversion $inversion, MovimientoInversion $movimiento): ?ValoracionInversion
     {
-        if (! in_array($movimiento->tipo, ['APORTE', 'RETIRO_PARCIAL'], true) || $movimiento->es_inicial) {
+        $tiposSincronizables = ['APORTE', 'COMPRA', 'RETIRO', 'RETIRO_PARCIAL', 'VENTA', 'REDENCION', 'ABONO_INTERES', 'DIVIDENDO'];
+        if (! in_array($movimiento->tipo, $tiposSincronizables, true) || $movimiento->es_inicial) {
             return null;
         }
 
@@ -181,7 +213,9 @@ class InversionService
             $unidadesActuales = self::unidadesActuales($inversion, $fecha);
 
             $precioUnitario = null;
-            if ($movimiento->unidades !== null && bccomp((string) $movimiento->unidades, '0', 8) === 1) {
+            if ($movimiento->tipo !== 'DIVIDENDO' && $movimiento->valor_unidad !== null && bccomp((string) $movimiento->valor_unidad, '0', 8) === 1) {
+                $precioUnitario = (string) $movimiento->valor_unidad;
+            } elseif ($movimiento->tipo !== 'DIVIDENDO' && $movimiento->unidades !== null && bccomp((string) $movimiento->unidades, '0', 8) === 1) {
                 $precioUnitario = bcdiv((string) $movimiento->monto, (string) $movimiento->unidades, 8);
             } else {
                 $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
@@ -189,16 +223,12 @@ class InversionService
                     ->whereNotNull('precio_unitario')
                     ->orderByDesc('fecha')
                     ->first();
-                $precioUnitario = $ultimaVal?->precio_unitario ?? $inversion->precio_unitario_compra;
-            }
-
-            if ($precioUnitario === null || bccomp((string) $precioUnitario, '0', 8) <= 0) {
-                return null;
+                $precioUnitario = $ultimaVal?->precio_unitario ?? $inversion->precio_unitario_compra ?? $inversion->detalleRentaVariable?->valor_actual_unidad ?? $inversion->detalleRentaVariable?->costo_promedio_unitario ?? '1.00000000';
             }
 
             $nuevoValor = IngresoService::redondear(bcmul($unidadesActuales, (string) $precioUnitario, 10));
 
-            $valoracion = ValoracionInversion::updateOrCreate(
+            return ValoracionInversion::updateOrCreate(
                 ['inversion_id' => $inversion->id, 'fecha' => $fecha->toDateString()],
                 [
                     'usuario_id' => $inversion->usuario_id,
@@ -208,32 +238,21 @@ class InversionService
                     'origen' => 'MANUAL',
                 ]
             );
-
-            // Reajustar valoraciones futuras que tengan precio unitario con la nueva cantidad de unidades acumuladas
-            ValoracionInversion::where('inversion_id', $inversion->id)
-                ->where('fecha', '>', $fecha->toDateString())
-                ->whereNotNull('precio_unitario')
-                ->each(function (ValoracionInversion $val) use ($inversion) {
-                    $units = self::unidadesActuales($inversion, CarbonImmutable::parse($val->fecha));
-                    $val->update([
-                        'unidades' => $units,
-                        'valor' => IngresoService::redondear(bcmul($units, (string) $val->precio_unitario, 10)),
-                    ]);
-                });
-
-            return $valoracion;
         }
 
-        // Inversiones sin unidades (cuentas de ahorro, fondos, etc.)
+        // Inversiones sin unidades (cuentas de ahorro, FPV, cesantías, CDT)
         $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)
             ->where('fecha', '<=', $fecha->toDateString())
             ->orderByDesc('fecha')
             ->first();
 
         $valorBase = $ultimaVal !== null ? (string) $ultimaVal->valor : (string) $inversion->monto_inicial;
-        $nuevoValor = $movimiento->tipo === 'APORTE'
-            ? bcadd($valorBase, (string) $movimiento->monto, 2)
-            : bcsub($valorBase, (string) $movimiento->monto, 2);
+
+        if (in_array($movimiento->tipo, ['APORTE', 'COMPRA', 'ABONO_INTERES', 'DIVIDENDO'], true)) {
+            $nuevoValor = bcadd($valorBase, (string) $movimiento->monto, 2);
+        } else {
+            $nuevoValor = bcsub($valorBase, (string) $movimiento->monto, 2);
+        }
 
         if (bccomp($nuevoValor, '0', 2) < 0) {
             $nuevoValor = '0.00';
@@ -251,10 +270,6 @@ class InversionService
         );
     }
 
-    /**
-     * H-09: Reconciliar valoraciones existentes si hubo movimientos posteriores que desactualizaron
-     * el conteo de unidades o el saldo sin que se registrara una valoración explícita.
-     */
     public static function reconciliarValoraciones(Inversion $inversion): void
     {
         if ($inversion->estaLiquidada()) {
@@ -280,11 +295,307 @@ class InversionService
     }
 
     /**
-     * RN-038.4 / H-02: fuente "Rendimientos de inversiones" o "Dividendos y participaciones".
-     * Se crea la primera vez que registra un rendimiento según la cédula tributaria.
-     *
-     * @throws ValidationException
+     * 9.3 / 9.5: Registro en tablas puente hacia Ingresos (ingreso_inversion y valor_deducible_registro).
      */
+    public static function registrarPuentesTributarios(MovimientoInversion $movimiento, Inversion $inversion, array $datos = []): void
+    {
+        $anio = CarbonImmutable::parse($movimiento->fecha)->year;
+
+        // 1. Aportes FPV -> valor_deducible_registro
+        if ($inversion->tipo === 'FPV' && in_array($movimiento->tipo, ['APORTE', 'COMPRA'], true)) {
+            $parteDentroTope = $datos['parte_dentro_tope'] ?? $movimiento->monto_cop;
+            if (bccomp((string) $parteDentroTope, '0', 2) > 0) {
+                ValorDeducibleRegistro::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'concepto' => 'APORTE_FPV',
+                    'valor' => (string) $parteDentroTope,
+                ]);
+            }
+        }
+
+        // 2. Retiro anticipado FPV -> reversión deducible (ajuste negativo)
+        if ($inversion->tipo === 'FPV' && in_array($movimiento->tipo, ['RETIRO', 'RETIRO_PARCIAL'], true) && ! ($datos['cumple_permanencia'] ?? true)) {
+            $aportesRetirados = $datos['aportes_retirados'] ?? $movimiento->monto_cop;
+            if (bccomp((string) $aportesRetirados, '0', 2) > 0) {
+                ValorDeducibleRegistro::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'concepto' => 'AJUSTE_FPV_RETIRO',
+                    'valor' => '-' . bcadd((string) $aportesRetirados, '0', 2),
+                ]);
+            }
+        }
+
+        // 3. Cesantías exentas -> valor_deducible_registro
+        if ($inversion->tipo === 'CESANTIAS' && in_array($movimiento->tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
+            $parteExenta = $datos['parte_exenta'] ?? '0.00';
+            if (bccomp((string) $parteExenta, '0', 2) > 0) {
+                ValorDeducibleRegistro::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'concepto' => 'CESANTIAS_EXENTA',
+                    'valor' => (string) $parteExenta,
+                ]);
+            }
+        }
+
+        // 4. Venta de Acciones/ETF -> Registro oficial en módulo de Ingresos (según tenencia) e IngresoInversion
+        if ($inversion->tipo === 'ACCION_ETF' && $movimiento->tipo === 'VENTA') {
+            $utilidadCop = $datos['utilidad_cop'] ?? '0.00';
+            $utilidadOriginal = $datos['utilidad_original'] ?? $utilidadCop;
+            $claseFiscal = $datos['clase_fiscal'] ?? 'RENTA_ORDINARIA';
+            $aniosTenencia = (int) ($datos['anios_tenencia'] ?? 0);
+
+            if (bccomp((string) $utilidadCop, '0', 2) > 0) {
+                // Determinar clasificación tributaria en módulo de Ingresos:
+                // Si tenencia >= 2 años -> GANANCIA_OCASIONAL (Arts. 300 y 314 E.T.)
+                // Si tenencia < 2 años -> RENTAS_CAPITAL (Art. 241 E.T., Cédula General)
+                $clasificacion = ($claseFiscal === 'GANANCIA_OCASIONAL' || $aniosTenencia >= 2)
+                    ? 'GANANCIA_OCASIONAL'
+                    : 'RENTAS_CAPITAL';
+
+                $nombreFuente = ($clasificacion === 'GANANCIA_OCASIONAL')
+                    ? 'Ganancia ocasional por venta de inversiones'
+                    : 'Utilidad por venta de acciones / ETF';
+
+                $fuente = self::fuenteDeRendimientos(
+                    usuarioId: $movimiento->usuario_id,
+                    nombreFuente: $nombreFuente,
+                    tipoFuente: 'Rendimientos Financieros',
+                    clasificacion: $clasificacion
+                );
+
+                $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
+                $montoOriginal = ($inversion->moneda === 'USD') ? (string) $utilidadOriginal : (string) $utilidadCop;
+
+                $ingreso = Ingreso::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'fuente_id' => $fuente->id,
+                    'fecha_recepcion' => $movimiento->fecha,
+                    'clasificacion_tributaria' => $clasificacion,
+                    'moneda' => $inversion->moneda,
+                    'monto_original' => $montoOriginal,
+                    'tasa_cambio_usada' => $tasa,
+                    'monto_bruto_cop' => (string) $utilidadCop,
+                    'retencion_fuente_cop' => '0.00',
+                    'aportes_descontados_cop' => '0.00',
+                    'origen' => 'MANUAL',
+                    'estado' => 'CONFIRMADO',
+                    'descripcion' => "Utilidad en venta de «{$inversion->nombre}» ({$movimiento->unidades} títulos - " . ($clasificacion === 'GANANCIA_OCASIONAL' ? 'Ganancia Ocasional ≥ 2 años' : 'Rentas de Capital < 2 años') . ")",
+                ]);
+
+                $movimiento->update(['ingreso_id' => $ingreso->id]);
+
+                IngresoInversion::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'tipo' => 'UTILIDAD_VENTA',
+                    'valor_bruto' => (string) $utilidadCop,
+                    'retencion' => '0.00',
+                ]);
+
+                if ($claseFiscal === 'NO_GRAVADA') {
+                    ValorDeducibleRegistro::create([
+                        'usuario_id' => $movimiento->usuario_id,
+                        'inversion_id' => $inversion->id,
+                        'transaccion_id' => $movimiento->id,
+                        'anio' => $anio,
+                        'concepto' => 'UTILIDAD_NO_GRAVADA_BVC',
+                        'valor' => (string) $utilidadCop,
+                    ]);
+                }
+            }
+        }
+
+        // 5. Dividendos -> Registro oficial en módulo de Ingresos (valor neto) y deducción (retención 30%)
+        if ($inversion->tipo === 'ACCION_ETF' && $movimiento->tipo === 'DIVIDENDO') {
+            $bruto = $movimiento->monto_bruto ?? $movimiento->monto;
+            $retencion = $movimiento->retencion_aplicada ?? '0.00';
+            $neto = bcsub((string) $bruto, (string) $retencion, 2);
+            if (bccomp((string) $neto, '0', 2) <= 0) {
+                $neto = (string) $movimiento->monto;
+            }
+
+            // Crear ingreso oficial en el módulo de Ingresos (con el valor neto)
+            $fuente = self::fuenteDeRendimientos(
+                usuarioId: $movimiento->usuario_id,
+                nombreFuente: 'Dividendos de inversiones',
+                tipoFuente: 'Dividendos',
+                clasificacion: 'DIVIDENDOS'
+            );
+
+            $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
+            $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+
+            $ingreso = Ingreso::create([
+                'usuario_id' => $movimiento->usuario_id,
+                'fuente_id' => $fuente->id,
+                'fecha_recepcion' => $movimiento->fecha,
+                'clasificacion_tributaria' => 'DIVIDENDOS',
+                'moneda' => $inversion->moneda,
+                'monto_original' => (string) $neto,
+                'tasa_cambio_usada' => $tasa,
+                'monto_bruto_cop' => $netoCop,
+                'retencion_fuente_cop' => '0.00',
+                'aportes_descontados_cop' => '0.00',
+                'origen' => 'MANUAL',
+                'estado' => 'CONFIRMADO',
+                'descripcion' => "Dividendo neto recibido de «{$inversion->nombre}»",
+            ]);
+
+            $brutoCop = IngresoService::convertirACop((string) $bruto, $tasa);
+            $retencionCop = IngresoService::convertirACop((string) $retencion, $tasa);
+
+            $movimiento->update(['ingreso_id' => $ingreso->id]);
+
+            IngresoInversion::create([
+                'usuario_id' => $movimiento->usuario_id,
+                'inversion_id' => $inversion->id,
+                'transaccion_id' => $movimiento->id,
+                'anio' => $anio,
+                'tipo' => 'DIVIDENDO',
+                'valor_bruto' => (string) $brutoCop,
+                'retencion' => (string) $retencionCop,
+            ]);
+
+            if (bccomp((string) $retencionCop, '0', 2) > 0) {
+                ValorDeducibleRegistro::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'concepto' => 'RETENCION_DIVIDENDOS',
+                    'valor' => (string) $retencionCop,
+                ]);
+            }
+        }
+
+        // 6. Abono de Interés / Rendimientos -> Registro oficial en módulo de Ingresos (valor neto)
+        if (in_array($movimiento->tipo, ['ABONO_INTERES', 'RENDIMIENTO'], true)) {
+            $bruto = $movimiento->monto_bruto ?? $movimiento->monto;
+            $retencion = $movimiento->retencion_aplicada ?? '0.00';
+            $neto = bcsub((string) $bruto, (string) $retencion, 2);
+            if (bccomp((string) $neto, '0', 2) <= 0) {
+                $neto = (string) $movimiento->monto;
+            }
+
+            if (bccomp((string) $neto, '0', 2) > 0) {
+                $fuente = self::fuenteDeRendimientos(
+                    usuarioId: $movimiento->usuario_id,
+                    nombreFuente: self::FUENTE_RENDIMIENTOS,
+                    tipoFuente: self::TIPO_FUENTE_RENDIMIENTOS,
+                    clasificacion: self::CLASIFICACION_RENDIMIENTOS
+                );
+
+                $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
+                $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+
+                $ingreso = Ingreso::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'fuente_id' => $fuente->id,
+                    'fecha_recepcion' => $movimiento->fecha,
+                    'clasificacion_tributaria' => self::CLASIFICACION_RENDIMIENTOS,
+                    'moneda' => $inversion->moneda,
+                    'monto_original' => (string) $neto,
+                    'tasa_cambio_usada' => $tasa,
+                    'monto_bruto_cop' => $netoCop,
+                    'retencion_fuente_cop' => '0.00',
+                    'aportes_descontados_cop' => '0.00',
+                    'origen' => 'MANUAL',
+                    'estado' => 'CONFIRMADO',
+                    'descripcion' => "Rendimiento/Interés neto de «{$inversion->nombre}»",
+                ]);
+
+                $movimiento->update(['ingreso_id' => $ingreso->id]);
+            }
+
+            if (bccomp((string) $bruto, '0', 2) > 0) {
+                $brutoCop = IngresoService::convertirACop((string) $bruto, $tasa);
+                $retencionCop = IngresoService::convertirACop((string) $retencion, $tasa);
+
+                IngresoInversion::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'tipo' => 'RENDIMIENTO',
+                    'valor_bruto' => (string) $brutoCop,
+                    'retencion' => (string) $retencionCop,
+                ]);
+            }
+        }
+
+        // 7. Redención en FIC con parte imputada a utilidad
+        if ($inversion->tipo === 'FIC' && in_array($movimiento->tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true)) {
+            $parteUtilidad = $datos['parte_utilidad'] ?? '0.00';
+            if (bccomp((string) $parteUtilidad, '0', 2) > 0) {
+                $retencion = $movimiento->retencion_aplicada ?? '0.00';
+                $neto = bcsub((string) $parteUtilidad, (string) $retencion, 2);
+                if (bccomp((string) $neto, '0', 2) <= 0) {
+                    $neto = (string) $parteUtilidad;
+                }
+
+                $fuente = self::fuenteDeRendimientos(
+                    usuarioId: $movimiento->usuario_id,
+                    nombreFuente: 'Rendimientos de fondos de inversión (FIC)',
+                    tipoFuente: 'Rendimientos Financieros',
+                    clasificacion: 'RENTAS_CAPITAL'
+                );
+
+                $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
+                $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+
+                $ingreso = Ingreso::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'fuente_id' => $fuente->id,
+                    'fecha_recepcion' => $movimiento->fecha,
+                    'clasificacion_tributaria' => 'RENTAS_CAPITAL',
+                    'moneda' => $inversion->moneda,
+                    'monto_original' => (string) $neto,
+                    'tasa_cambio_usada' => $tasa,
+                    'monto_bruto_cop' => $netoCop,
+                    'retencion_fuente_cop' => '0.00',
+                    'aportes_descontados_cop' => '0.00',
+                    'origen' => 'MANUAL',
+                    'estado' => 'CONFIRMADO',
+                    'descripcion' => "Rendimiento neto por redención en FIC «{$inversion->nombre}» ({$movimiento->unidades} unidades)",
+                ]);
+
+                $movimiento->update(['ingreso_id' => $ingreso->id]);
+
+                IngresoInversion::create([
+                    'usuario_id' => $movimiento->usuario_id,
+                    'inversion_id' => $inversion->id,
+                    'transaccion_id' => $movimiento->id,
+                    'anio' => $anio,
+                    'tipo' => 'RENDIMIENTO',
+                    'valor_bruto' => (string) $parteUtilidad,
+                    'retencion' => (string) $retencion,
+                ]);
+
+                if (bccomp((string) $retencion, '0', 2) > 0) {
+                    ValorDeducibleRegistro::create([
+                        'usuario_id' => $movimiento->usuario_id,
+                        'inversion_id' => $inversion->id,
+                        'transaccion_id' => $movimiento->id,
+                        'anio' => $anio,
+                        'concepto' => 'RETENCION_FIC',
+                        'valor' => (string) $retencion,
+                    ]);
+                }
+            }
+        }
+    }
+
     public static function fuenteDeRendimientos(
         string $usuarioId,
         string $nombreFuente = self::FUENTE_RENDIMIENTOS,
@@ -327,21 +638,35 @@ class InversionService
         ]);
     }
 
-    /**
-     * RF-037: la inversión con su valor actual (RN-039.3), sus unidades
-     * (RN-037.3), el indicador de RN-039.4 y, en CDT y bonos, el rendimiento
-     * estimado al vencimiento (CA-037.1).
-     */
     public static function presentar(Inversion $inversion, CarbonImmutable $hoy): array
     {
         $valoracion = self::valorActual($inversion);
-
         $rendimientoEstimado = null;
-        if ($inversion->tieneTasa() && $inversion->fecha_vencimiento !== null) {
-            $dias = (int) CarbonImmutable::parse($inversion->fecha_apertura)
-                ->diffInDays(CarbonImmutable::parse($inversion->fecha_vencimiento));
-            $rendimientoEstimado = self::rendimientoEstimado((string) $inversion->monto_inicial, (string) $inversion->tasa_ea, $dias);
+        $interesesCobradosCdt = '0.00';
+        $rendimientoTotalCdt = null;
+
+        if ($inversion->tipo === 'CDT') {
+            $detalle = $inversion->detalleCdt;
+            $tasaEa = $detalle?->tasa_valor ?? $inversion->tasa_ea;
+            $plazoDias = $detalle?->plazo_dias ?? $inversion->plazo_dias;
+            $capital = $detalle?->capital ?? $inversion->monto_inicial;
+            $baseDias = $detalle?->base_dias ?? 365;
+            if ($tasaEa !== null && $plazoDias !== null) {
+                $rendimientoTotalCdt = self::rendimientoEstimado((string) $capital, (string) $tasaEa, (int) $plazoDias, (int) $baseDias);
+                $interesesCobradosCdt = (string) MovimientoInversion::where('inversion_id', $inversion->id)
+                    ->where('tipo', 'ABONO_INTERES')
+                    ->sum('monto_bruto');
+                $restante = bcsub($rendimientoTotalCdt, $interesesCobradosCdt, 2);
+                $rendimientoEstimado = bccomp($restante, '0', 2) > 0 ? $restante : '0.00';
+            }
         }
+
+        $proyeccionCuenta = null;
+        if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO') {
+            $proyeccionCuenta = self::proyeccionCuenta($inversion);
+        }
+
+        $valoracionNoRealizada = self::valoracionNoRealizada($inversion);
 
         return array_merge($inversion->toArray(), [
             'unidades_actuales' => self::unidadesActuales($inversion),
@@ -349,6 +674,12 @@ class InversionService
             'fecha_ultima_valoracion' => $valoracion?->fecha?->toDateString(),
             'valoracion_desactualizada' => self::valoracionDesactualizada($inversion, $valoracion, $hoy),
             'rendimiento_estimado' => $rendimientoEstimado,
+            'rendimiento_bruto_total_cdt' => $rendimientoTotalCdt,
+            'intereses_cobrados_cdt' => $interesesCobradosCdt,
+            'proyeccion_cuenta' => $proyeccionCuenta,
+            'valoracion_no_realizada' => $valoracionNoRealizada,
+            'detalle_especifico' => $inversion->detalle()?->toArray(),
+            'entidad_relacion' => $inversion->entidadFinanciera?->toArray(),
         ]);
     }
 }

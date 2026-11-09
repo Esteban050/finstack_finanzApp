@@ -128,18 +128,31 @@ class Mod06DemoSeeder extends Seeder
     /** RF-037: fondo de $ 1.000.000 con su aporte y su valoración inicial (RN-037.4). */
     private function inversionAjena(Usuario $otro): void
     {
+        $ficCatalogo = \App\Models\FicCatalogo::first();
+
         $inversion = new Inversion;
         $inversion->forceFill([
             'id' => self::INVERSION_AJENA_ID,
             'usuario_id' => $otro->id,
             'nombre' => 'Fondo de otra cuenta',
-            'tipo' => 'FONDO_INVERSION_COLECTIVA',
+            'tipo' => 'FIC',
             'moneda' => 'COP',
             'fecha_apertura' => '2025-01-01',
             'monto_inicial' => '1000000.00',
             'nivel_riesgo' => 'MEDIO',
             'estado' => 'ACTIVA',
         ])->save();
+
+        if ($ficCatalogo) {
+            $inversion->detalleFic()->create([
+                'fic_catalogo_id' => $ficCatalogo->id,
+                'unidades' => '1000.00000000',
+                'valor_unidad_compra' => '1000.00000000',
+                'valor_unidad_actual' => '1000.00000000',
+                'pacto_permanencia_dias' => 0,
+                'comision_administracion_ea' => '1.50',
+            ]);
+        }
 
         MovimientoInversion::withoutGlobalScopes()->create([
             'usuario_id' => $otro->id,

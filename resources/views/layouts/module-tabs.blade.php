@@ -14,7 +14,9 @@
     ] : (request()->routeIs('inversiones.*') ? [
         ['inversiones.index', 'Mis Inversiones', request()->routeIs('inversiones.index', 'inversiones.show')],
         ['inversiones.portafolio', 'Portafolio Consolidado', request()->routeIs('inversiones.portafolio')],
-        ['inversiones.simulaciones.index', 'Simulador de Inversión', request()->routeIs('inversiones.simulaciones.*')],
+        ['inversiones.reportes.retenciones', 'Reporte Retenciones', request()->routeIs('inversiones.reportes.retenciones*')],
+        ['inversiones.reportes.utilidades', 'Reporte Utilidades', request()->routeIs('inversiones.reportes.utilidades*')],
+        ['inversiones.simulaciones.index', 'Simulador', request()->routeIs('inversiones.simulaciones.*')],
     ] : [])));
 @endphp
 @if($tabs)<nav class="ui-tabs" aria-label="Secciones">@foreach($tabs as [$route, $label, $active])<a href="{{ route($route) }}" @if($active) aria-current="page" @endif>{{ $label }}</a>@endforeach</nav>@endif

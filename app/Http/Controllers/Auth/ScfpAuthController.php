@@ -189,7 +189,8 @@ class ScfpAuthController extends Controller
             BitacoraService::registrar(
                 accion: 'INTENTO_LOGIN_FALLIDO',
                 entidadAfectada: 'usuarios',
-                justificacion: 'Usuario no existe'
+                justificacion: 'Usuario no existe',
+                usuarioId: null
             );
             return back()->withInput($request->only('correo'))->withErrors([
                 'correo' => 'Correo o contraseña incorrectos',

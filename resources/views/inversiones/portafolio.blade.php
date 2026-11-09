@@ -10,7 +10,11 @@
         <h1>Portafolio</h1>
         <p>Valor y rentabilidad de tus inversiones a la fecha de corte.</p>
     </div>
-    <x-ui.button :href="route('inversiones.index')" variant="secondary">Ver inversiones</x-ui.button>
+    <div class="ui-inline" style="gap: 0.5rem; flex-wrap: wrap;">
+        <x-ui.button :href="route('inversiones.index')" variant="secondary">Ver inversiones</x-ui.button>
+        <x-ui.button :href="route('inversiones.reportes.retenciones')" variant="secondary">Reporte Retenciones</x-ui.button>
+        <x-ui.button :href="route('inversiones.reportes.utilidades')" variant="secondary">Reporte Utilidades</x-ui.button>
+    </div>
 </header>
 
 <x-ui.card>

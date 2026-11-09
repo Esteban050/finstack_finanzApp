@@ -26,8 +26,9 @@ export function validResourcePath(path) {
     if (parts[0] === 'tasas-cambio') return ['trm', 'convertir'].includes(parts[1]);
     if (parts[0] === 'inversiones') {
         if (parts.length < 2 || parts[1] === 'portafolio') return true;
-        if (parts[1] === 'simulaciones') return parts.length < 3 || parts[2] === 'calcular' || isUuid(parts[2]);
-        return isUuid(parts[1]) && (parts.length < 4 || isUuid(parts[3]));
+        if (parts[1] === 'reportes') return ['retenciones', 'utilidades'].includes(parts[2]) && (parts.length < 4 || parts[3] === 'exportar');
+        if (parts[1] === 'simulaciones') return parts.length < 3 || ['calcular', 'producto', 'instantanea'].includes(parts[2]) || isUuid(parts[2]);
+        return isUuid(parts[1]) && (parts.length < 4 || isUuid(parts[3]) || ['rentabilidad', 'valor-causado'].includes(parts[2]));
     }
     if (parts[0] === 'seguridad-social' && parts[1] === 'pagos' && parts[2]) return parts[2] === 'ingresos-periodo' || isUuid(parts[2]);
     if (!['ingresos','gastos'].includes(parts[0]) || parts.length < 2) return true;
