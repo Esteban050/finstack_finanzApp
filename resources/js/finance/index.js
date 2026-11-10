@@ -1,4 +1,9 @@
 import Chart from 'chart.js/auto';
+
+// Exponer Chart globalmente para vistas interactivas (ej. Proyección de CDT)
+if (typeof window !== 'undefined') {
+    window.Chart = Chart;
+}
 import { request, showRequestError, contractPayload } from '../api/index.js';
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { moneyInputErrors } from '../income/index.js';

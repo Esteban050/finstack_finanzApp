@@ -364,10 +364,15 @@ class RentabilidadService
         $valoracion = self::valoracionHasta($inversion, $corte);
         $valor ??= $valoracion === null ? '0.00' : (string) $valoracion->valor;
 
+        // Si la inversión está liquidada/cerrada, el saldo restante de la posición en cartera al corte es 0.00
+        if ($inversion->estaLiquidada()) {
+            $valor = '0.00';
+        }
+
         // H-09: Si la inversión tiene unidades y la última valoración registrada
         // tenía un conteo de unidades diferente al vigente a la fecha de corte,
         // recalculamos el valor con las unidades reales y el último precio conocido.
-        if ($inversion->tieneUnidades() && $valoracion !== null && $valoracion->precio_unitario !== null) {
+        if ($inversion->tipo === 'ACCION_ETF' && $valoracion !== null && $valoracion->precio_unitario !== null) {
             $unidadesAlCorte = InversionService::unidadesActuales($inversion, $corte);
             if (bccomp((string) $valoracion->unidades, (string) $unidadesAlCorte, 8) !== 0) {
                 $valor = IngresoService::redondear(bcmul((string) $unidadesAlCorte, (string) $valoracion->precio_unitario, 10));

@@ -20,13 +20,41 @@
 </header>
 
 <x-ui.card>
-    <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-inline" style="align-items: flex-end;">
-        <x-ui.field name="anio" label="Año Gravable a Consultar">
-            <input type="number" name="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 120px;">
-        </x-ui.field>
-        <x-ui.button type="submit" variant="secondary">Consultar Año</x-ui.button>
-    </form>
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
+        <div>
+            <span class="ui-help" style="font-weight: 600; display: block; margin-bottom: 0.5rem;">Años con actividad tributaria:</span>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                @foreach($aniosDisponibles as $a)
+                    <a href="{{ route('inversiones.reportes.retenciones', ['anio' => $a]) }}" 
+                       class="ui-button {{ (int)$a === (int)$anio ? 'ui-button--primary' : 'ui-button--secondary' }}" 
+                       style="padding: 0.4rem 0.9rem; font-size: 0.9rem; text-decoration: none; border-radius: 6px; font-weight: {{ (int)$a === (int)$anio ? '700' : '500' }};">
+                        Año {{ $a }} {{ (int)$a === (int)$anio ? '✓' : '' }}
+                    </a>
+                @endforeach
+            </div>
+        </div>
+
+        <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-inline" style="align-items: flex-end; margin: 0;">
+            <x-ui.field name="anio" label="Otro año">
+                <input type="number" name="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
+            </x-ui.field>
+            <x-ui.button type="submit" variant="secondary">Ir</x-ui.button>
+        </form>
+    </div>
 </x-ui.card>
+
+@if($movimientos->isEmpty() && count($aniosDisponibles) > 1)
+    <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); margin-bottom: 1.25rem;">
+        <p style="margin: 0; color: #1e40af; font-size: 0.95rem;">
+            ℹ️ No tienes retenciones practicadas en el año <strong>{{ $anio }}</strong>. Recuerda que si simulaste la redención futura de un CDT u otra operación programada, los descuentos se registraron en su año de vencimiento:
+            @foreach($aniosDisponibles as $a)
+                @if((int)$a !== (int)$anio)
+                    <a href="{{ route('inversiones.reportes.retenciones', ['anio' => $a]) }}" style="font-weight: 700; text-decoration: underline; color: #1e40af; margin-left: 0.25rem;">Ver Año {{ $a }} &rarr;</a>
+                @endif
+            @endforeach
+        </p>
+    </div>
+@endif
 
 <!-- TARJETAS DE TOTALES ANUALES -->
 <div class="finance-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem;">

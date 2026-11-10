@@ -11,6 +11,7 @@ use App\Models\ParametroTributario;
 use App\Models\TasaCambio;
 use App\Models\Usuario;
 use App\Models\UsuarioPerfilTributario;
+use App\Models\ValoracionInversion;
 use App\Models\ValorDeducibleRegistro;
 use App\Services\CalculoImpuestoInversionService;
 use App\Services\InversionService;
@@ -1051,8 +1052,17 @@ class InversionesTributariasTest extends TestCase
         $this->actingAs($this->usuario);
         $res1 = $this->get(route('inversiones.reportes.retenciones'));
         $res1->assertOk();
+        $res1->assertViewHas('aniosDisponibles');
+
         $res2 = $this->get(route('inversiones.reportes.utilidades'));
         $res2->assertOk();
+        $res2->assertViewHas('aniosDisponibles');
+
+        // Consultar con año explícito
+        $res3 = $this->get(route('inversiones.reportes.retenciones', ['anio' => 2027]));
+        $res3->assertOk();
+        $res4 = $this->get(route('inversiones.reportes.utilidades', ['anio' => 2027]));
+        $res4->assertOk();
     }
 
     /**
@@ -1179,6 +1189,23 @@ class InversionesTributariasTest extends TestCase
         $this->assertNotNull($vnr);
         $this->assertEquals('600000.00', $vnr['valor']);
         $this->assertEquals('12.00', $vnr['porcentaje']);
+
+        // Verificar vista show de ACCION_ETF: debe renderizar la gráfica de valoración continua
+        $showRes = $this->get(route('inversiones.show', $accion->id));
+        $showRes->assertOk();
+        $showRes->assertSee('accionValoracionCanvas');
+        $showRes->assertSee('Evolución y Valoración de Mercado');
+        $showRes->assertSee('renderAccionChart');
+
+        // Registrar una segunda valoración en pérdida (ej. $2.300 COP)
+        $this->post(route('inversiones.valoraciones.store', $accion->id), [
+            'fecha' => '2026-08-01',
+            'precio_unitario' => '2300.00000000',
+        ])->assertSessionHasNoErrors();
+
+        $showRes2 = $this->get(route('inversiones.show', $accion->id));
+        $showRes2->assertOk();
+        $showRes2->assertSee('2300');
     }
 
     /**
@@ -1327,5 +1354,288 @@ class InversionesTributariasTest extends TestCase
         $this->assertNotNull($ingreso);
         $this->assertEquals('GANANCIA_OCASIONAL', $ingreso->clasificacion_tributaria);
         $this->assertEquals('2500000.00', $ingreso->monto_bruto_cop);
+    }
+
+    /**
+     * Prueba que para CDT se oculta la sección de valoración de mercado, se muestra la gráfica
+     * de proyección de ganancia con retención del 4% y se permite simular fecha de redención futura.
+     */
+    public function test_cdt_oculta_valoracion_muestra_proyeccion_y_permite_simular_redencion_futura(): void
+    {
+        $this->actingAs($this->usuario);
+
+        $cdt = Inversion::create([
+            'usuario_id' => $this->usuario->id,
+            'nombre' => 'CDT Simulación Aula',
+            'tipo' => 'CDT',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-11-09',
+            'monto_inicial' => 1000000.00,
+            'tasa_ea' => '11.0000',
+            'plazo_dias' => 180,
+            'fecha_vencimiento' => '2027-05-08',
+            'estado' => 'ACTIVA',
+        ]);
+
+        $cdt->movimientos()->create([
+            'usuario_id' => $this->usuario->id,
+            'tipo' => 'APORTE',
+            'fecha' => '2026-11-09',
+            'monto' => 1000000.00,
+            'monto_cop' => 1000000.00,
+            'monto_bruto' => 1000000.00,
+            'es_inicial' => true,
+        ]);
+
+        $cdt->detalleCdt()->create([
+            'capital' => '1000000.00',
+            'tasa_valor' => '11.0000',
+            'tipo_tasa' => 'EA',
+            'plazo_dias' => 180,
+            'base_dias' => 365,
+            'fecha_vencimiento' => '2027-05-08',
+            'periodicidad_pago' => 'VENCIMIENTO',
+        ]);
+
+        // 1. Verificar vista show: sección de valoración oculta y gráfica de proyección visible
+        $responseShow = $this->get(route('inversiones.show', $cdt->id));
+        $responseShow->assertOk();
+        $responseShow->assertDontSee('Actualizar Valoración de Mercado (Cotización Actual)');
+        $responseShow->assertSee('Proyección de Ganancia y Rendimiento del CDT');
+        $responseShow->assertSee('cdtProjectionCanvas');
+
+        // 2. Simular redención en fecha futura (2027-05-08)
+        $responseRedencion = $this->post(route('inversiones.movimientos.store', $cdt->id), [
+            'tipo' => 'REDENCION',
+            'fecha' => '2027-05-08',
+            'monto' => 1000000.00,
+            'nota' => 'Simulación clase redención CDT con retención 4%',
+        ]);
+
+        $responseRedencion->assertSessionHasNoErrors();
+
+        // 3. Verificar estado LIQUIDADA y retención del 4% calculada
+        $this->assertEquals('LIQUIDADA', $cdt->fresh()->estado);
+
+        $movRedencion = MovimientoInversion::where('inversion_id', $cdt->id)
+            ->where('tipo', 'REDENCION')
+            ->first();
+
+        $this->assertNotNull($movRedencion);
+        $this->assertEquals('2027-05-08', $movRedencion->fecha->toDateString());
+        // Retención 4% sobre los intereses causados (~52.812,56 * 0.04 = ~2.112,50)
+        $this->assertTrue(bccomp((string) $movRedencion->retencion_aplicada, '2000.00', 2) === 1);
+        $this->assertTrue(bccomp((string) $movRedencion->monto_cop, '1000000.00', 2) === 1);
+
+        // 4. Verificar puentes tributarios (IngresoInversion y ValorDeducibleRegistro)
+        $this->assertDatabaseHas('ingreso_inversion', [
+            'inversion_id' => $cdt->id,
+            'transaccion_id' => $movRedencion->id,
+            'tipo' => 'RENDIMIENTO',
+        ]);
+
+        $this->assertDatabaseHas('valor_deducible_registro', [
+            'inversion_id' => $cdt->id,
+            'transaccion_id' => $movRedencion->id,
+            'concepto' => 'RETEFUENTE_RENTA_FIJA',
+        ]);
+    }
+
+    /**
+     * Prueba que las transacciones y formularios acepten montos formateados
+     * con puntos de miles y comas decimales (formato latino / colombiano).
+     */
+    public function test_transaccion_con_montos_formateados_con_puntos_y_comas(): void
+    {
+        $this->actingAs($this->usuario);
+
+        $cuenta = Inversion::create([
+            'usuario_id' => $this->usuario->id,
+            'nombre' => 'Cuenta Lulo Formateada',
+            'tipo' => 'CUENTA_ALTO_RENDIMIENTO',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-11-01',
+            'monto_inicial' => 5000000.00,
+            'saldo_actual' => 5000000.00,
+            'tasa_ea' => '12.0000',
+            'estado' => 'ACTIVA',
+        ]);
+
+        $cuenta->detalleCuenta()->create([
+            'saldo_inicial' => '5000000.00',
+            'tasa_ea' => '12.0000',
+            'es_cuenta_gmf_exenta' => true,
+        ]);
+
+        // Registrar aporte con separadores de miles: $ 1.050.700,50
+        $response = $this->post(route('inversiones.movimientos.store', $cuenta->id), [
+            'tipo' => 'APORTE',
+            'fecha' => '2026-11-05',
+            'monto' => '1.050.700,50',
+            'nota' => 'Consignación con formato de miles y coma decimal',
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $mov = MovimientoInversion::where('inversion_id', $cuenta->id)
+            ->where('tipo', 'APORTE')
+            ->first();
+
+        $this->assertNotNull($mov);
+        $this->assertEquals('1050700.50', (string) $mov->monto);
+
+        // Registrar otro movimiento con múltiples puntos de miles: 2.000.000
+        $response2 = $this->post(route('inversiones.movimientos.store', $cuenta->id), [
+            'tipo' => 'RETIRO',
+            'fecha' => '2026-11-06',
+            'monto' => '2.000.000',
+            'nota' => 'Retiro con puntos de miles',
+        ]);
+
+        $response2->assertSessionHasNoErrors();
+
+        $mov2 = MovimientoInversion::where('inversion_id', $cuenta->id)
+            ->where('tipo', 'RETIRO')
+            ->first();
+
+        $this->assertNotNull($mov2);
+        $this->assertEquals('2000000.00', (string) $mov2->monto);
+    }
+
+    /**
+     * Prueba el flujo del wizard en 3 pasos para productos administrados (FIC, FPV, Cesantías):
+     * Monto inicial, selección de riesgo (Bajo/Medio/Alto), rentabilidad esperada y plazo libre.
+     */
+    public function test_wizard_creacion_y_valoracion_porcentual_fondos_administrados(): void
+    {
+        $response = $this->post(route('inversiones.store'), [
+            'nombre' => 'Fondo Renta Conservador Test',
+            'tipo' => 'FIC',
+            'entidad' => 'Fiduciaria de Prueba',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-05-01',
+            'monto_inicial' => 10000000.00,
+            'nivel_riesgo' => 'BAJO',
+            'rentabilidad_esperada_porc' => 5.5,
+            'plazo_meses_esperado' => 12,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $fic = Inversion::where('nombre', 'Fondo Renta Conservador Test')->first();
+        $this->assertNotNull($fic);
+        $this->assertEquals('FIC', $fic->tipo);
+        $this->assertEquals('BAJO', $fic->nivel_riesgo);
+        $this->assertEquals('5.5000', (string) $fic->rentabilidad_esperada_porc);
+        $this->assertEquals(12, $fic->plazo_meses_esperado);
+
+        // Valoración inicial registrada automáticamente con el monto inicial
+        $valInicial = ValoracionInversion::where('inversion_id', $fic->id)->first();
+        $this->assertNotNull($valInicial);
+        $this->assertEquals('10000000.00', (string) $valInicial->valor);
+
+        // Registrar nueva valoración de mercado en porcentaje (% E.A. observado en extracto)
+        // Ejemplo: El fondo rentó al 4.0% E.A. al 01/11/2026 (184 días después)
+        $responseVal = $this->post(route('inversiones.valoraciones.store', $fic->id), [
+            'fecha' => '2026-11-01',
+            'rentabilidad_real_ea' => '4.00',
+        ]);
+
+        $responseVal->assertSessionHasNoErrors();
+
+        $valCorte = ValoracionInversion::where('inversion_id', $fic->id)
+            ->where('fecha', '2026-11-01')
+            ->first();
+
+        $this->assertNotNull($valCorte);
+        $this->assertEquals(4.00, (float) $valCorte->precio_unitario);
+        // Saldo calculado con interés compuesto exacto: 10M * (1 + 0.04)^(184/365) = ~10.199.387 COP
+        $this->assertGreaterThan(10000000.00, (float) $valCorte->valor);
+
+        // Consultar la vista show para verificar que renderiza la gráfica comparativa y métricas
+        $responseShow = $this->get(route('inversiones.show', $fic->id));
+        $responseShow->assertOk();
+        $responseShow->assertSee('administradosValoracionCanvas');
+        $responseShow->assertSee('Evolución y Rendimiento de Cartera');
+        $responseShow->assertSee('Rentabilidad observada (% E.A.)');
+
+        // Probar también creación de FPV con wizard (Riesgo Alto, rentabilidad esperada 15%)
+        $responseFpv = $this->post(route('inversiones.store'), [
+            'nombre' => 'FPV Crecimiento Global Test',
+            'tipo' => 'FPV',
+            'entidad' => 'Skandia Pensiones',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-06-01',
+            'monto_inicial' => 5000000.00,
+            'nivel_riesgo' => 'ALTO',
+            'rentabilidad_esperada_porc' => 15.0,
+            'plazo_meses_esperado' => 24,
+        ]);
+        $responseFpv->assertSessionHasNoErrors();
+        $fpv = Inversion::where('nombre', 'FPV Crecimiento Global Test')->first();
+        $this->assertNotNull($fpv);
+        $this->assertEquals('FPV', $fpv->tipo);
+        $this->assertEquals('ALTO', $fpv->nivel_riesgo);
+
+        // Probar también creación de Cesantías con wizard (Riesgo Medio, rentabilidad esperada 8.5%)
+        $responseCes = $this->post(route('inversiones.store'), [
+            'nombre' => 'Cesantías Porvenir Largo Plazo Test',
+            'tipo' => 'CESANTIAS',
+            'entidad' => 'Porvenir Cesantías',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-07-01',
+            'monto_inicial' => 8000000.00,
+            'nivel_riesgo' => 'MEDIO',
+            'rentabilidad_esperada_porc' => 8.5,
+            'plazo_meses_esperado' => 36,
+        ]);
+        $responseCes->assertSessionHasNoErrors();
+        $ces = Inversion::where('nombre', 'Cesantías Porvenir Largo Plazo Test')->first();
+        $this->assertNotNull($ces);
+        $this->assertEquals('CESANTIAS', $ces->tipo);
+        $this->assertEquals('MEDIO', $ces->nivel_riesgo);
+
+        // Verificación específica del caso reportado: Registro de FIC con $1.000.000 COP y 5.5% EA
+        // No debe mutar a $5.50 COP ni mostrar unidades acumuladas
+        $responseFic1M = $this->post(route('inversiones.store'), [
+            'nombre' => 'Fondo Fiduciaria 1M Directo',
+            'tipo' => 'FIC',
+            'entidad' => 'Fiduciaria de Prueba',
+            'moneda' => 'COP',
+            'fecha_apertura' => '2026-05-01',
+            'monto_inicial' => 1000000.00,
+            'nivel_riesgo' => 'BAJO',
+            'rentabilidad_esperada_porc' => 5.5,
+            'plazo_meses_esperado' => 12,
+        ]);
+        $responseFic1M->assertSessionHasNoErrors();
+        $fic1M = Inversion::where('nombre', 'Fondo Fiduciaria 1M Directo')->first();
+        $this->assertNotNull($fic1M);
+
+        $show1M = $this->get(route('inversiones.show', $fic1M->id));
+        $show1M->assertOk();
+        $show1M->assertDontSee('Unidades acumuladas');
+        $show1M->assertDontSee('$ 5.50 COP');
+        $show1M->assertDontSee('-$ 999,994.50');
+        $show1M->assertSee('1,000,000.00');
+
+        $presentacion1M = InversionService::presentar($fic1M, CarbonImmutable::parse('2026-05-01'));
+        $this->assertEquals('1000000.00', (string) $presentacion1M['valor_actual']);
+        $this->assertNull($presentacion1M['unidades_actuales']);
+        $this->assertNull($presentacion1M['valoracion_no_realizada']);
+
+        // Verificación de retiro parcial en FPV sin unidades:
+        // No debe cerrarse la inversión si aún queda saldo disponible
+        $responseRetiroFpv = $this->post(route('inversiones.movimientos.store', $fpv->id), [
+            'tipo' => 'RETIRO',
+            'fecha' => '2026-06-15',
+            'monto' => 2000000.00,
+            'cumple_permanencia' => false,
+        ]);
+        $responseRetiroFpv->assertSessionHasNoErrors();
+        $fpv->refresh();
+        $this->assertEquals('ACTIVA', $fpv->estado);
+        $this->assertEquals('3000000.00', (string) $fpv->detalleFpv->saldo_actual);
+        $this->assertNull($fpv->detalleFpv->unidades);
     }
 }

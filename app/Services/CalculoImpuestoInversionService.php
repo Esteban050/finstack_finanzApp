@@ -749,6 +749,8 @@ class CalculoImpuestoInversionService
             'retiro_con_beneficio' => $aportesConBeneficioRetirados,
             'rendimientos_retirados' => $rendimientosRetirados,
             'retencion_aplicada' => $retencionTotal,
+            'retencion_aportes' => $retAportes,
+            'retencion_rendimientos' => $retRendimientos,
             'gmf_aplicado' => '0.00',
             'neto' => $neto,
             'detalle_lineas' => $desglose,

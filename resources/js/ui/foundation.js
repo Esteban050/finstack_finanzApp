@@ -131,7 +131,13 @@ export function mountFoundation() {
         try { host.textContent = formatDate(host.dataset.date); } catch { host.textContent = '—'; }
     });
     document.querySelectorAll('[data-date-no-future]').forEach((input) => { input.max = todayBogota(); });
-    document.querySelectorAll('input[name=fecha], input[name=fecha_recepcion]').forEach((input) => { input.max = todayBogota(); });
+    document.querySelectorAll('input[name=fecha], input[name=fecha_recepcion]').forEach((input) => {
+        if (!input.hasAttribute('data-allow-future') && !input.hasAttribute('data-date-allow-future') && !input.closest('[data-allow-future]')) {
+            input.max = todayBogota();
+        } else {
+            input.removeAttribute('max');
+        }
+    });
     document.querySelectorAll('input[name=monto_original]').forEach((input) => { input.max = '999999999999.99'; });
     document.querySelectorAll('[data-category-name]').forEach((host) => {
         const visual = getCategoryVisual({ nombre: host.dataset.categoryName, icono: host.dataset.categoryIcon || undefined, color: host.dataset.categoryColor || undefined });
