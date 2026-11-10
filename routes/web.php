@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
 use App\Http\Controllers\Admin\TrmController;
+use App\Http\Controllers\DeclaracionRentaController;
 use App\Http\Controllers\FuenteIngresoController;
 use App\Http\Controllers\GastoCategoriaController;
 use App\Http\Controllers\GastoController;
@@ -220,6 +221,21 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
         // RF-040: rentabilidad a una fecha de corte
         Route::get('/{id}/rentabilidad', [RentabilidadController::class, 'inversion'])->whereUuid('id')->name('rentabilidad');
+    });
+
+    /*
+    | MOD-07 — Declaración de Renta (Característica E: RF-043 a RF-047)
+    */
+    Route::prefix('renta')->name('renta.')->group(function () {
+        Route::get('/', [DeclaracionRentaController::class, 'index'])->name('index');
+        Route::get('/{anio}/consolidado', [DeclaracionRentaController::class, 'consolidado'])->whereNumber('anio')->name('consolidado');
+        Route::get('/{anio}/complementaria', [DeclaracionRentaController::class, 'complementaria'])->whereNumber('anio')->name('complementaria');
+        Route::post('/{anio}/complementaria', [DeclaracionRentaController::class, 'guardarComplementaria'])->whereNumber('anio')->name('complementaria.guardar');
+        Route::get('/{anio}/evaluacion', [DeclaracionRentaController::class, 'evaluacion'])->whereNumber('anio')->name('evaluacion');
+        Route::get('/{anio}/estimacion', [DeclaracionRentaController::class, 'estimacion'])->whereNumber('anio')->name('estimacion');
+        Route::get('/{anio}/vencimiento', [DeclaracionRentaController::class, 'vencimiento'])->whereNumber('anio')->name('vencimiento');
+        Route::post('/{anio}/marcar-presentada', [DeclaracionRentaController::class, 'marcarPresentada'])->whereNumber('anio')->name('marcarPresentada');
+        Route::get('/{anio}/pdf', [DeclaracionRentaController::class, 'descargarPdf'])->whereNumber('anio')->name('pdf');
     });
 });
 
