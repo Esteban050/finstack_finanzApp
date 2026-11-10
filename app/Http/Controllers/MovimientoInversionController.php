@@ -89,7 +89,7 @@ class MovimientoInversionController extends Controller
             $request->merge(['monto' => $montoCalc]);
         }
 
-        $validated = $request->validate($this->reglas($inversion), $this->mensajes());
+        $validated = $request->validate($this->reglas($inversion, (string) $request->input('tipo')), $this->mensajes());
 
         $tipo = $validated['tipo'];
         if (! $inversion->permiteMovimiento($tipo)) {
@@ -661,7 +661,16 @@ class MovimientoInversionController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($movimiento, $inversion) {
+        // RN-038.3: ¿este movimiento cerró la inversión? Una inversión cerrada o
+        // liquidada no admite movimientos nuevos, así que el que la cerró es un
+        // retiro, venta o redención con la fecha más reciente.
+        $cerraba = $inversion->estaLiquidada()
+            && in_array($movimiento->tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL', 'VENTA'], true)
+            && ! MovimientoInversion::where('inversion_id', $inversion->id)
+                ->where('fecha', '>', $movimiento->fecha->toDateString())
+                ->exists();
+
+        DB::transaction(function () use ($movimiento, $inversion, $cerraba) {
             $anterior = $movimiento->toArray();
 
             // Revertir inventario si era VENTA o REDENCION
@@ -688,6 +697,25 @@ class MovimientoInversionController extends Controller
                 if (in_array($inversion->estado, ['LIQUIDADA', 'CERRADA'], true)) {
                     $inversion->update(['estado' => 'ACTIVA']);
                 }
+            }
+
+            // RN-038.3: al quitar el cierre la inversión se reabre (Activa, o Vencida
+            // si ya pasó su vencimiento), sin fecha de liquidación —para que vuelva
+            // al portafolio— y sin la valoración en 0 que el cierre dejó en su fecha.
+            if ($cerraba) {
+                $inversion->update([
+                    'estado' => InversionService::estadoSegunVencimiento(
+                        $inversion->fecha_vencimiento ? CarbonImmutable::parse($inversion->fecha_vencimiento->toDateString()) : null,
+                        CarbonImmutable::today()
+                    ),
+                    'liquidada_en' => null,
+                ]);
+
+                ValoracionInversion::where('inversion_id', $inversion->id)
+                    ->where('fecha', $movimiento->fecha->toDateString())
+                    ->where('origen', 'MANUAL')
+                    ->where('valor', 0)
+                    ->delete();
             }
 
             // Eliminar registros puente asociados
@@ -729,11 +757,20 @@ class MovimientoInversionController extends Controller
         abort(404);
     }
 
-    private function reglas(Inversion $inversion): array
+    private function reglas(Inversion $inversion, string $tipoMovimiento): array
     {
+        // CA-038.2: la fecha no es anterior a la apertura ni futura, salvo la
+        // redención del CDT, que puede registrarse por adelantado hasta su
+        // vencimiento (decisión del usuario, 2026-11-10).
+        $hasta = CarbonImmutable::today();
+        $vence = $inversion->detalleCdt?->fecha_vencimiento ?? $inversion->fecha_vencimiento;
+        if ($inversion->tipo === 'CDT' && $tipoMovimiento === 'REDENCION' && $vence !== null && CarbonImmutable::parse($vence)->gt($hasta)) {
+            $hasta = CarbonImmutable::parse($vence);
+        }
+
         return [
             'tipo' => ['required', Rule::in(Inversion::MOVIMIENTOS_PERMITIDOS[$inversion->tipo] ?? MovimientoInversion::TIPOS)],
-            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString()],
+            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString(), 'before_or_equal:' . $hasta->toDateString()],
             'monto' => ['required', 'numeric', 'gt:0', 'max:999999999999.99'],
             'unidades' => ['nullable', 'numeric', 'gt:0'],
             'valor_unidad' => ['nullable', 'numeric', 'gt:0'],
@@ -756,7 +793,7 @@ class MovimientoInversionController extends Controller
             'tipo.in' => 'El tipo de transacción no está permitido para este producto.',
             'fecha.required' => 'Indique la fecha de la transacción.',
             'fecha.after_or_equal' => 'La fecha no puede ser anterior a la apertura de la inversión.',
-            'fecha.before_or_equal' => 'La fecha no puede ser futura.',
+            'fecha.before_or_equal' => 'La fecha no puede ser futura (la redención de un CDT admite hasta su vencimiento).',
             'monto.required' => 'Indique el monto de la transacción.',
             'monto.gt' => 'El monto debe ser mayor que cero.',
         ];
