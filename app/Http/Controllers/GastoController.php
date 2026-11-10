@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gasto;
+use App\Models\PagoCredito;
 use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
@@ -199,6 +200,7 @@ class GastoController extends Controller
     {
         $gasto = $this->gastoPropio($id);
         $this->rechazarSiEsDePagoPila($gasto);
+        $this->rechazarSiEsDePagoCredito($gasto);
         $validated = $request->validate($this->reglas(), $this->mensajes());
 
         $atributos = $this->prepararAtributos($validated);
@@ -244,6 +246,7 @@ class GastoController extends Controller
     {
         $gasto = $this->gastoPropio($id);
         $this->rechazarSiEsDePagoPila($gasto);
+        $this->rechazarSiEsDePagoCredito($gasto);
         $anterior = $gasto->toArray();
 
         $gasto->delete();
@@ -275,6 +278,7 @@ class GastoController extends Controller
     {
         $gasto = $this->gastoPropio($id);
         $this->rechazarSiEsDePagoPila($gasto);
+        $this->rechazarSiEsDePagoCredito($gasto);
 
         if (! $gasto->estaPendiente()) {
             throw ValidationException::withMessages([
@@ -381,6 +385,13 @@ class GastoController extends Controller
         if (PagoSeguridadSocial::whereIn('gasto_id', $validated['ids'])->exists()) {
             throw ValidationException::withMessages([
                 'ids' => 'La selección incluye gastos generados por pagos de seguridad social (PILA). Quítelos de la selección: se editan desde /seguridad-social/pagos.',
+            ]);
+        }
+
+        // MOD-08: igual con los gastos que generó un pago de crédito.
+        if (PagoCredito::where(fn ($q) => $q->whereIn('gasto_id', $validated['ids'])->orWhereIn('gasto_intereses_id', $validated['ids']))->exists()) {
+            throw ValidationException::withMessages([
+                'ids' => 'La selección incluye gastos generados por pagos de créditos. Quítelos de la selección: se corrigen reversando el pago en /creditos.',
             ]);
         }
 
@@ -720,6 +731,23 @@ class GastoController extends Controller
         if (PagoSeguridadSocial::where('gasto_id', $gasto->id)->exists()) {
             throw ValidationException::withMessages([
                 'gasto' => 'Este gasto lo generó un pago de seguridad social (PILA). Edítelo o elimínelo desde /seguridad-social/pagos.',
+            ]);
+        }
+    }
+
+    /**
+     * MOD-08: el gasto que creó un pago de crédito no se toca desde /gastos;
+     * se corrige reversando el pago, que lo elimina (Créditos RF-33).
+     *
+     * @throws ValidationException
+     */
+    private function rechazarSiEsDePagoCredito(Gasto $gasto): void
+    {
+        $esDePago = PagoCredito::where(fn ($q) => $q->where('gasto_id', $gasto->id)->orWhere('gasto_intereses_id', $gasto->id))->exists();
+
+        if ($esDePago) {
+            throw ValidationException::withMessages([
+                'gasto' => 'Este gasto lo generó un pago de crédito. Para corregirlo, reverse el pago desde /creditos/{id}/pagos.',
             ]);
         }
     }

@@ -5,7 +5,9 @@ use App\Http\Controllers\Admin\CalendarioTributarioController;
 use App\Http\Controllers\Admin\CategoriaCatalogoController;
 use App\Http\Controllers\Admin\ParametroNormativoController;
 use App\Http\Controllers\Admin\TarifaEscalonadaController;
+use App\Http\Controllers\Admin\TasaUsuraController;
 use App\Http\Controllers\Admin\TrmController;
+use App\Http\Controllers\CreditoController;
 use App\Http\Controllers\DeclaracionRentaController;
 use App\Http\Controllers\FuenteIngresoController;
 use App\Http\Controllers\GastoCategoriaController;
@@ -15,6 +17,7 @@ use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
 use App\Http\Controllers\InversionController;
 use App\Http\Controllers\MovimientoInversionController;
+use App\Http\Controllers\PagoCreditoController;
 use App\Http\Controllers\PagoSeguridadSocialController;
 use App\Http\Controllers\PoliticaTratamientoController;
 use App\Http\Controllers\RentabilidadController;
@@ -237,6 +240,40 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::post('/{anio}/marcar-presentada', [DeclaracionRentaController::class, 'marcarPresentada'])->whereNumber('anio')->name('marcarPresentada');
         Route::get('/{anio}/pdf', [DeclaracionRentaController::class, 'descargarPdf'])->whereNumber('anio')->name('pdf');
     });
+
+    /*
+    | MOD-08 — Créditos (característica F)
+    |
+    | Los {id} se restringen a UUID para que /calcular no se confunda con un crédito.
+    */
+    Route::prefix('creditos')->name('creditos.')->group(function () {
+        // RF-049: cuota, tabla y deuda total sin guardar
+        Route::post('/calcular', [CreditoController::class, 'calcular'])->name('calcular');
+        // Créditos RF-17: monto máximo para una cuota máxima (simulación inversa)
+        Route::post('/calcular-monto', [CreditoController::class, 'calcularMonto'])->name('calcular-monto');
+        // Créditos RF-18: comparar hasta tres escenarios
+        Route::post('/comparar', [CreditoController::class, 'comparar'])->name('comparar');
+
+        // RF-048: registro de créditos; el detalle trae la tabla (RF-049)
+        Route::get('/', [CreditoController::class, 'index'])->name('index');
+        Route::post('/', [CreditoController::class, 'store'])->name('store');
+        Route::get('/{id}', [CreditoController::class, 'show'])->whereUuid('id')->name('show');
+        Route::put('/{id}', [CreditoController::class, 'update'])->whereUuid('id')->name('update');
+        Route::delete('/{id}', [CreditoController::class, 'destroy'])->whereUuid('id')->name('destroy');
+
+        // Créditos RF-37, RF-41..43: estado de cuenta y saldo para cancelar a una fecha
+        Route::get('/{id}/estado-cuenta', [CreditoController::class, 'estadoCuenta'])->whereUuid('id')->name('estado-cuenta');
+        // Créditos RF-37: paz y salvo en JSON del crédito pagado
+        Route::get('/{id}/paz-y-salvo', [CreditoController::class, 'pazYSalvo'])->whereUuid('id')->name('paz-y-salvo');
+        // Créditos RF-26: versiones del plan
+        Route::get('/{id}/planes', [CreditoController::class, 'planes'])->whereUuid('id')->name('planes');
+
+        // Créditos RF-29..RF-37: pagos con imputación, simulación y reverso del último
+        Route::get('/{id}/pagos', [PagoCreditoController::class, 'index'])->whereUuid('id')->name('pagos.index');
+        Route::post('/{id}/pagos/simular', [PagoCreditoController::class, 'simular'])->whereUuid('id')->name('pagos.simular');
+        Route::post('/{id}/pagos', [PagoCreditoController::class, 'store'])->whereUuid('id')->name('pagos.store');
+        Route::post('/{id}/pagos/{pagoId}/reversar', [PagoCreditoController::class, 'reversar'])->whereUuid(['id', 'pagoId'])->name('pagos.reversar');
+    });
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)
@@ -276,6 +313,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/trm', [TrmController::class, 'index'])->name('trm.index');
     Route::post('/trm', [TrmController::class, 'store'])->name('trm.store');
     Route::post('/trm/sincronizar', [TrmController::class, 'sincronizar'])->name('trm.sincronizar');
+
+    // Créditos RN-01 / RF-07: tasa de usura por modalidad y vigencia
+    Route::get('/usura', [TasaUsuraController::class, 'index'])->name('usura.index');
+    Route::post('/usura', [TasaUsuraController::class, 'store'])->name('usura.store');
 
     // RF-018: Gestión de cuentas de usuario
     Route::get('/usuarios', [AdminUsuariosController::class, 'index'])->name('usuarios.index');

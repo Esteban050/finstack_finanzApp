@@ -1,0 +1,3467 @@
+{
+  "info": {
+    "_postman_id": "6e1f2a7b-3c8d-4f9e-8a42-1d6f8e3c5a08",
+    "name": "SCFP · MOD-08 Créditos",
+    "description": "Peticiones de verificación de MOD-08: registro de créditos (RF-048) y tabla de amortización con cuota fija (RF-049), con la tasa en EA, nominal o mensual y las periodicidades de semanal a anual (documento de créditos, citado como \"Créditos RF-xx\").\n\nCada petición lleva aserciones referenciadas al requisito o a la regla de negocio que comprueba. Los valores esperados salen de los ejemplos del documento de créditos; la 10.7 y la 10.8 son los casos de prueba de su sección 7.3. La carpeta 40 cubre la fase 2 (plan guardado, pagos con imputación, abono, mora, reverso y el gasto de cada pago) sobre un crédito propio que se elimina al final. La carpeta 50 cubre la fase 3: sistema alemán, simulación inversa (RF-17) y comparación de escenarios (RF-18) con los valores de la sección 3 del documento. La carpeta 60 cubre la fase 4: primer pago irregular, seguros y cargos, paz y salvo en JSON (RF-37) y alertas (usura, capacidad de pago, financiación); su crédito queda pagado (no se puede eliminar con pagos), así que hay que correr el seeder antes de repetir la colección.\n\n## Antes de ejecutar\n\n1. Una sola vez, las tres migraciones del módulo (nunca `migrate:fresh`):\n   - `php artisan migrate --path=database/migrations/2026_11_08_000001_create_creditos_table.php`\n   - `php artisan migrate --path=database/migrations/2026_11_09_000001_create_pagos_creditos_tables.php`\n   - `php artisan migrate --path=database/migrations/2026_11_09_000002_create_tasas_usura_table.php`\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\Mod08DemoSeeder\"` antes de cada corrida: crea las cuentas demo, deja `correo_mod08` sin créditos y a la otra cuenta con el crédito de `credito_ajeno_id` (RNG-01).\n3. La app en `base_url` (por defecto http://localhost:8000).\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 entra con `correo_mod08`. Si quedó abierta la sesión de otra cuenta, la 00.1 la cierra antes del login.\n\n## Datos\n\nLa colección registra su propio crédito y lo elimina al final (borrado lógico), así que se puede repetir sin reiniciar la base. El crédito de `credito_ajeno_id` es de otra cuenta (RNG-01): la carpeta 30 comprueba el 404, y cada intento queda en `bitacora_auditoria` con la acción `ACCESO_DENEGADO_RECURSO_AJENO`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 · Autenticación",
+      "item": [
+        {
+          "name": "00.1 GET /login · obtener token CSRF",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                  "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                  "// de cuenta. Se cierra esa sesión primero.",
+                  "const base = pm.variables.get('base_url');",
+                  "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                  "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                  "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                  "    // destino del login (url.intended).",
+                  "    const html = !err && res.code === 200 ? res.text() : '';",
+                  "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "    if (!m) { return; }",
+                  "    pm.sendRequest({",
+                  "        url: base + '/logout',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                  "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                  "    }, function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Formulario de login disponible (RF-003)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF presente en el formulario', function () {",
+                  "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.2 POST /login · iniciar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "_token",
+                  "value": "{{csrf}}"
+                },
+                {
+                  "key": "correo",
+                  "value": "{{correo_mod08}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password_mod08}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesión activa', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                  "",
+                  "pm.test('Token CSRF renovado disponible', function () {",
+                  "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                  "});",
+                  "",
+                  "if (m) {",
+                  "    pm.collectionVariables.set('csrf', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · RF-049 Calcular sin guardar",
+      "item": [
+        {
+          "name": "10.1 POST /creditos/calcular · $ 20.000.000 al 1,5 % mensual a 24 cuotas (RF-049)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-049 · cuota, intereses y deuda total', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Crédito calculado. No se guardó.');",
+                  "    const d = j.data;",
+                  "    pm.expect(d.numero_cuotas).to.eql(24);",
+                  "    pm.expect(d.cuota).to.eql('998482');",
+                  "    pm.expect(d.total_intereses).to.eql('3963569');",
+                  "    pm.expect(d.total_capital).to.eql('20000000');",
+                  "    pm.expect(d.deuda_total).to.eql('23963569');",
+                  "});",
+                  "",
+                  "pm.test('RF-049 · la tabla cuadra fila por fila y termina en $ 0', function () {",
+                  "    const t = pm.response.json().data.tabla;",
+                  "    pm.expect(t).to.have.lengthOf(24);",
+                  "    pm.expect(t[0].interes).to.eql('300000');",
+                  "    pm.expect(t[0].abono_capital).to.eql('698482');",
+                  "    pm.expect(t[0].fecha).to.eql('2026-02-15');",
+                  "    let saldo = 20000000;",
+                  "    t.forEach(function (f, k) {",
+                  "        pm.expect(f.numero, 'número de la cuota ' + (k + 1)).to.eql(k + 1);",
+                  "        pm.expect(Number(f.saldo_inicial), 'saldo inicial cuota ' + f.numero).to.eql(saldo);",
+                  "        pm.expect(Number(f.cuota), 'cuota = interés + abono, cuota ' + f.numero).to.eql(Number(f.interes) + Number(f.abono_capital));",
+                  "        saldo = Number(f.saldo_final);",
+                  "    });",
+                  "    pm.expect(t[23].saldo_final).to.eql('0');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.2 POST /creditos/calcular · caso de referencia $ 10.000.000 al 1 % a 12 cuotas (RF-049)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-049 · cuota fija de $ 888.488', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.numero_cuotas).to.eql(12);",
+                  "    pm.expect(d.cuota).to.eql('888488');",
+                  "    pm.expect(Math.abs(Number(d.total_intereses) - 661855)).to.be.at.most(12);",
+                  "    pm.expect(d.tabla[11].saldo_final).to.eql('0');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"1\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.3 POST /creditos/calcular · periodicidad trimestral, tasa equivalente (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · 24 meses trimestrales son 8 cuotas al 4,5678 %', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.numero_cuotas).to.eql(8);",
+                  "    pm.expect(d.tasas.periodica_porc).to.eql('4.5678');",
+                  "    pm.expect(d.cuota).to.eql('3040602');",
+                  "    pm.expect(d.deuda_total).to.eql('24324820');",
+                  "    pm.expect(d.tabla[0].fecha).to.eql('2026-04-15');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"TRIMESTRAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.4 POST /creditos/calcular · tasa 0 (RF-049)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-049 · cuota = monto / cuotas y la última absorbe el redondeo', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.cuota).to.eql('333333');",
+                  "    pm.expect(d.total_intereses).to.eql('0');",
+                  "    pm.expect(d.deuda_total).to.eql('1000000');",
+                  "    pm.expect(d.tabla[2].cuota).to.eql('333334');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"1000000\",\n  \"tasa\": \"0\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 3,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.5 POST /creditos/calcular · plazo de 361 meses (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · el plazo va de 1 a 360 meses', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.plazo_meses[0]).to.eql('El plazo debe estar entre 1 y 360 meses.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 361,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.6 POST /creditos/calcular · plazo que no es múltiplo de la periodicidad (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · trimestral exige un plazo múltiplo de 3 meses', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.plazo_meses[0]).to.eql('Con periodicidad trimestral el plazo debe ser múltiplo de 3 meses.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 10,\n  \"periodicidad\": \"TRIMESTRAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.7 POST /creditos/calcular · $ 10.000.000 al 22 % EA, 12 cuotas mensuales (Créditos 7.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 7.3 · cuota 926.588, intereses 1.119.057, última 926.589', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.cuota).to.eql('926588');",
+                  "    pm.expect(d.tabla[0].interes).to.eql('167090');",
+                  "    pm.expect(d.tabla[0].abono_capital).to.eql('759498');",
+                  "    pm.expect(d.tabla[11].cuota).to.eql('926589');",
+                  "    pm.expect(d.total_intereses).to.eql('1119057');",
+                  "});",
+                  "",
+                  "pm.test('Créditos RF-06 / RN-08 · EA junto a la periódica y la nominal', function () {",
+                  "    const t = pm.response.json().data.tasas;",
+                  "    pm.expect(t.ea_porc).to.eql('22.0000');",
+                  "    pm.expect(t.periodica_porc).to.eql('1.6709');",
+                  "    pm.expect(t.nominal_porc.startsWith('20.05')).to.be.true;",
+                  "    pm.expect(t.nominal_capitalizacion).to.eql('MENSUAL');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.8 POST /creditos/calcular · mismo crédito quincenal, 24 cuotas (Créditos 7.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 7.3 · cuota 461.375 e intereses 1.072.991', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.numero_cuotas).to.eql(24);",
+                  "    pm.expect(d.tasas.periodica_porc).to.eql('0.8320');",
+                  "    pm.expect(d.cuota).to.eql('461375');",
+                  "    pm.expect(d.total_intereses).to.eql('1072991');",
+                  "    pm.expect(d.tabla[0].fecha).to.eql('2026-01-30');",
+                  "    pm.expect(d.tabla[1].fecha).to.eql('2026-02-15');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"QUINCENAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.9 POST /creditos/calcular · 18 % NMV equivale a 1,5 % mensual (Créditos RF-05)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-05 · la nominal mes vencido da la misma cuota que la mensual', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.cuota).to.eql('998482');",
+                  "    pm.expect(d.tasas.periodica_porc).to.eql('1.5000');",
+                  "    pm.expect(d.tasas.nominal_porc).to.eql('18.0000');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"18\",\n  \"tipo_tasa\": \"NOMINAL\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"capitalizacion\": \"MENSUAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.10 POST /creditos/calcular · semanal, 12 meses = 52 cuotas (Créditos RF-10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-10 / RF-11 · 52 cuotas cada 7 días', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.numero_cuotas).to.eql(52);",
+                  "    pm.expect(d.tabla[0].fecha).to.eql('2026-01-22');",
+                  "    pm.expect(d.tabla[51].saldo_final).to.eql('0');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"SEMANAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.11 POST /creditos/calcular · vivienda a 361 meses (Créditos 7.3, RN-02)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RN-02 · vivienda va de 60 a 360 meses', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.plazo_meses[0]).to.eql('Los créditos de vivienda tienen un plazo entre 60 y 360 meses (Ley 546 de 1999).');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VIVIENDA\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 361,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "10.12 POST /creditos/calcular · tasa por encima del máximo en EA (sección 6)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('config/scfp.php · la tasa no supera 200 % EA', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.tasa[0]).to.eql('La tasa equivale a 250,0000 % EA; el máximo admitido es 200 % EA.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"250\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · RF-048 Registro de créditos",
+      "item": [
+        {
+          "name": "20.1 POST /creditos · Bancolombia, compra de moto (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · registra el crédito con su cuota y deuda total', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Crédito registrado.');",
+                  "    const d = j.data;",
+                  "    pm.expect(d.banco).to.eql('Bancolombia');",
+                  "    pm.expect(d.proposito).to.eql('Compra de moto');",
+                  "    pm.expect(d.numero_cuotas).to.eql(24);",
+                  "    pm.expect(d.calculo.cuota).to.eql('998482');",
+                  "    pm.expect(d.calculo.deuda_total).to.eql('23963569');",
+                  "    pm.collectionVariables.set('credito_id', d.id);",
+                  "});",
+                  "",
+                  "pm.test('Créditos RF-05 · guarda la tasa ingresada, su EA y su periódica', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.tipo_tasa).to.eql('MENSUAL');",
+                  "    pm.expect(d.tasa_ingresada).to.eql('1.500000');",
+                  "    pm.expect(d.tasa_ea).to.eql('0.195618171461535252');",
+                  "    pm.expect(d.tasa_periodica).to.eql('0.015000000000000000');",
+                  "    pm.expect(d.calculo.tasas.ea_porc).to.eql('19.5618');",
+                  "});",
+                  "",
+                  "pm.test('RF-049 · el registro no trae la tabla (solo el detalle)', function () {",
+                  "    pm.expect(pm.response.json().data.calculo).to.not.have.property('tabla');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banco\": \"Bancolombia\",\n  \"proposito\": \"Compra de moto\",\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.2 POST /creditos · campos inválidos (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · rechaza tipo, banco, propósito, monto, tasa, tipo de tasa y periodicidad', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    const e = pm.response.json().errors;",
+                  "    ['tipo_credito', 'banco', 'proposito', 'monto', 'tasa', 'tipo_tasa', 'periodicidad'].forEach(function (c) {",
+                  "        pm.expect(e, 'error en ' + c).to.have.property(c);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banco\": \"\",\n  \"proposito\": \"ab\",\n  \"tipo_credito\": \"MOTO\",\n  \"monto\": \"0\",\n  \"tasa\": \"-1\",\n  \"tipo_tasa\": \"EFECTIVA\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"DIARIA\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "20.3 GET /creditos · listado con la cuota de cada crédito (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · el crédito registrado aparece en el listado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.meta.por_pagina).to.eql(10);",
+                  "    pm.expect(d.meta.total).to.be.at.least(1);",
+                  "    const c = d.creditos.find(function (x) { return x.id === pm.collectionVariables.get('credito_id'); });",
+                  "    pm.expect(c, 'crédito de la 20.1').to.not.be.undefined;",
+                  "    pm.expect(c.calculo.cuota).to.eql('998482');",
+                  "    pm.expect(c.calculo).to.not.have.property('tabla');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos?por_pagina=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ],
+              "query": [
+                {
+                  "key": "por_pagina",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.4 GET /creditos/{id} · detalle con la tabla de amortización (RF-049)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-049 · el detalle trae las 24 cuotas y termina en $ 0', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const t = pm.response.json().data.calculo.tabla;",
+                  "    pm.expect(t).to.have.lengthOf(24);",
+                  "    pm.expect(t[23].saldo_final).to.eql('0');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "20.5 PUT /creditos/{id} · cambiar a $ 10.000.000 al 1 % a 12 meses (RF-048)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · editar recalcula la tabla con las nuevas condiciones', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Crédito actualizado.');",
+                  "    pm.expect(j.data.numero_cuotas).to.eql(12);",
+                  "    pm.expect(j.data.calculo.cuota).to.eql('888488');",
+                  "    pm.expect(j.data.calculo.tabla).to.have.lengthOf(12);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banco\": \"Bancolombia\",\n  \"proposito\": \"Compra de moto\",\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"1\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 · Eliminación y acceso",
+      "item": [
+        {
+          "name": "30.1 DELETE /creditos/{id} · eliminación lógica (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el crédito se elimina', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().mensaje).to.eql('Crédito eliminado.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.2 GET /creditos/{id} · el crédito eliminado ya no aparece (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el crédito eliminado responde 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.3 GET /creditos/{id} · UUID que no existe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Un crédito que no existe responde 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_inexistente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_inexistente_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.4 GET /creditos/{id} · crédito de otra cuenta (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · el crédito de otro usuario responde 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_ajeno_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_ajeno_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "30.5 PUT /creditos/{id} · editar el crédito de otra cuenta (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · no se puede editar el crédito de otro usuario', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_ajeno_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_ajeno_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banco\": \"Otro\",\n  \"proposito\": \"Compra de moto\",\n  \"tipo_credito\": \"VEHICULO\",\n  \"monto\": \"20000000\",\n  \"tasa\": \"1.5\",\n  \"tipo_tasa\": \"MENSUAL\",\n  \"plazo_meses\": 24,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "30.6 DELETE /creditos/{id} · eliminar el crédito de otra cuenta (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · no se puede eliminar el crédito de otro usuario', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_ajeno_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_ajeno_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 · Créditos fase 2 · pagos, abonos, mora y reverso",
+      "item": [
+        {
+          "name": "40.1 POST /creditos · $ 10.000.000 al 22 % EA con mora del 30 % EA (Créditos RF-22)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-22 · registra el crédito y guarda su plan', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.version_plan_vigente).to.eql(1);",
+                  "    pm.expect(d.calculo.tasas.mora_ea_porc).to.eql('30.0000');",
+                  "    pm.collectionVariables.set('credito_pagos_id', d.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"banco\": \"Davivienda\",\n  \"proposito\": \"Crédito para pagos\",\n  \"tasa_mora\": \"30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.2 GET /creditos/{id}/estado-cuenta · el día del primer vencimiento (Créditos RF-41)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-41 / RF-43 · al día, con la cuota 1 exigible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.estado).to.eql('AL_DIA');",
+                  "    pm.expect(d.saldo_capital).to.eql('10000000');",
+                  "    pm.expect(d.proxima_cuota.numero).to.eql(1);",
+                  "    pm.expect(d.costo_total_original).to.eql('11119057');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/estado-cuenta?fecha=2026-02-15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "estado-cuenta"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-02-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.3 POST /creditos/{id}/pagos/simular · $ 500.000 el día del vencimiento (Créditos RF-36)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-36 · muestra la imputación sin guardar', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.resumen.INTERES_CORRIENTE).to.eql('167090');",
+                  "    pm.expect(d.resumen.CAPITAL).to.eql('332910');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos/simular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos",
+                "simular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-02-15\",\n  \"valor\": \"500000\",\n  \"medio\": \"TRANSFERENCIA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.4 POST /creditos/{id}/pagos · $ 500.000 el día del vencimiento (Créditos 7.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 7.3 · 167.090 a interés y 332.910 a capital', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const p = pm.response.json().data.pago;",
+                  "    pm.expect(p.imputaciones[0].concepto).to.eql('INTERES_CORRIENTE');",
+                  "    pm.expect(p.imputaciones[0].valor).to.eql('167090');",
+                  "    pm.expect(p.imputaciones[1].concepto).to.eql('CAPITAL');",
+                  "    pm.expect(p.imputaciones[1].valor).to.eql('332910');",
+                  "    pm.collectionVariables.set('pago1_id', p.id);",
+                  "    pm.collectionVariables.set('gasto_pago1_id', p.gasto_id);",
+                  "});",
+                  "",
+                  "pm.test('MOD-04 · el pago generó su gasto', function () {",
+                  "    pm.expect(pm.response.json().data.pago.gasto_id).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-02-15\",\n  \"valor\": \"500000\",\n  \"medio\": \"TRANSFERENCIA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.5 GET /creditos/{id}/estado-cuenta · la cuota 1 queda pagada parcialmente (Créditos RF-25)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-25 · PAGADA_PARCIAL con 426.588 de capital pendiente', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.cuotas_detalle[0].estado).to.eql('PAGADA_PARCIAL');",
+                  "    pm.expect(d.cuotas_detalle[0].capital_pendiente).to.eql('426588');",
+                  "    pm.expect(d.total_pagado.total).to.eql('500000');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/estado-cuenta?fecha=2026-02-15",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "estado-cuenta"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-02-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.6 GET /creditos/{id}/estado-cuenta · 14 días después: vencida y con mora (Créditos RF-38, RF-39)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-38 / RF-39 · en mora, con 14 días y mora sobre el capital vencido', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.estado).to.eql('EN_MORA');",
+                  "    pm.expect(d.dias_mora).to.eql(14);",
+                  "    pm.expect(d.capital_vencido).to.eql('426588');",
+                  "    pm.expect(Number(d.mora)).to.be.above(0);",
+                  "    pm.expect(Number(d.interes_causado)).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/estado-cuenta?fecha=2026-03-01",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "estado-cuenta"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-03-01"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.7 POST /creditos/{id}/pagos · excedente sin indicar su aplicación (Créditos RF-32)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-32 · pide elegir ANTICIPO o ABONO_CAPITAL', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('aplicacion_excedente');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-03-01\",\n  \"valor\": \"2000000\",\n  \"medio\": \"TRANSFERENCIA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.8 POST /creditos/{id}/pagos · abono a capital que reduce la cuota (Créditos RF-34, RF-35)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 2.6 · primero la mora, luego lo exigible', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const p = pm.response.json().data.pago;",
+                  "    pm.expect(p.imputaciones[0].concepto).to.eql('INTERES_MORA');",
+                  "    pm.collectionVariables.set('pago2_id', p.id);",
+                  "});",
+                  "",
+                  "pm.test('Créditos RF-34 / RF-35 · liquida el causado, abona y genera la versión 2 del plan', function () {",
+                  "    const p = pm.response.json().data.pago;",
+                  "    pm.expect(Number(p.resumen.ABONO_EXTRAORDINARIO)).to.be.above(0);",
+                  "    pm.expect(p.version_plan_generada).to.eql(2);",
+                  "    pm.expect(p.reducir).to.eql('CUOTA');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-03-01\",\n  \"valor\": \"2000000\",\n  \"medio\": \"TRANSFERENCIA\",\n  \"aplicacion_excedente\": \"ABONO_CAPITAL\",\n  \"reducir\": \"CUOTA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.9 GET /creditos/{id}/planes · versión original y versión tras el abono (Créditos RF-26)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-26 · conserva la versión anterior', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.lengthOf(2);",
+                  "    pm.expect(d[1].vigente).to.be.true;",
+                  "    pm.expect(Number(d[1].total_intereses)).to.be.below(Number(d[0].total_intereses));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/planes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "planes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.10 DELETE /gastos/{id} · el gasto de un pago no se borra desde gastos (MOD-04)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('MOD-04 · el gasto se corrige reversando el pago', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.gasto[0]).to.include('pago de crédito');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gastos/{{gasto_pago1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gastos",
+                "{{gasto_pago1_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.11 PUT /creditos/{id} · con pagos no cambian las condiciones (Créditos RF-08)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-08 · solo banco y propósito', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('credito');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"9000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"banco\": \"Davivienda\",\n  \"proposito\": \"Crédito para pagos\",\n  \"tasa_mora\": \"30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.12 POST /creditos/{id}/pagos/{pago}/reversar · un pago que no es el último (Créditos RF-33)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-33 · solo se reversa el último pago vigente', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('pago');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos/{{pago1_id}}/reversar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos",
+                "{{pago1_id}}",
+                "reversar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Prueba de reverso fuera de orden\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.13 POST /creditos/{id}/pagos/{pago}/reversar · el abono (Créditos RF-33)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-33 · reversa el abono', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.reversado).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos/{{pago2_id}}/reversar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos",
+                "{{pago2_id}}",
+                "reversar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"El abono se registró por error\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.14 GET /creditos/{id}/planes · el reverso deshace la versión 2 (Créditos RF-26, RF-33)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-33 · vuelve el plan original', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.lengthOf(1);",
+                  "    pm.expect(d[0].numero_cuotas).to.eql(12);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/planes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "planes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.15 GET /creditos/{id}/pagos · el reversado sigue en el listado (Créditos RF-31)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-31 / RF-33 · dos pagos, el segundo reversado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.lengthOf(2);",
+                  "    pm.expect(d[0].reversado).to.be.false;",
+                  "    pm.expect(d[1].reversado).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.16 GET /creditos/{id}/pagos · pagos de un crédito ajeno (RNG-01)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-01 · los pagos de otro usuario responden 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_ajeno_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_ajeno_id}}",
+                "pagos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "40.17 POST /creditos/{id}/pagos/{pago}/reversar · el primer pago (Créditos RF-33)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-33 · ahora sí es el último vigente', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}/pagos/{{pago1_id}}/reversar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}",
+                "pagos",
+                "{{pago1_id}}",
+                "reversar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Limpieza de la corrida de Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "40.18 DELETE /creditos/{id} · sin pagos vigentes ya se puede eliminar (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el crédito se elimina', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_pagos_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_pagos_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 · Créditos fase 3 · sistema alemán, simulación inversa y comparación",
+      "item": [
+        {
+          "name": "50.1 POST /creditos/calcular · abono constante a capital (Créditos 2.4, 7.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 7.3 · primera 1.000.423, última 847.261, intereses 1.086.083', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.sistema_amortizacion).to.eql('ALEMAN');",
+                  "    pm.expect(d.cuota).to.eql('1000423');",
+                  "    pm.expect(d.cuota_ultima).to.eql('847261');",
+                  "    pm.expect(d.total_intereses).to.eql('1086083');",
+                  "    pm.expect(d.tabla[0].abono_capital).to.eql('833333');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"sistema_amortizacion\": \"ALEMAN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.2 POST /creditos/comparar · los tres escenarios del documento (Créditos RF-18)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-18 / sección 3 · mensual, quincenal y alemán lado a lado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const e = pm.response.json().data.escenarios;",
+                  "    pm.expect(e).to.have.lengthOf(3);",
+                  "    pm.expect([e[0].cuota, e[0].total_intereses]).to.eql(['926588', '1119057']);",
+                  "    pm.expect([e[1].cuota, e[1].total_intereses, e[1].numero_cuotas]).to.eql(['461375', '1072991', 24]);",
+                  "    pm.expect([e[2].cuota, e[2].cuota_ultima, e[2].total_intereses]).to.eql(['1000423', '847261', '1086083']);",
+                  "});",
+                  "",
+                  "pm.test('Créditos sección 3 · quincenal cuesta $ 46.066 menos y es el de menor costo', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.escenarios[1].diferencia_intereses_vs_1).to.eql('-46066');",
+                  "    pm.expect(d.menor_costo).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/comparar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "comparar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"escenarios\": [\n    {\n      \"nombre\": \"Cuota fija mensual\"\n    },\n    {\n      \"nombre\": \"Cuota fija quincenal\",\n      \"periodicidad\": \"QUINCENAL\"\n    },\n    {\n      \"nombre\": \"Abono constante mensual\",\n      \"sistema_amortizacion\": \"ALEMAN\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.3 POST /creditos/comparar · cuatro escenarios (Créditos RF-18)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-18 · máximo tres escenarios', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors.escenarios[0]).to.eql('Se comparan máximo 3 escenarios (Créditos RF-18).');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/comparar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "comparar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"escenarios\": [\n    {},\n    {},\n    {},\n    {}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.4 POST /creditos/comparar · un escenario que cambia la tasa (Créditos RF-18)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-18 · solo cambian plazo, periodicidad o sistema', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().errors).to.have.property('escenarios.1');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/comparar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "comparar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"escenarios\": [\n    {},\n    {\n      \"tasa\": \"18\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.5 POST /creditos/calcular-monto · monto máximo para una cuota de $ 926.588 (Créditos RF-17)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-17 · el monto máximo ronda los $ 10.000.000 y su cuota no supera la máxima', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(Math.abs(Number(d.monto_maximo) - 10000000)).to.be.at.most(10);",
+                  "    pm.expect(Number(d.cuota)).to.be.at.most(926588);",
+                  "    pm.expect(d.tabla).to.have.lengthOf(12);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular-monto",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular-monto"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"cuota_maxima\": \"926588\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.6 POST /creditos/calcular-monto · con abono constante, la primera cuota manda (Créditos RF-17)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-17 / 2.4 · la primera cuota (la más alta) no supera la máxima', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.sistema_amortizacion).to.eql('ALEMAN');",
+                  "    pm.expect(Number(d.cuota)).to.be.at.most(1000423);",
+                  "    pm.expect(Math.abs(Number(d.monto_maximo) - 10000000)).to.be.at.most(10);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular-monto",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular-monto"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"cuota_maxima\": \"1000423\",\n  \"sistema_amortizacion\": \"ALEMAN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.7 POST /creditos · registrar un crédito alemán (Créditos 2.4, RF-22)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 2.4 · el plan guardado es decreciente', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.sistema_amortizacion).to.eql('ALEMAN');",
+                  "    pm.expect(d.calculo.cuota).to.eql('1000423');",
+                  "    pm.expect(d.calculo.cuota_ultima).to.eql('847261');",
+                  "    pm.collectionVariables.set('credito_aleman_id', d.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"sistema_amortizacion\": \"ALEMAN\",\n  \"banco\": \"Bancolombia\",\n  \"proposito\": \"Crédito alemán\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "50.8 DELETE /creditos/{id} · limpieza del crédito alemán (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · el crédito se elimina', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_aleman_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_aleman_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 · Créditos fase 4 · primer pago irregular, seguros y cargos y alertas",
+      "item": [
+        {
+          "name": "60.1 POST /creditos/calcular · primer pago a 45 días del desembolso (Créditos RF-14, 7.3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-14 / 7.3 · la cuota 1 cobra el interés de 45 días (248.188)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.tabla[0].interes).to.eql('248188');",
+                  "    pm.expect(d.tabla[0].abono_capital).to.eql('759498');",
+                  "    pm.expect(d.cuota).to.eql('1007686');",
+                  "    pm.expect(d.tabla[1].fecha).to.eql('2026-04-01');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"fecha_primer_pago\": \"2026-03-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.2 POST /creditos/calcular · seguro del 0,05 % mensual y cargo de $ 15.000 (Créditos RF-16, RF-21)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-21 · seguro sobre el saldo y cargo fijo, aparte de la cuota', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.tabla[0].seguro).to.eql('5000');",
+                  "    pm.expect(d.tabla[0].cargos).to.eql('15000');",
+                  "    pm.expect(d.cuota_total).to.eql('946588');",
+                  "    pm.expect(d.tabla[1].seguro).to.eql('4620');",
+                  "    pm.expect(d.deuda_total).to.eql('11119057');",
+                  "    pm.expect(Number(d.total_a_pagar)).to.eql(Number(d.deuda_total) + Number(d.total_seguros_cargos));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"banco\": \"Banco Popular\",\n  \"proposito\": \"Crédito con seguro\",\n  \"seguro_porc_mensual\": \"0.05\",\n  \"cargo_fijo\": \"15000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.3 POST /creditos · registrar el crédito con seguro y cargo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-22 · guarda el plan con seguros y cargos', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.calculo.cuota_total).to.eql('946588');",
+                  "    pm.expect(d.alertas).to.be.an('array');",
+                  "    pm.collectionVariables.set('credito_seguros_id', d.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"banco\": \"Banco Popular\",\n  \"proposito\": \"Crédito con seguro\",\n  \"seguro_porc_mensual\": \"0.05\",\n  \"cargo_fijo\": \"15000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.4 POST /creditos/{id}/pagos · la cuota sin el seguro (Créditos RF-30, 2.6)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 2.6 · primero seguro y cargo, luego interés y capital', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const i = pm.response.json().data.pago.imputaciones;",
+                  "    pm.expect(i.map(x => x.concepto)).to.eql(['SEGURO', 'CARGO', 'INTERES_CORRIENTE', 'CAPITAL']);",
+                  "    pm.expect(i[3].valor).to.eql('739498');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_seguros_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_seguros_id}}",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"2026-02-15\",\n  \"valor\": \"926588\",\n  \"medio\": \"TRANSFERENCIA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.5 GET /creditos/{id}/estado-cuenta · saldo para cancelar hoy (Créditos RF-37)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos 2.5 · saldo para cancelar con seguros y cargos exigibles', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(Number(d.saldo_para_cancelar)).to.be.above(0);",
+                  "    pm.collectionVariables.set('saldo_para_cancelar', d.saldo_para_cancelar);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_seguros_id}}/estado-cuenta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_seguros_id}}",
+                "estado-cuenta"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.6 POST /creditos/{id}/pagos · prepago total hoy (Créditos RF-37)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// La fecha del pago no puede ser futura: se usa la de hoy en el equipo que corre la colección.",
+                  "const d = new Date();",
+                  "const dos = n => String(n).padStart(2, '0');",
+                  "pm.collectionVariables.set('fecha_hoy', d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate()));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-37 · el crédito queda PAGADO', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.estado_cuenta.estado).to.eql('PAGADO');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_seguros_id}}/pagos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_seguros_id}}",
+                "pagos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha\": \"{{fecha_hoy}}\",\n  \"valor\": \"{{saldo_para_cancelar}}\",\n  \"medio\": \"TRANSFERENCIA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.7 GET /creditos/{id}/paz-y-salvo · constancia del crédito pagado (Créditos RF-37)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-37 · el crédito pagado tiene paz y salvo', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.estado).to.eql('PAGADO');",
+                  "    pm.expect(d.saldo_para_cancelar).to.eql('0');",
+                  "    pm.expect(d.credito.id).to.eql(pm.collectionVariables.get('credito_seguros_id'));",
+                  "    pm.expect(d.fecha_cancelacion).to.eql(pm.collectionVariables.get('fecha_hoy'));",
+                  "    pm.expect(d.aviso).to.include('No reemplaza el paz y salvo');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_seguros_id}}/paz-y-salvo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_seguros_id}}",
+                "paz-y-salvo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.8 GET /admin/usura · un usuario sin rol de administrador (Créditos RF-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RF-07 · solo el administrador carga la usura', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/usura",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "usura"
+              ]
+            }
+          }
+        },
+        {
+          "name": "60.9 POST /creditos/calcular · libranza sin ingresos registrados (Créditos RN-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RN-07 · avisa que no pudo validar la capacidad de pago', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const codigos = pm.response.json().data.alertas.map(a => a.codigo);",
+                  "    pm.expect(codigos).to.include('SIN_INGRESOS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRANZA\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "60.10 POST /creditos/calcular · vivienda que financia más del 70 % del inmueble (Créditos RN-03)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Créditos RN-03 · alerta de financiación, sin bloquear', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const a = pm.response.json().data.alertas.find(x => x.codigo === 'FINANCIACION_SUPERA_LIMITE');",
+                  "    pm.expect(a, 'alerta de financiación').to.not.be.undefined;",
+                  "    pm.expect(a.limite).to.eql('8400000');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/calcular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "calcular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"VIVIENDA\",\n  \"monto\": \"10000000\",\n  \"tasa\": \"22\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 60,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"2026-01-15\",\n  \"valor_inmueble\": \"12000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "correo_mod08",
+      "value": "mod08@scfp.test",
+      "type": "string"
+    },
+    {
+      "key": "password_mod08",
+      "value": "Scfp#Demo2026",
+      "type": "string"
+    },
+    {
+      "key": "credito_ajeno_id",
+      "value": "90000000-0000-0000-0008-000000000001",
+      "type": "string"
+    },
+    {
+      "key": "credito_inexistente_id",
+      "value": "00000000-0000-0000-0008-000000000000",
+      "type": "string"
+    },
+    {
+      "key": "csrf",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "credito_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "credito_pagos_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pago1_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pago2_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gasto_pago1_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "credito_aleman_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "credito_seguros_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "saldo_para_cancelar",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_hoy",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
