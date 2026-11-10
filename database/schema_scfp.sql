@@ -147,6 +147,64 @@ CREATE TABLE public.categorias (
 
 
 --
+-- Name: creditos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.creditos (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    tipo_credito character varying(20) NOT NULL,
+    banco character varying(80) NOT NULL,
+    proposito character varying(120) NOT NULL,
+    monto numeric(18,2) NOT NULL,
+    tipo_tasa character varying(8) NOT NULL,
+    tasa_ingresada numeric(12,6) NOT NULL,
+    capitalizacion character varying(12),
+    tasa_ea numeric(30,18) NOT NULL,
+    tasa_periodica numeric(30,18) NOT NULL,
+    plazo_meses integer,
+    periodicidad character varying(12) NOT NULL,
+    numero_cuotas integer NOT NULL,
+    sistema_amortizacion character varying(8) DEFAULT 'FRANCES'::character varying NOT NULL,
+    fecha_inicio date NOT NULL,
+    fecha_primer_pago date,
+    seguro_porc_mensual numeric(9,6),
+    cargo_fijo numeric(18,2),
+    valor_inmueble numeric(18,2),
+    es_vis boolean,
+    tasa_mora_ea numeric(30,18),
+    version_plan_vigente smallint DEFAULT '1'::smallint NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    eliminado_en timestamp(0) with time zone
+);
+
+
+--
+-- Name: cuotas_credito; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cuotas_credito (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    credito_id uuid NOT NULL,
+    usuario_id uuid NOT NULL,
+    version_plan smallint NOT NULL,
+    numero integer NOT NULL,
+    fecha_vencimiento date NOT NULL,
+    saldo_inicial numeric(18,2) NOT NULL,
+    cuota numeric(18,2) NOT NULL,
+    interes numeric(18,2) NOT NULL,
+    capital numeric(18,2) NOT NULL,
+    saldo_final numeric(18,2) NOT NULL,
+    seguro numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    cargos numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    reemplazada_en_version smallint,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
 -- Name: fuentes_ingreso; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -217,6 +275,20 @@ CREATE TABLE public.historial_contrasenas (
     usuario_id uuid NOT NULL,
     password_hash text NOT NULL,
     creado_en timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: imputaciones_pago_credito; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.imputaciones_pago_credito (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    pago_id uuid NOT NULL,
+    cuota_id uuid,
+    concepto character varying(24) NOT NULL,
+    valor numeric(18,2) NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
@@ -350,6 +422,31 @@ CREATE TABLE public.movimientos_inversion (
     CONSTRAINT chk_movimiento_tasa CHECK ((tasa_cambio_usada > (0)::numeric)),
     CONSTRAINT chk_movimiento_tipo CHECK (((tipo)::text = ANY ((ARRAY['APORTE'::character varying, 'RETIRO_PARCIAL'::character varying, 'RENDIMIENTO'::character varying, 'COMISION'::character varying, 'RETENCION'::character varying, 'LIQUIDACION_TOTAL'::character varying])::text[]))),
     CONSTRAINT chk_movimiento_unidades CHECK (((unidades IS NULL) OR (unidades > (0)::numeric)))
+);
+
+
+--
+-- Name: pagos_credito; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pagos_credito (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    credito_id uuid NOT NULL,
+    usuario_id uuid NOT NULL,
+    numero integer NOT NULL,
+    fecha date NOT NULL,
+    valor numeric(18,2) NOT NULL,
+    medio character varying(25) NOT NULL,
+    referencia character varying(60),
+    aplicacion_excedente character varying(14),
+    reducir character varying(6),
+    version_plan_generada smallint,
+    gasto_id uuid,
+    gasto_intereses_id uuid,
+    reversado_en timestamp(0) with time zone,
+    motivo_reverso character varying(200),
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
@@ -575,6 +672,23 @@ CREATE TABLE public.tarifas_escalonadas (
 
 
 --
+-- Name: tasas_usura; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tasas_usura (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    modalidad character varying(30) NOT NULL,
+    tasa_ea numeric(7,4) NOT NULL,
+    vigente_desde date NOT NULL,
+    vigente_hasta date NOT NULL,
+    acto_administrativo character varying(120) NOT NULL,
+    registrado_por uuid,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
 -- Name: tasas_cambio; Type: TABLE; Schema: public; Owner: -
 -- RF-017 (TRM). Creada por la migración 2026_10_27_000001_create_tasas_cambio_table.
 --
@@ -710,6 +824,70 @@ ALTER TABLE ONLY public.calendario_tributario
 
 ALTER TABLE ONLY public.categorias
     ADD CONSTRAINT categorias_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: creditos creditos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.creditos
+    ADD CONSTRAINT creditos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cuotas_credito cuotas_credito_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cuotas_credito
+    ADD CONSTRAINT cuotas_credito_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cuotas_credito uq_cuotas_credito_version_numero; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cuotas_credito
+    ADD CONSTRAINT uq_cuotas_credito_version_numero UNIQUE (credito_id, version_plan, numero);
+
+
+--
+-- Name: imputaciones_pago_credito imputaciones_pago_credito_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imputaciones_pago_credito
+    ADD CONSTRAINT imputaciones_pago_credito_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pagos_credito pagos_credito_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT pagos_credito_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pagos_credito uq_pagos_credito_numero; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT uq_pagos_credito_numero UNIQUE (credito_id, numero);
+
+
+--
+-- Name: tasas_usura tasas_usura_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_usura
+    ADD CONSTRAINT tasas_usura_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tasas_usura uq_tasas_usura_modalidad_desde; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_usura
+    ADD CONSTRAINT uq_tasas_usura_modalidad_desde UNIQUE (modalidad, vigente_desde);
 
 
 --
@@ -1027,6 +1205,34 @@ CREATE INDEX idx_tokens_usuario_tipo ON public.tokens_seguridad USING btree (usu
 
 
 --
+-- Name: ix_creditos_usuario; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_creditos_usuario ON public.creditos USING btree (usuario_id);
+
+
+--
+-- Name: ix_cuotas_credito_vigentes; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cuotas_credito_vigentes ON public.cuotas_credito USING btree (credito_id, reemplazada_en_version);
+
+
+--
+-- Name: ix_imputaciones_cuota; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imputaciones_cuota ON public.imputaciones_pago_credito USING btree (cuota_id);
+
+
+--
+-- Name: ix_imputaciones_pago; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imputaciones_pago ON public.imputaciones_pago_credito USING btree (pago_id);
+
+
+--
 -- Name: ix_inversiones_usuario_estado; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1149,6 +1355,86 @@ ALTER TABLE ONLY public.categorias
 
 ALTER TABLE ONLY public.categorias
     ADD CONSTRAINT categorias_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: creditos creditos_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.creditos
+    ADD CONSTRAINT creditos_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: cuotas_credito cuotas_credito_credito_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cuotas_credito
+    ADD CONSTRAINT cuotas_credito_credito_id_foreign FOREIGN KEY (credito_id) REFERENCES public.creditos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: cuotas_credito cuotas_credito_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cuotas_credito
+    ADD CONSTRAINT cuotas_credito_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: imputaciones_pago_credito imputaciones_pago_credito_cuota_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imputaciones_pago_credito
+    ADD CONSTRAINT imputaciones_pago_credito_cuota_id_foreign FOREIGN KEY (cuota_id) REFERENCES public.cuotas_credito(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: imputaciones_pago_credito imputaciones_pago_credito_pago_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imputaciones_pago_credito
+    ADD CONSTRAINT imputaciones_pago_credito_pago_id_foreign FOREIGN KEY (pago_id) REFERENCES public.pagos_credito(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pagos_credito pagos_credito_credito_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT pagos_credito_credito_id_foreign FOREIGN KEY (credito_id) REFERENCES public.creditos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pagos_credito pagos_credito_gasto_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT pagos_credito_gasto_id_foreign FOREIGN KEY (gasto_id) REFERENCES public.gastos(id) ON DELETE SET NULL;
+
+
+--
+-- Name: pagos_credito pagos_credito_gasto_intereses_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT pagos_credito_gasto_intereses_id_foreign FOREIGN KEY (gasto_intereses_id) REFERENCES public.gastos(id) ON DELETE SET NULL;
+
+
+--
+-- Name: pagos_credito pagos_credito_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pagos_credito
+    ADD CONSTRAINT pagos_credito_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tasas_usura tasas_usura_registrado_por_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasas_usura
+    ADD CONSTRAINT tasas_usura_registrado_por_foreign FOREIGN KEY (registrado_por) REFERENCES public.usuarios(id) ON DELETE SET NULL;
 
 
 --
