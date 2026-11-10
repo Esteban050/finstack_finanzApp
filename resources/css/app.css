@@ -5,6 +5,7 @@
 @import './expenses.css';
 @import './auth.css';
 @import './finance.css';
+@import './renta.css';
 
 @tailwind base;
 @tailwind components;
