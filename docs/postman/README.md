@@ -1,8 +1,8 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **cinco colecciones** en esta carpeta. Esta primera parte documenta la de
-> MOD-03; las de MOD-04 (gastos), RF-017 (TRM), MOD-05 (seguridad social) y
-> MOD-06 (inversiones) están al final del archivo.
+> Hay **seis colecciones** en esta carpeta. Esta primera parte documenta la de
+> MOD-03; las de MOD-04 (gastos), RF-017 (TRM), MOD-05 (seguridad social),
+> MOD-06 (inversiones) y MOD-08 (créditos) están al final del archivo.
 
 Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
@@ -15,6 +15,7 @@ comprueba.
 | `SCFP-TRM.postman_collection.json` | La colección de RF-017 (TRM y conversión COP ⇄ USD) |
 | `SCFP-MOD-05.postman_collection.json` | La colección de MOD-05 (seguridad social) |
 | `SCFP-MOD-06.postman_collection.json` | La colección de MOD-06 (inversiones y rentabilidad) |
+| `SCFP-MOD-08.postman_collection.json` | La colección de MOD-08 (créditos y simulación de pagos) |
 | `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales) de MOD-03; las demás colecciones traen sus propias variables |
 
 > **Sesión de una corrida anterior (todas las colecciones).** La app de Postman
@@ -549,15 +550,27 @@ Comprobado el 28/10/2026:
 
 Verificación de RF-037 a RF-042 por HTTP: registro de inversiones y sus
 movimientos, valoraciones de mercado, rentabilidad (ROI, XIRR), portafolio y
-simulación de alternativas. **40 peticiones en 8 carpetas.**
+simulación de alternativas. **48 peticiones en 8 carpetas.**
+
+Desde el 10/11/2026 sigue el **diseño v1.1** del módulo: seis productos (`CDT`,
+`ACCION_ETF`, `FIC`, `CUENTA_ALTO_RENDIMIENTO`, `FPV` y `CESANTIAS`), cada uno
+con sus transacciones permitidas (`Inversion::MOVIMIENTOS_PERMITIDOS`: el CDT
+solo admite abono de interés y redención, la Acción/ETF compra, venta y
+dividendo, etc.) y la retención calculada con los parámetros tributarios
+vigentes.
 
 ## Antes de importar
 
 **1. Crear las tablas de MOD-06, una sola vez.** Va con `--path` por la misma
-razón que la TRM y MOD-05: el esquema de dominio no tiene migraciones.
+razón que la TRM y MOD-05: el esquema de dominio no tiene migraciones. Primero
+la del módulo y después, en orden, las diez del rediseño v1.1
+(`2026_11_08_000001_create_parametros_tributarios_and_catalogos_tables.php` a
+`2026_11_08_000010_add_base_minima_cuentas_ahorro_parametro.php`).
 
 ```bash
 php artisan migrate --path=database/migrations/2026_10_29_000001_create_inversiones_tables.php
+php artisan migrate --path=database/migrations/2026_11_08_000001_create_parametros_tributarios_and_catalogos_tables.php
+# … y así hasta la 2026_11_08_000010
 ```
 
 **2. Preparar las cuentas de demostración, antes de cada corrida.**
@@ -595,20 +608,20 @@ peticiones guardan los ids que usan las siguientes (`cdt_id`, `fondo_id`, …).
 | Carpeta | Peticiones | Cubre |
 | :---- | :---- | :---- |
 | 00 · Autenticación | 3 | Login por el formulario real, cierre de la sesión anterior |
-| 10 · RF-037 Registro de inversión | 9 | CA-037.1, CA-037.2, RN-037.2 (ajustar vencimiento), RN-037.3, RN-037.4, RNG-10, RNG-01 |
-| 20 · RF-038 Movimientos | 7 | CA-038.1, CA-038.2, RN-038.3, RN-038.4 (retención y bloqueo del ingreso en `/ingresos`) |
-| 30 · RF-039 Valoraciones | 7 | CA-039.1, CA-039.2, RN-039.1 (precio × unidades, fecha no futura), RN-039.2, RN-039.3 |
+| 10 · RF-037 Registro de inversión | 11 | CA-037.1, CA-037.2, RN-037.2 (ajustar vencimiento), RN-037.3 (unidades × valor por unidad, tolerancia de $ 1), RN-037.4, RNG-10, RNG-01 |
+| 20 · RF-038 Movimientos | 9 | CA-038.1 (dividendo con su ingreso), CA-038.2, RN-038.1 (transacciones permitidas por producto), RN-038.3 (retiro y venta), RN-038.4 (retención y bloqueo del ingreso en `/ingresos`) |
+| 30 · RF-039 Valoraciones | 8 | CA-039.1, CA-039.2, RN-039.1 (precio × unidades, fecha no futura), RN-039.2 (valor causado solo con tasa), RN-039.3 |
 | 40 · RF-040 Rentabilidad | 3 | CA-040.1, CA-040.2, RNG-08, fecha de corte |
 | 50 · RF-041 Portafolio | 1 | CA-041.1, CA-041.2, RNG-01 |
 | 60 · RF-042 Simulaciones | 6 | CA-042.1, CA-042.2, máximo 4 alternativas, RN-042.4 |
-| 70 · Liquidación y eliminación | 4 | RN-038.3 (Liquidada con valor 0, sin movimientos nuevos), RNG-07 |
+| 70 · Redención, reapertura y eliminación | 7 | RN-038.3 (Liquidada sin valor actual, sin movimientos nuevos; al quitar la redención se reabre), RNG-07 |
 
 ## Forma de las respuestas
 
 | Petición | Qué hay dentro de `data` |
 | :---- | :---- |
-| `POST /inversiones` y `GET/PUT …/{id}` | la inversión con `valor_actual`, `fecha_ultima_valoracion`, `valoracion_desactualizada` (RN-039.4), `unidades_actuales` y `rendimiento_estimado` (CDT y bonos); el detalle trae también `movimientos` |
-| `POST /inversiones/{id}/movimientos` | `movimiento`, `retencion` (si el rendimiento la trae), `ingreso` (si es rendimiento) e `inversion` |
+| `POST /inversiones` y `GET/PUT …/{id}` | la inversión con `valor_actual` (`null` si está liquidada), `fecha_ultima_valoracion`, `valoracion_desactualizada` (RN-039.4), `unidades_iniciales`, `unidades_actuales`, `precio_unitario_compra`, `rendimiento_estimado` (CDT), `detalle_especifico` (los datos propios del producto) y `liquidada_en`; el detalle trae también `movimientos` |
+| `POST /inversiones/{id}/movimientos` | `movimiento` (con `monto_bruto`, `monto` neto, `retencion_aplicada` e `ingreso_id` si generó ingreso), `retencion_aplicada`, `gmf_aplicado` y `monto_desembolsado` |
 | `POST /inversiones/{id}/valoraciones` | `valoracion` e `inversion` |
 | `GET /inversiones/{id}/valoraciones` | `valoraciones` y `serie` (`[{fecha, valor}]`, para el gráfico de CA-039.2) |
 | `GET /inversiones/{id}/valor-causado` | `capital`, `tasa_ea`, `dias_transcurridos`, `valor_causado` |
@@ -642,3 +655,83 @@ Comprobado el 28/10/2026:
   `mod05.sinperfil@scfp.test`, con el mismo resultado; y una tercera vez sin
   volver a sembrar, también sin fallos.
 - 52 pruebas automatizadas en `tests/Feature/Dominio/Mod06/`.
+
+Comprobado el 10/11/2026, después del rediseño v1.1:
+
+- La colección anterior fallaba en 26 aserciones porque usaba los tipos y
+  movimientos de la v1.0 (`ACCIONES`, `FONDO_INVERSION_COLECTIVA`,
+  `RENDIMIENTO`, `LIQUIDACION_TOTAL`). Se reescribió con los de la v1.1.
+- **La colección completa se ejecutó con Postman CLI** contra
+  `http://localhost:8000`: **48 peticiones, 56 aserciones, 0 fallos**, recién
+  sembrada y otra vez sin volver a sembrar.
+
+# Postman — MOD-08 Créditos y simulación de pagos
+
+Verificación del módulo de créditos por HTTP, según el documento "Requisitos
+funcionales — Módulo de gestión de créditos y simulación de pagos" (citado como
+"Créditos RF-xx"): cálculo y simulación, registro, pagos con imputación,
+abonos, mora, reverso, estado de cuenta, paz y salvo y alertas. **62 peticiones
+en 7 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-08, una sola vez**, con `--path` y en este orden
+(nunca `migrate:fresh`):
+
+```bash
+php artisan migrate --path=database/migrations/2026_11_08_000001_create_creditos_table.php
+php artisan migrate --path=database/migrations/2026_11_09_000001_create_pagos_creditos_tables.php
+php artisan migrate --path=database/migrations/2026_11_09_000002_create_tasas_usura_table.php
+php artisan migrate --path=database/migrations/2026_11_10_000001_add_subcategoria_cuota_credito.php
+```
+
+La última asegura la subcategoría «Obligaciones financieras › Cuota de crédito /
+hipoteca», donde se registra el gasto de cada pago. Sin ella los pagos
+responden 422.
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod08DemoSeeder"
+```
+
+Crea dos cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`:
+
+| Cuenta | Datos |
+| :---- | :---- |
+| `mod08@scfp.test` | Sin créditos: la colección registra los suyos |
+| `mod08.otro@scfp.test` | Un crédito de UUID fijo `…0008-000000000001` (RNG-01) |
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod08`, `password_mod08`, `credito_ajeno_id`), así que no necesita el
+entorno. Las peticiones guardan los ids que usan las siguientes.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación | 3 | Login por el formulario real, cierre de la sesión anterior |
+| 10 · RF-049 Calcular sin guardar | 12 | Cuota y tabla (RF-049), tasa EA, nominal y mensual (Créditos RF-05), periodicidad semanal a anual (RF-10), límites de plazo y tasa (RN-02, sección 6), casos de la sección 7.3 |
+| 20 · RF-048 Registro de créditos | 5 | Registro, validaciones, listado, detalle con la tabla y edición (RF-048, RF-049) |
+| 30 · Eliminación y acceso | 6 | Eliminación lógica (RNG-07), crédito de otra cuenta (RNG-01) |
+| 40 · Fase 2 | 18 | Plan guardado (RF-22, RF-26), imputación (RF-29 a RF-32), abono (RF-34, RF-35), mora (RF-38, RF-39), reverso (RF-33) y el gasto de cada pago |
+| 50 · Fase 3 | 8 | Sistema alemán, simulación inversa (RF-17), comparación de escenarios (RF-18) |
+| 60 · Fase 4 | 10 | Primer pago irregular (RF-12, RF-14), seguros y cargos (RF-16, RF-21), saldo para cancelar, prepago y paz y salvo (RF-37), usura (RF-07), capacidad de pago y financiación (RN-03, RN-07) |
+
+## Datos
+
+- Las carpetas 10 a 50 registran su propio crédito y lo eliminan al final, así
+  que se pueden repetir.
+- El crédito de la carpeta 60 queda **pagado** y no se puede eliminar, porque
+  tiene pagos. Por eso hay que volver a correr el seeder antes de repetir la
+  colección.
+- Las fechas de pago de la carpeta 60 son las del día en que se corre: un pago
+  no puede tener fecha futura.
+
+## Estado de verificación
+
+Comprobado el 10/11/2026: **la colección completa se ejecutó con Postman CLI**
+contra `http://localhost:8000`: **62 peticiones, 71 aserciones, 0 fallos**.
