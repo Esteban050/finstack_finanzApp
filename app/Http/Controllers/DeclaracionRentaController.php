@@ -34,16 +34,18 @@ class DeclaracionRentaController extends Controller
     }
 
     /**
-     * Pantalla 01: Consolidado del año gravable (Ingresos e Inversiones) · RF-043
+     * Pantalla 01: Consolidado y evaluación del año gravable · RF-043 & RF-045
      */
     public function consolidado(Request $request, int $anio): View
     {
         $usuario = auth()->user();
         $consolidado = $this->consolidadoService->consolidar($usuario, $anio);
         $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio);
+        $evaluacion = $this->evaluacionService->evaluar($usuario, $anio);
+        $estimacion = $this->estimacionService->estimar($usuario, $anio);
         $parametros = $consolidado['parametros'];
 
-        return view('renta.consolidado', compact('usuario', 'anio', 'consolidado', 'declaracion', 'parametros'));
+        return view('renta.consolidado', compact('usuario', 'anio', 'consolidado', 'declaracion', 'evaluacion', 'estimacion', 'parametros'));
     }
 
     /**
@@ -80,7 +82,7 @@ class DeclaracionRentaController extends Controller
         $this->complementariaService->guardarInformacionComplementaria($usuario, $anio, $validated);
 
         if ($request->input('accion') === 'guardar_y_evaluar') {
-            return redirect()->route('renta.evaluacion', ['anio' => $anio])
+            return redirect()->route('renta.consolidado', ['anio' => $anio])
                 ->with('status', 'Información complementaria actualizada y evaluación ejecutada con éxito.');
         }
 
@@ -90,14 +92,11 @@ class DeclaracionRentaController extends Controller
 
     /**
      * Pantalla 03 & 04: Evaluación de la obligación de declarar renta · RF-045
+     * (Integrada en la vista unificada de Consolidado y Evaluación)
      */
     public function evaluacion(Request $request, int $anio): View
     {
-        $usuario = auth()->user();
-        $evaluacion = $this->evaluacionService->evaluar($usuario, $anio);
-        $declaracion = $evaluacion['declaracion'];
-
-        return view('renta.evaluacion', compact('usuario', 'anio', 'evaluacion', 'declaracion'));
+        return $this->consolidado($request, $anio);
     }
 
     /**

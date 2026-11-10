@@ -38,8 +38,7 @@
             <p>Completa los topes externos que el sistema no conoce en su totalidad o ajusta tus saldos de Ingresos y Patrimonio antes de evaluar.</p>
         </div>
         <div class="ui-inline">
-            <a class="ui-button ui-button--ghost" href="{{ route('renta.consolidado', ['anio' => $anio]) }}">← Volver a consolidado</a>
-            <a class="ui-button ui-button--secondary" href="{{ route('renta.evaluacion', ['anio' => $anio]) }}">Ir a evaluación →</a>
+            <a class="ui-button ui-button--secondary" href="{{ route('renta.consolidado', ['anio' => $anio]) }}">← Volver a consolidado y evaluación</a>
         </div>
     </header>
 

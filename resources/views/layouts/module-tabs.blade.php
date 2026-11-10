@@ -29,9 +29,8 @@
     } elseif (request()->routeIs('renta.*')) {
         $anioRenta = request()->route('anio', 2025);
         $tabs = [
-            ['renta.consolidado', 'Consolidado', request()->routeIs('renta.consolidado'), ['anio' => $anioRenta]],
+            ['renta.consolidado', 'Consolidado y evaluación', request()->routeIs('renta.consolidado', 'renta.evaluacion'), ['anio' => $anioRenta]],
             ['renta.complementaria', 'Información complementaria', request()->routeIs('renta.complementaria'), ['anio' => $anioRenta]],
-            ['renta.evaluacion', 'Evaluación', request()->routeIs('renta.evaluacion'), ['anio' => $anioRenta]],
             ['renta.estimacion', 'Estimación del impuesto', request()->routeIs('renta.estimacion'), ['anio' => $anioRenta]],
             ['renta.vencimiento', 'Vencimiento', request()->routeIs('renta.vencimiento'), ['anio' => $anioRenta]],
         ];

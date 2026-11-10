@@ -10,7 +10,7 @@
             <p>Depuración de la Cédula General unificando tus rentas de trabajo con los rendimientos, exenciones y retenciones de tu módulo de Inversiones.</p>
         </div>
         <div class="ui-inline">
-            <a class="ui-button ui-button--secondary" href="{{ route('renta.evaluacion', ['anio' => $anio]) }}">Ver evaluación</a>
+            <a class="ui-button ui-button--secondary" href="{{ route('renta.consolidado', ['anio' => $anio]) }}">← Volver a consolidado y evaluación</a>
             <a class="ui-button ui-button--primary" href="{{ route('renta.pdf', ['anio' => $anio]) }}" target="_blank">Descargar constancia PDF</a>
         </div>
     </header>
@@ -205,7 +205,218 @@
         </div>
     </div>
 
-    <p class="ui-help finance-legal">Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.</p>
+    {{-- SECCIÓN INTERACTIVA: ¿PUEDES PAGAR MENOS? REVISA ESTOS BENEFICIOS --}}
+    <div class="ui-card" id="s05-beneficios" style="margin-top:1.5rem">
+        <div class="mk-row between" style="margin-bottom:.25rem">
+            <h2 style="margin:0">¿Puedes pagar menos? Revisa estos beneficios</h2>
+            <span class="mk-meta">Simula deducciones adicionales</span>
+        </div>
+        <p class="mk-small mk-muted" style="margin:0 0 .5rem">Cada beneficio marcado se suma a la proyección. Necesitas los soportes si presentas la declaración formal ante la DIAN.</p>
+        <ul class="mk-benefits">
+            <li id="benefit-dependientes" class="on">
+                <span class="mk-cbx" onclick="toggleBenefit('dependientes')" aria-hidden="true"></span>
+                <div>
+                    <strong>Tengo personas a cargo</strong>
+                    <p class="mk-meta">Hijos menores, cónyuge o padres que dependen económicamente de ti. 72 UVT por cada uno, hasta 4 dependientes.</p>
+                    <div class="mk-inline-field">
+                        <label for="num-dependientes">Personas a cargo:</label>
+                        <select id="num-dependientes" class="mk-ctrl mk-ctrl-sm" onchange="recalculateBenefits()">
+                            <option value="1" selected>1 persona (72 UVT)</option>
+                            <option value="2">2 personas (144 UVT)</option>
+                            <option value="3">3 personas (216 UVT)</option>
+                            <option value="4">4 personas (288 UVT)</option>
+                        </select>
+                    </div>
+                </div>
+                <span class="ui-badge ui-badge--success">Fuera del límite del 40 %</span>
+                <span class="v" id="val-dependientes">− $ {{ number_format(1 * 72 * $estimacion['uvt'], 0, ',', '.') }}</span>
+            </li>
+            <li id="benefit-factura" class="on">
+                <span class="mk-cbx" onclick="toggleBenefit('factura')" aria-hidden="true"></span>
+                <div>
+                    <strong>Pedí factura electrónica en mis compras personales</strong>
+                    <p class="mk-meta">1 % de las compras soportadas con factura electrónica pagadas con tarjeta o transferencia, hasta 240 UVT.</p>
+                    <div class="mk-inline-field">
+                        <label for="compras-factura">Compras con factura:</label>
+                        <div class="ui-money">
+                            <input type="number" id="compras-factura" value="18000000" step="1000000" class="mk-ctrl mk-ctrl-sm money" style="max-width:180px" oninput="recalculateBenefits()">
+                            <span class="ui-money-unit">COP</span>
+                        </div>
+                    </div>
+                </div>
+                <span class="ui-badge ui-badge--success">Fuera del límite del 40 %</span>
+                <span class="v" id="val-factura">− $ {{ number_format(18000000 * 0.01, 0, ',', '.') }}</span>
+            </li>
+            <li id="benefit-donaciones">
+                <span class="mk-cbx" onclick="toggleBenefit('donaciones')" aria-hidden="true"></span>
+                <div>
+                    <strong>Hice donaciones a entidades sin ánimo de lucro (ESAL)</strong>
+                    <p class="mk-meta">Descuento tributario directo del 25 % de lo donado, restado directamente del impuesto calculado.</p>
+                    <div class="mk-inline-field">
+                        <label for="val-donacion">Valor donado:</label>
+                        <div class="ui-money">
+                            <input type="number" id="val-donacion" value="2000000" step="500000" class="mk-ctrl mk-ctrl-sm money" style="max-width:180px" oninput="recalculateBenefits()">
+                            <span class="ui-money-unit">COP</span>
+                        </div>
+                    </div>
+                </div>
+                <span class="ui-badge">Descuento tributario (25%)</span>
+                <span class="v" id="val-donaciones">—</span>
+            </li>
+            <li id="benefit-icetex">
+                <span class="mk-cbx" onclick="toggleBenefit('icetex')" aria-hidden="true"></span>
+                <div>
+                    <strong>Pagué intereses de crédito educativo (ICETEX)</strong>
+                    <p class="mk-meta">Hasta 100 UVT al año ($ {{ number_format(100 * $estimacion['uvt'], 0, ',', '.') }}). Sujeto al límite del 40 % de la renta líquida.</p>
+                </div>
+                <span class="ui-badge ui-badge--warning">Dentro del límite 40 %</span>
+                <span class="v" id="val-icetex">$ 0</span>
+            </li>
+            <li class="done">
+                <span class="mk-cbx" aria-hidden="true"></span>
+                <div>
+                    <strong>Medicina prepagada, intereses de vivienda y aportes voluntarios (FPV)</strong>
+                    <p class="mk-meta">Ya se tomaron automáticamente de tus registros consolidados e inversiones en los pasos 3 y 5.</p>
+                </div>
+                <span class="ui-badge">Ya incluido</span>
+                <span class="v mk-muted">—</span>
+            </li>
+        </ul>
+
+        <div class="mk-benefit-total" id="benefit-recalc-summary" aria-live="polite">
+            <p class="mk-benefit-count" id="benefit-count-text">Simulación de ahorro con beneficios adicionales</p>
+            <dl class="mk-statline">
+                <div>
+                    <dt>Impuesto recalculado</dt>
+                    <dd id="recalc-impuesto">$ {{ number_format($estimacion['paso7']['impuesto_redondeado_cop'], 0, ',', '.') }}</dd>
+                    <dd class="mk-meta" id="recalc-impuesto-antes">base: $ {{ number_format($estimacion['paso7']['impuesto_redondeado_cop'], 0, ',', '.') }}</dd>
+                </div>
+                <div>
+                    <dt>Saldo proyectado</dt>
+                    <dd id="recalc-saldo" data-result="negative">$ {{ number_format($estimacion['paso8']['saldo_valor_mostrado_cop'], 0, ',', '.') }}</dd>
+                    <dd class="mk-meta" id="recalc-saldo-antes">base: $ {{ number_format($estimacion['paso8']['saldo_valor_mostrado_cop'], 0, ',', '.') }}</dd>
+                </div>
+                <div>
+                    <dt>Ahorro estimado</dt>
+                    <dd id="recalc-ahorro" data-result="positive" style="color:var(--ui-success);font-weight:700">$ 0</dd>
+                </div>
+            </dl>
+        </div>
+    </div>
+
+    <p class="ui-help finance-legal" style="margin-top:1.5rem">Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.</p>
 </div>
+
+<script>
+const BASE_UVT = {{ (float) $estimacion['uvt'] }};
+const BASE_RLG_COP = {{ (float) $estimacion['paso6']['rlg_cop'] }};
+const BASE_IMP_COP = {{ (float) $estimacion['paso7']['impuesto_redondeado_cop'] }};
+const BASE_RET_COP = {{ (float) $estimacion['paso8']['retenciones_totales_cop'] }};
+
+const benefitsState = {
+    dependientes: true,
+    factura: true,
+    donaciones: false,
+    icetex: false,
+};
+
+function toggleBenefit(key) {
+    benefitsState[key] = !benefitsState[key];
+    const li = document.getElementById('benefit-' + key);
+    if (li) {
+        if (benefitsState[key]) {
+            li.classList.add('on');
+        } else {
+            li.classList.remove('on');
+        }
+    }
+    recalculateBenefits();
+}
+
+function calcImpuestoArt241(rlgUvt, uvt) {
+    let impUvt = 0;
+    if (rlgUvt <= 1090.0) {
+        impUvt = 0;
+    } else if (rlgUvt <= 1700.0) {
+        impUvt = (rlgUvt - 1090.0) * 0.19;
+    } else if (rlgUvt <= 4100.0) {
+        impUvt = (rlgUvt - 1700.0) * 0.28 + 116.0;
+    } else if (rlgUvt <= 8670.0) {
+        impUvt = (rlgUvt - 4100.0) * 0.33 + 788.0;
+    } else if (rlgUvt <= 18970.0) {
+        impUvt = (rlgUvt - 8670.0) * 0.35 + 2296.0;
+    } else if (rlgUvt <= 31000.0) {
+        impUvt = (rlgUvt - 18970.0) * 0.37 + 5901.0;
+    } else {
+        impUvt = (rlgUvt - 31000.0) * 0.39 + 10352.0;
+    }
+    const impExacto = impUvt * uvt;
+    return Math.round(impExacto / 1000.0) * 1000;
+}
+
+function recalculateBenefits() {
+    let extraDeduccionesCop = 0;
+    let descuentoTributarioCop = 0;
+
+    // 1. Dependientes (fuera del 40%)
+    if (benefitsState.dependientes) {
+        const num = parseInt(document.getElementById('num-dependientes').value, 10) || 1;
+        const valDep = num * 72 * BASE_UVT;
+        extraDeduccionesCop += valDep;
+        document.getElementById('val-dependientes').textContent = '− $ ' + Math.round(valDep).toLocaleString('es-CO');
+    } else {
+        document.getElementById('val-dependientes').textContent = '—';
+    }
+
+    // 2. Factura electrónica (fuera del 40%)
+    if (benefitsState.factura) {
+        const compras = parseFloat(document.getElementById('compras-factura').value) || 0;
+        const maxFactura = 240 * BASE_UVT;
+        const valFact = Math.min(compras * 0.01, maxFactura);
+        extraDeduccionesCop += valFact;
+        document.getElementById('val-factura').textContent = '− $ ' + Math.round(valFact).toLocaleString('es-CO');
+    } else {
+        document.getElementById('val-factura').textContent = '—';
+    }
+
+    // 3. Donaciones (descuento tributario directo 25%)
+    if (benefitsState.donaciones) {
+        const don = parseFloat(document.getElementById('val-donacion').value) || 0;
+        descuentoTributarioCop = Math.round(don * 0.25);
+        document.getElementById('val-donaciones').textContent = '− $ ' + descuentoTributarioCop.toLocaleString('es-CO');
+    } else {
+        document.getElementById('val-donaciones').textContent = '—';
+    }
+
+    // Nueva RLG
+    const nuevaRlgCop = Math.max(0, BASE_RLG_COP - extraDeduccionesCop);
+    const nuevaRlgUvt = nuevaRlgCop / BASE_UVT;
+    let nuevoImpuestoCop = calcImpuestoArt241(nuevaRlgUvt, BASE_UVT);
+
+    // Aplicar descuento de donaciones
+    nuevoImpuestoCop = Math.max(0, nuevoImpuestoCop - descuentoTributarioCop);
+
+    // Nuevo saldo
+    const nuevoSaldoCop = nuevoImpuestoCop - BASE_RET_COP;
+    const baseSaldoCop = BASE_IMP_COP - BASE_RET_COP;
+    const ahorroCop = Math.max(0, baseSaldoCop - nuevoSaldoCop);
+
+    document.getElementById('recalc-impuesto').textContent = '$ ' + nuevoImpuestoCop.toLocaleString('es-CO');
+    const elSaldo = document.getElementById('recalc-saldo');
+    if (nuevoSaldoCop > 0) {
+        elSaldo.textContent = '$ ' + nuevoSaldoCop.toLocaleString('es-CO') + ' (a pagar)';
+        elSaldo.style.color = 'var(--ui-danger)';
+    } else if (nuevoSaldoCop < 0) {
+        elSaldo.textContent = '$ ' + Math.abs(nuevoSaldoCop).toLocaleString('es-CO') + ' (a favor)';
+        elSaldo.style.color = 'var(--ui-success)';
+    } else {
+        elSaldo.textContent = '$ 0';
+        elSaldo.style.color = 'var(--ui-text)';
+    }
+    document.getElementById('recalc-ahorro').textContent = '$ ' + ahorroCop.toLocaleString('es-CO');
+}
+
+document.addEventListener('DOMContentLoaded', recalculateBenefits);
+</script>
 @endsection
 
