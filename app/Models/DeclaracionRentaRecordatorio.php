@@ -40,3 +40,4 @@ class DeclaracionRentaRecordatorio extends Model
         return $this->belongsTo(DeclaracionRenta::class, 'declaracion_renta_id');
     }
 }
+

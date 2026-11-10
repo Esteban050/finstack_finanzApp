@@ -83,3 +83,4 @@ class DeclaracionRenta extends Model
         return $this->hasMany(DeclaracionRentaRecordatorio::class, 'declaracion_renta_id')->orderBy('fecha_programada');
     }
 }
+
