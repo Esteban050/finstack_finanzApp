@@ -86,14 +86,6 @@ class RentabilidadService
             2
         );
 
-        // RN-040.1: desde v1.1 la retención no es un movimiento aparte: va en
-        // retencion_aplicada y el monto ya llega neto. Se informa la suma de
-        // ambas formas; la ganancia no cambia porque el neto ya la descuenta.
-        $retencionAplicada = (string) MovimientoInversion::where('inversion_id', $inversion->id)
-            ->where('fecha', '<=', $corte->toDateString())
-            ->sum('retencion_aplicada');
-        $totalRetenciones = bcadd($datos['sumas']['RETENCION'] ?? '0.00', $retencionAplicada, 2);
-
         return [
             'fecha_corte' => $corte->toDateString(),
             'moneda' => $inversion->moneda,
@@ -101,7 +93,7 @@ class RentabilidadService
             'total_retiros' => $totalRetiros,
             'total_rendimientos' => $totalRendimientos,
             'total_comisiones' => $datos['sumas']['COMISION'] ?? '0.00',
-            'total_retenciones' => $totalRetenciones,
+            'total_retenciones' => $datos['sumas']['RETENCION'] ?? '0.00',
             'capital_aportado_neto' => $calculo['capital_aportado_neto'],
             'valor_actual' => $datos['valor'],
             'fecha_valor_actual' => $datos['valoracion']?->fecha?->toDateString(),

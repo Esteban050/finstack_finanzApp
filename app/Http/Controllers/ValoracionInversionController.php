@@ -79,8 +79,7 @@ class ValoracionInversionController extends Controller
         }
 
         $validated = $request->validate([
-            // RN-039.1: ni anterior a la apertura ni futura.
-            'fecha' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:'.$inversion->fecha_apertura->toDateString()],
+            'fecha' => ['required', 'date', 'after_or_equal:'.$inversion->fecha_apertura->toDateString()],
             'valor' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'precio_unitario' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
             'rentabilidad_real_ea' => ['nullable', 'numeric', 'between:-100,500'],

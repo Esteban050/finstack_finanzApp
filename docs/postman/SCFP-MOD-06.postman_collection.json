@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6e1f2a7b-3c8d-4f9e-8a42-1d6f8e3c5a06",
     "name": "SCFP · MOD-06 Inversiones y rentabilidad",
-    "description": "Peticiones de verificación de MOD-06: registro de inversiones (RF-037), movimientos (RF-038), valoraciones (RF-039), rentabilidad (RF-040), portafolio (RF-041) y simulaciones (RF-042).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba. Sigue el diseño v1.1 del módulo: seis productos (CDT, ACCION_ETF, FIC, CUENTA_ALTO_RENDIMIENTO, FPV y CESANTIAS), cada uno con sus transacciones permitidas (`Inversion::MOVIMIENTOS_PERMITIDOS`), y la retención calculada con los parámetros tributarios vigentes.\n\n## Antes de ejecutar\n\n1. Una sola vez, con `--path` y en orden (nunca `migrate:fresh`): `2026_10_29_000001_create_inversiones_tables.php` y las diez `2026_11_08_0000NN_*` del rediseño v1.1 (parámetros tributarios, detalles por producto, puentes con ingresos, etc.).\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\Mod06DemoSeeder\"` antes de cada corrida: deja la cuenta demo sin inversiones.\n3. `php artisan serve` (o Herd) y ajustar `base_url`.\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 entra con `correo_mod06`. Si quedó abierta la sesión de otra cuenta, la 00.1 la cierra antes del login.\n\n## Datos\n\nLa colección registra sus propias inversiones (fechas de 2025 y 2026 para los criterios de RF-040) y se puede repetir sin volver a sembrar. La inversión de `inversion_ajena_id` es de otra cuenta (RNG-01). La carpeta 70 redime el CDT, comprueba que queda Liquidado sin valor actual y, al eliminar la redención, que se reabre con su valor anterior.",
+    "description": "Peticiones de verificación de MOD-06: registro de inversiones (RF-037), movimientos (RF-038), valoraciones (RF-039), rentabilidad (RF-040), portafolio (RF-041) y simulaciones (RF-042).\n\nCada petición lleva aserciones referenciadas al criterio de aceptación o a la regla de negocio que comprueba.\n\n## Antes de ejecutar\n\n1. `php artisan migrate --path=database/migrations/2026_10_29_000001_create_inversiones_tables.php` (una sola vez).\n2. `php artisan db:seed --class=\"Database\\\\Seeders\\\\Test\\\\Mod06DemoSeeder\"` antes de cada corrida: deja la cuenta demo sin inversiones.\n3. `php artisan serve` (o Herd) y ajustar `base_url`.\n4. Ejecutar la colección completa con el Collection Runner, en orden.\n\n## Autenticación\n\nLa carpeta 00 entra con `correo_mod06`. Si quedó abierta la sesión de otra cuenta, la 00.1 la cierra antes del login.\n\n## Datos\n\nLa colección registra sus propias inversiones (fechas de 2025 y 2026 para los criterios de RF-040). La inversión de `inversion_ajena_id` es de otra cuenta (RNG-01).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -70,14 +70,6 @@
       "key": "simulacion_id",
       "value": "",
       "type": "string"
-    },
-    {
-      "key": "cuenta_id",
-      "value": ""
-    },
-    {
-      "key": "redencion_id",
-      "value": ""
     }
   ],
   "item": [
@@ -252,7 +244,7 @@
       "name": "10 · RF-037 Registro de inversión",
       "item": [
         {
-          "name": "10.1 POST /inversiones · CDT de $ 10.000.000 al 10 % EA a 365 días, intereses mensuales (CA-037.1)",
+          "name": "10.1 POST /inversiones · CDT de $ 10.000.000 al 10 % EA a 365 días (CA-037.1)",
           "event": [
             {
               "listen": "test",
@@ -269,7 +261,6 @@
                   "    pm.expect(d.fecha_vencimiento).to.eql('2027-02-01');",
                   "    pm.expect(d.rendimiento_estimado).to.eql('1000000.00');",
                   "    pm.expect(d.estado).to.eql('ACTIVA');",
-                  "    pm.expect(d.detalle_especifico.periodicidad_pago).to.eql('MENSUAL');",
                   "});",
                   "",
                   "pm.test('RN-037.4 · el monto inicial es el valor actual (valoración inicial)', function () {",
@@ -309,7 +300,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"CDT Banco Demo\",\n  \"tipo\": \"CDT\",\n  \"entidad\": \"Banco Demo\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-02-01\",\n  \"monto_inicial\": \"10000000\",\n  \"nivel_riesgo\": \"BAJO\",\n  \"tasa_ea\": \"10\",\n  \"plazo_dias\": 365,\n  \"periodicidad_pago\": \"MENSUAL\"\n}",
+              "raw": "{\n  \"nombre\": \"CDT Banco Demo\",\n  \"tipo\": \"CDT\",\n  \"entidad\": \"Banco Demo\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-02-01\",\n  \"monto_inicial\": \"10000000\",\n  \"nivel_riesgo\": \"BAJO\",\n  \"tasa_ea\": \"10\",\n  \"plazo_dias\": 365,\n  \"periodicidad_intereses\": \"AL_VENCIMIENTO\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -319,17 +310,16 @@
           }
         },
         {
-          "name": "10.2 POST /inversiones · Acción/ETF sin unidades ni valor por unidad (CA-037.2)",
+          "name": "10.2 POST /inversiones · acciones sin unidades (CA-037.2)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('CA-037.2 · sin unidades ni valor por unidad no se puede deducir ninguno', function () {",
+                  "pm.test('CA-037.2 · acciones sin cantidad de unidades se rechazan', function () {",
                   "    pm.response.to.have.status(422);",
                   "    pm.expect(pm.response.json().errors).to.have.property('unidades');",
-                  "    pm.expect(pm.response.json().errors).to.have.property('valor_unidad');",
                   "});"
                 ]
               }
@@ -362,7 +352,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCION_ETF\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\"\n}",
+              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCIONES\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"precio_unitario_compra\": \"19979.45\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -372,7 +362,7 @@
           }
         },
         {
-          "name": "10.3 POST /inversiones · Acción/ETF con unidades de 8 decimales (RN-037.3)",
+          "name": "10.3 POST /inversiones · acciones con unidades de 8 decimales (RN-037.3)",
           "event": [
             {
               "listen": "test",
@@ -382,9 +372,7 @@
                   "pm.test('RN-037.3 · guarda unidades y precio de compra', function () {",
                   "    pm.response.to.have.status(201);",
                   "    const d = pm.response.json().data;",
-                  "    pm.expect(d.unidades_iniciales).to.eql('120.12345678');",
                   "    pm.expect(d.unidades_actuales).to.eql('120.12345678');",
-                  "    pm.expect(d.precio_unitario_compra).to.eql('19979.45000000');",
                   "    pm.expect(d.simbolo).to.eql('ECOPETROL');",
                   "    pm.collectionVariables.set('acciones_id', d.id);",
                   "});"
@@ -419,7 +407,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCION_ETF\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"unidades\": \"120.12345678\",\n  \"valor_unidad\": \"19979.45\"\n}",
+              "raw": "{\n  \"nombre\": \"Acciones Ecopetrol\",\n  \"tipo\": \"ACCIONES\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2400000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"unidades\": \"120.12345678\",\n  \"precio_unitario_compra\": \"19979.45\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -429,59 +417,7 @@
           }
         },
         {
-          "name": "10.4 POST /inversiones · monto que no corresponde a unidades × valor por unidad (RN-037.3)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-037.3 · con los tres valores, una diferencia mayor a $ 1 se rechaza', function () {",
-                  "    pm.response.to.have.status(422);",
-                  "    pm.expect(pm.response.json().errors).to.have.property('monto_inicial');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Acciones descuadradas\",\n  \"tipo\": \"ACCION_ETF\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-01-15\",\n  \"monto_inicial\": \"2060000\",\n  \"nivel_riesgo\": \"ALTO\",\n  \"simbolo\": \"ECOPETROL\",\n  \"unidades\": \"100\",\n  \"valor_unidad\": \"20000\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "10.5 POST /inversiones · FIC de $ 1.000.000 el 01/01/2025 (para CA-040.1)",
+          "name": "10.4 POST /inversiones · fondo de $ 1.000.000 el 01/01/2025 (para CA-040.1)",
           "event": [
             {
               "listen": "test",
@@ -523,7 +459,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"FIC\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\",\n  \"nombre\": \"Fondo CA-040.1\"\n}",
+              "raw": "{\n  \"nombre\": \"Fondo CA-040.1\",\n  \"tipo\": \"FONDO_INVERSION_COLECTIVA\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -533,7 +469,7 @@
           }
         },
         {
-          "name": "10.6 POST /inversiones · FIC de $ 1.000.000 el 01/01/2025 (para CA-040.2)",
+          "name": "10.5 POST /inversiones · fondo de $ 1.000.000 el 01/01/2025 (para CA-040.2)",
           "event": [
             {
               "listen": "test",
@@ -575,7 +511,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"FIC\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\",\n  \"nombre\": \"Fondo CA-040.2\"\n}",
+              "raw": "{\n  \"nombre\": \"Fondo CA-040.2\",\n  \"tipo\": \"FONDO_INVERSION_COLECTIVA\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2025-01-01\",\n  \"monto_inicial\": \"1000000\",\n  \"nivel_riesgo\": \"MEDIO\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -585,60 +521,7 @@
           }
         },
         {
-          "name": "10.7 POST /inversiones · cuenta de alto rendimiento de $ 10.000.000 al 10 % EA",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RF-037 · cuenta registrada', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "    pm.expect(pm.response.json().data.valor_actual).to.eql('10000000.00');",
-                  "    pm.collectionVariables.set('cuenta_id', pm.response.json().data.id);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Cuenta Demo\",\n  \"tipo\": \"CUENTA_ALTO_RENDIMIENTO\",\n  \"entidad\": \"Banco Demo\",\n  \"moneda\": \"COP\",\n  \"fecha_apertura\": \"2026-02-01\",\n  \"monto_inicial\": \"10000000\",\n  \"nivel_riesgo\": \"BAJO\",\n  \"tasa_ea\": \"10\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "10.8 GET /inversiones · listado",
+          "name": "10.6 GET /inversiones · listado",
           "event": [
             {
               "listen": "test",
@@ -684,7 +567,7 @@
           }
         },
         {
-          "name": "10.9 GET /inversiones/{id} · detalle con el aporte inicial (RN-037.4)",
+          "name": "10.7 GET /inversiones/{id} · detalle con el aporte inicial (RN-037.4)",
           "event": [
             {
               "listen": "test",
@@ -731,7 +614,7 @@
           }
         },
         {
-          "name": "10.10 PUT /inversiones/{id} · ajustar el vencimiento (RN-037.2)",
+          "name": "10.8 PUT /inversiones/{id} · ajustar el vencimiento (RN-037.2)",
           "event": [
             {
               "listen": "test",
@@ -784,7 +667,7 @@
           }
         },
         {
-          "name": "10.11 GET /inversiones/{id} · inversión de otra cuenta (RNG-01)",
+          "name": "10.9 GET /inversiones/{id} · inversión de otra cuenta (RNG-01)",
           "event": [
             {
               "listen": "test",
@@ -839,20 +722,20 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('CA-038.1 · la Acción/ETF suma un movimiento Dividendo con su ingreso', function () {",
+                  "pm.test('CA-038.1 · la inversión suma un movimiento Rendimiento', function () {",
                   "    pm.response.to.have.status(201);",
-                  "    const m = pm.response.json().data.movimiento;",
-                  "    pm.expect(m.tipo).to.eql('DIVIDENDO');",
-                  "    pm.expect(m.monto_bruto).to.eql('300000.00');",
-                  "    pm.expect(m.ingreso_id, 'el dividendo debe crear su ingreso').to.be.a('string');",
-                  "    pm.collectionVariables.set('ingreso_dividendo_id', m.ingreso_id);",
+                  "    pm.expect(pm.response.json().data.movimiento.tipo).to.eql('RENDIMIENTO');",
                   "});",
                   "",
-                  "pm.test('RN-038.4 · el movimiento queda neto de la retención aplicada', function () {",
-                  "    const d = pm.response.json().data;",
-                  "    const neto = (300000 - parseFloat(d.retencion_aplicada)).toFixed(2);",
-                  "    pm.expect(d.movimiento.monto).to.eql(neto);",
-                  "});"
+                  "const i = pm.response.json().data.ingreso;",
+                  "",
+                  "pm.test('CA-038.1 / RN-038.4 · se crea un ingreso de $ 300.000 en rentas de capital', function () {",
+                  "    pm.expect(i.monto_bruto_cop).to.eql('300000.00');",
+                  "    pm.expect(i.clasificacion_tributaria).to.eql('RENTAS_CAPITAL');",
+                  "    pm.expect(i.estado).to.eql('CONFIRMADO');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('ingreso_dividendo_id', i.id);"
                 ]
               }
             }
@@ -886,7 +769,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"DIVIDENDO\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"300000\",\n  \"unidades\": \"100\",\n  \"valor_unidad\": \"3000\",\n  \"nota\": \"Dividendo\"\n}",
+              "raw": "{\n  \"tipo\": \"RENDIMIENTO\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"300000\",\n  \"nota\": \"Dividendo\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -896,21 +779,20 @@
           }
         },
         {
-          "name": "20.2 POST /inversiones/{id}/movimientos · abono de interés del CDT con retención (RN-038.4)",
+          "name": "20.2 POST /inversiones/{id}/movimientos · rendimiento con retención (RN-038.4)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('RN-038.4 · el abono aplica la retención de renta fija y queda neto', function () {",
+                  "pm.test('RN-038.4 · el ingreso lleva la retención informada y queda el movimiento Retención', function () {",
                   "    pm.response.to.have.status(201);",
                   "    const d = pm.response.json().data;",
-                  "    const retencion = parseFloat(d.retencion_aplicada);",
-                  "    pm.expect(retencion, 'retención de renta fija').to.be.above(0);",
-                  "    pm.expect(d.movimiento.tipo).to.eql('ABONO_INTERES');",
-                  "    pm.expect(d.movimiento.monto).to.eql((500000 - retencion).toFixed(2));",
-                  "    pm.expect(d.movimiento.ingreso_id).to.be.a('string');",
+                  "    pm.expect(d.ingreso.retencion_fuente_cop).to.eql('35000.00');",
+                  "    pm.expect(d.ingreso.monto_neto_cop).to.eql('465000.00');",
+                  "    pm.expect(d.retencion.tipo).to.eql('RETENCION');",
+                  "    pm.expect(d.retencion.ingreso_id).to.eql(d.ingreso.id);",
                   "});"
                 ]
               }
@@ -945,7 +827,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"ABONO_INTERES\",\n  \"fecha\": \"2026-03-01\",\n  \"monto\": \"500000\"\n}",
+              "raw": "{\n  \"tipo\": \"RENDIMIENTO\",\n  \"fecha\": \"2026-03-01\",\n  \"monto\": \"500000\",\n  \"retencion\": \"35000\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -955,14 +837,14 @@
           }
         },
         {
-          "name": "20.3 POST /inversiones/{id}/movimientos · redención anterior a la apertura (CA-038.2)",
+          "name": "20.3 POST /inversiones/{id}/movimientos · retiro anterior a la apertura (CA-038.2)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('CA-038.2 · una transacción con fecha anterior a la apertura se rechaza', function () {",
+                  "pm.test('CA-038.2 · un retiro con fecha anterior a la apertura se rechaza', function () {",
                   "    pm.response.to.have.status(422);",
                   "    pm.expect(pm.response.json().errors).to.have.property('fecha');",
                   "});"
@@ -999,7 +881,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"REDENCION\",\n  \"fecha\": \"2026-01-31\",\n  \"monto\": \"100000\"\n}",
+              "raw": "{\n  \"tipo\": \"RETIRO_PARCIAL\",\n  \"fecha\": \"2026-01-31\",\n  \"monto\": \"100000\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1009,16 +891,16 @@
           }
         },
         {
-          "name": "20.4 POST /inversiones/{id}/movimientos · retiro mayor que el saldo de la cuenta (RN-038.3)",
+          "name": "20.4 POST /inversiones/{id}/movimientos · retiro mayor que el valor actual (RN-038.3)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('RN-038.3 · un retiro no puede superar el último valor registrado', function () {",
+                  "pm.test('RN-038.3 · un retiro no puede superar el último valor de mercado', function () {",
                   "    pm.response.to.have.status(422);",
-                  "    pm.expect(pm.response.json().errors).to.have.property('monto');",
+                  "    pm.expect(pm.response.json().errors.monto[0]).to.include('RN-038.3');",
                   "});"
                 ]
               }
@@ -1041,19 +923,19 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/inversiones/{{cuenta_id}}/movimientos",
+              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "inversiones",
-                "{{cuenta_id}}",
+                "{{cdt_id}}",
                 "movimientos"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"RETIRO\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"10000000.01\"\n}",
+              "raw": "{\n  \"tipo\": \"RETIRO_PARCIAL\",\n  \"fecha\": \"2026-03-15\",\n  \"monto\": \"10000000.01\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1170,115 +1052,7 @@
           }
         },
         {
-          "name": "20.7 POST /inversiones/{id}/movimientos · venta de más unidades de las que hay (RN-038.3)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-038.3 / RF-INV-05 · una venta no se lleva más unidades de las que hay', function () {",
-                  "    pm.response.to.have.status(422);",
-                  "    pm.expect(pm.response.json().errors).to.have.property('unidades');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{acciones_id}}/movimientos",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{acciones_id}}",
-                "movimientos"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tipo\": \"VENTA\",\n  \"fecha\": \"2026-03-20\",\n  \"unidades\": \"120.12345679\",\n  \"valor_unidad\": \"20000\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "20.8 POST /inversiones/{id}/movimientos · aporte a un CDT (Inversion::MOVIMIENTOS_PERMITIDOS)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-038.1 · el CDT solo admite abono de interés y redención', function () {",
-                  "    pm.response.to.have.status(422);",
-                  "    pm.expect(pm.response.json().errors).to.have.property('tipo');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{cdt_id}}",
-                "movimientos"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tipo\": \"APORTE\",\n  \"fecha\": \"2026-03-01\",\n  \"monto\": \"100000\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "20.9 GET /inversiones/{id}/movimientos · movimientos de las acciones",
+          "name": "20.7 GET /inversiones/{id}/movimientos · movimientos de las acciones",
           "event": [
             {
               "listen": "test",
@@ -1708,50 +1482,6 @@
                   "language": "json"
                 }
               }
-            }
-          }
-        },
-        {
-          "name": "30.8 GET /inversiones/{id}/valor-causado · Acción/ETF (RN-039.2)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-039.2 · el valor causado es solo para productos con tasa', function () {",
-                  "    pm.response.to.have.status(422);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{acciones_id}}/valor-causado",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{acciones_id}}",
-                "valor-causado"
-              ]
             }
           }
         }
@@ -2310,20 +2040,21 @@
       ]
     },
     {
-      "name": "70 · Redención, reapertura y eliminación",
+      "name": "70 · Liquidación y eliminación",
       "item": [
         {
-          "name": "70.1 POST /inversiones/{id}/movimientos · redención total del CDT (RN-038.3)",
+          "name": "70.1 POST /inversiones/{id}/movimientos · liquidación total del CDT (RN-038.3)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('RN-038.3 · redención registrada', function () {",
+                  "pm.test('RN-038.3 · la inversión queda Liquidada con valor actual 0', function () {",
                   "    pm.response.to.have.status(201);",
-                  "    pm.expect(pm.response.json().data.movimiento.tipo).to.eql('REDENCION');",
-                  "    pm.collectionVariables.set('redencion_id', pm.response.json().data.movimiento.id);",
+                  "    const i = pm.response.json().data.inversion;",
+                  "    pm.expect(i.estado).to.eql('LIQUIDADA');",
+                  "    pm.expect(i.valor_actual).to.eql('0.00');",
                   "});"
                 ]
               }
@@ -2358,7 +2089,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"REDENCION\",\n  \"fecha\": \"2026-09-01\",\n  \"monto\": \"10600000\"\n}",
+              "raw": "{\n  \"tipo\": \"LIQUIDACION_TOTAL\",\n  \"fecha\": \"2026-09-01\",\n  \"monto\": \"10600000\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2368,54 +2099,7 @@
           }
         },
         {
-          "name": "70.2 GET /inversiones/{id} · el CDT queda Liquidado sin valor actual (RN-038.3)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-038.3 · Liquidada, con fecha de liquidación y sin valor actual', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "    const d = pm.response.json().data;",
-                  "    pm.expect(d.estado).to.eql('LIQUIDADA');",
-                  "    pm.expect(d.liquidada_en).to.eql('2026-09-01');",
-                  "    pm.expect(d.valor_actual).to.be.null;",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{cdt_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{cdt_id}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "70.3 POST /inversiones/{id}/movimientos · otra redención sobre la inversión liquidada",
+          "name": "70.2 POST /inversiones/{id}/movimientos · movimiento sobre la inversión liquidada",
           "event": [
             {
               "listen": "test",
@@ -2459,7 +2143,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"REDENCION\",\n  \"fecha\": \"2026-09-02\",\n  \"monto\": \"100000\"\n}",
+              "raw": "{\n  \"tipo\": \"APORTE\",\n  \"fecha\": \"2026-09-02\",\n  \"monto\": \"100000\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2469,99 +2153,7 @@
           }
         },
         {
-          "name": "70.4 DELETE /inversiones/{id}/movimientos/{id} · quitar la redención (RN-038.3)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-038.3 · la redención se elimina', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{cdt_id}}/movimientos/{{redencion_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{cdt_id}}",
-                "movimientos",
-                "{{redencion_id}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "70.5 GET /inversiones/{id} · el CDT se reabre con su valor anterior (RN-038.3)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('RN-038.3 · al quitar el cierre la inversión vuelve a estar Activa', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "    const d = pm.response.json().data;",
-                  "    pm.expect(d.estado).to.eql('ACTIVA');",
-                  "    pm.expect(d.liquidada_en).to.be.null;",
-                  "    pm.expect(d.valor_actual).to.eql(pm.collectionVariables.get('valor_causado'));",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-CSRF-TOKEN",
-                "value": "{{csrf}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/inversiones/{{cdt_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "inversiones",
-                "{{cdt_id}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "70.6 DELETE /inversiones/{id} · inversión sin rendimientos (RNG-07)",
+          "name": "70.3 DELETE /inversiones/{id} · inversión sin rendimientos (RNG-07)",
           "event": [
             {
               "listen": "test",
@@ -2604,7 +2196,7 @@
           }
         },
         {
-          "name": "70.7 GET /inversiones/{id} · la inversión eliminada ya no aparece",
+          "name": "70.4 GET /inversiones/{id} · la inversión eliminada ya no aparece",
           "event": [
             {
               "listen": "test",
