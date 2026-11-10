@@ -13,6 +13,7 @@ use App\Services\BitacoraService;
 use App\Services\CalculoImpuestoInversionService;
 use App\Services\IngresoService;
 use App\Services\InversionService;
+use App\Services\PortafolioInversionService;
 use App\Services\RentabilidadService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
@@ -89,11 +90,28 @@ class InversionController extends Controller
             'entidades' => $entidades,
             'fics' => $fics,
             'perfilTributario' => $perfil,
+            'portafoliosPorProducto' => [
+                'FIC' => PortafolioInversionService::portafoliosParaProducto('FIC'),
+                'FPV' => PortafolioInversionService::portafoliosParaProducto('FPV'),
+                'CESANTIAS' => PortafolioInversionService::portafoliosParaProducto('CESANTIAS'),
+            ],
+            'rangosRiesgo' => PortafolioInversionService::RANGOS_RIESGO,
         ]);
     }
 
     public function store(Request $request): JsonResponse|RedirectResponse
     {
+        $camposNumericos = ['monto_inicial', 'unidades', 'valor_unidad', 'precio_unitario_compra', 'valor_dividendo_por_unidad', 'saldo_actual', 'saldo_disponible'];
+        $normalizados = [];
+        foreach ($camposNumericos as $campo) {
+            if ($request->has($campo)) {
+                $normalizados[$campo] = MovimientoInversionController::normalizarNumero($request->input($campo));
+            }
+        }
+        if (!empty($normalizados)) {
+            $request->merge($normalizados);
+        }
+
         if ($request->has('nivel_riesgo')) {
             $nivel = $request->input('nivel_riesgo');
             $request->merge(['nivel_riesgo' => ! empty($nivel) ? strtoupper(trim($nivel)) : null]);
@@ -104,7 +122,54 @@ class InversionController extends Controller
             $request->merge(['tasa_ea' => $tasaEa !== '' ? $tasaEa : null]);
         }
 
+        if ($request->has('rentabilidad_esperada_porc') && is_string($request->input('rentabilidad_esperada_porc'))) {
+            $rentabilidadEa = str_replace(',', '.', trim($request->input('rentabilidad_esperada_porc')));
+            $request->merge(['rentabilidad_esperada_porc' => $rentabilidadEa !== '' ? $rentabilidadEa : null]);
+        }
+
         $tipo = $request->input('tipo');
+
+        // Valores por defecto y homogeneización para fondos administrados (FIC, FPV, CESANTIAS)
+        if (in_array($tipo, ['FIC', 'FPV', 'CESANTIAS'], true)) {
+            $nivelRiesgo = $request->input('nivel_riesgo') ?: Inversion::riesgoSugerido($tipo);
+            $rango = PortafolioInversionService::RANGOS_RIESGO[$nivelRiesgo] ?? PortafolioInversionService::RANGOS_RIESGO['MEDIO'];
+
+            if (!$request->filled('rentabilidad_esperada_porc')) {
+                $request->merge(['rentabilidad_esperada_porc' => (string) $rango['sugerido_ea']]);
+            }
+            if (!$request->filled('plazo_meses_esperado')) {
+                $request->merge(['plazo_meses_esperado' => 12]);
+            }
+            if (!$request->filled('nivel_riesgo')) {
+                $request->merge(['nivel_riesgo' => $nivelRiesgo]);
+            }
+
+            if ($tipo === 'FIC') {
+                if (!$request->filled('fic_catalogo_id')) {
+                    $cat = FicCatalogo::where('perfil', $nivelRiesgo)->first() ?? FicCatalogo::first();
+                    if ($cat) {
+                        $request->merge(['fic_catalogo_id' => $cat->id]);
+                    }
+                }
+                if (!$request->filled('unidades') || (float) $request->input('unidades') <= 0) {
+                    $montoRaw = $request->input('monto_inicial') ?? '1.00';
+                    $request->merge([
+                        'unidades' => '1.00000000',
+                        'valor_unidad' => $montoRaw,
+                        'precio_unitario_compra' => $montoRaw,
+                    ]);
+                }
+            }
+
+            if ($tipo === 'CESANTIAS') {
+                if (!$request->filled('regimen')) {
+                    $request->merge(['regimen' => 'ANUALIZADO']);
+                }
+                if (!$request->filled('tasa_interes_esperada')) {
+                    $request->merge(['tasa_interes_esperada' => $request->input('rentabilidad_esperada_porc') ?? '8.00']);
+                }
+            }
+        }
 
         if ($tipo === 'ACCION_ETF' && ! $request->filled('valor_dividendo_por_unidad')) {
             $request->merge(['valor_dividendo_por_unidad' => '0.00']);
@@ -243,8 +308,8 @@ class InversionController extends Controller
                 },
                 'fecha_vencimiento' => $vencimiento?->toDateString(),
                 'simbolo' => $tipo === 'ACCION_ETF' ? ($validated['simbolo'] ?? null) : null,
-                'unidades_iniciales' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $unidadesInit : null,
-                'precio_unitario_compra' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $precioUnitarioInit : null,
+                'unidades_iniciales' => $tipo === 'ACCION_ETF' ? $unidadesInit : null,
+                'precio_unitario_compra' => $tipo === 'ACCION_ETF' ? $precioUnitarioInit : null,
                 'rentabilidad_esperada_porc' => isset($validated['rentabilidad_esperada_porc']) ? (string) $validated['rentabilidad_esperada_porc'] : null,
                 'plazo_meses_esperado' => isset($validated['plazo_meses_esperado']) ? (int) $validated['plazo_meses_esperado'] : null,
                 'estado' => $vencimiento !== null && $vencimiento->lt($hoy) ? 'VENCIDA' : 'ACTIVA',
@@ -322,13 +387,13 @@ class InversionController extends Controller
                 'tasa_cambio_usada' => $tasa,
                 'monto_cop' => $montoCop,
                 'monto_bruto' => $montoInicial,
-                'valor_unidad' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $precioUnitarioInit : null,
+                'valor_unidad' => $tipo === 'ACCION_ETF' ? $precioUnitarioInit : null,
                 'trm' => $tasa,
                 'comision' => '0.00',
                 'retencion_aplicada' => '0.00',
                 'gmf_aplicado' => '0.00',
                 'impuesto_origen' => '0.00',
-                'unidades' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $unidadesInit : null,
+                'unidades' => $tipo === 'ACCION_ETF' ? $unidadesInit : null,
                 'nota' => 'Aporte inicial de la inversión',
                 'es_inicial' => true,
             ]);
@@ -339,8 +404,10 @@ class InversionController extends Controller
                 'inversion_id' => $inversion->id,
                 'fecha' => $apertura->toDateString(),
                 'valor' => $montoInicial,
-                'precio_unitario' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $precioUnitarioInit : null,
-                'unidades' => in_array($tipo, ['ACCION_ETF', 'FIC', 'FPV'], true) ? $unidadesInit : null,
+                'precio_unitario' => in_array($tipo, ['FIC', 'FPV', 'CESANTIAS'], true)
+                    ? ($validated['rentabilidad_esperada_porc'] ?? '7.00')
+                    : (in_array($tipo, ['ACCION_ETF'], true) ? $precioUnitarioInit : null),
+                'unidades' => in_array($tipo, ['ACCION_ETF'], true) ? $unidadesInit : null,
                 'origen' => 'INICIAL',
             ]);
 
@@ -378,7 +445,44 @@ class InversionController extends Controller
     public function show(Request $request, string $id): View|JsonResponse
     {
         $inversion = $this->inversionPropia($id);
-        $hoy = CarbonImmutable::today();
+
+        // Auto-corrección defensiva para inversiones administradas (FIC, FPV, CESANTIAS):
+        // Si la valoración inicial quedó sobrescrita con el valor de la tasa (ej. $5.50 en vez de $1.000.000)
+        if (in_array($inversion->tipo, ['FIC', 'FPV', 'CESANTIAS'], true)) {
+            $valInicial = ValoracionInversion::where('inversion_id', $inversion->id)
+                ->where('origen', 'INICIAL')
+                ->first();
+            if ($valInicial && bccomp((string) $valInicial->valor, (string) $inversion->monto_inicial, 2) !== 0 && $inversion->movimientos()->count() <= 1) {
+                $valInicial->update([
+                    'valor' => $inversion->monto_inicial,
+                    'unidades' => null,
+                ]);
+            }
+        }
+
+        // Auto-corrección para FPV que quedó erróneamente CERRADO por unidades sintéticas negativas cuando aún tiene saldo
+        if ($inversion->tipo === 'FPV' && $inversion->estado === 'CERRADA' && $inversion->detalleFpv && bccomp((string) $inversion->detalleFpv->saldo_actual, '0', 2) > 0) {
+            $inversion->update(['estado' => 'ACTIVA', 'liquidada_en' => null]);
+            $inversion->detalleFpv->update(['unidades' => null, 'valor_unidad' => null]);
+            $inversion->movimientos()->where('tipo', 'RETIRO')->update(['unidades' => null, 'valor_unidad' => null]);
+        }
+
+        // Si la inversión está liquidada/cerrada, cualquier valoración residual en o posterior a la fecha de redención debe ser 0.00
+        if ($inversion->estaLiquidada()) {
+            $fechaLiq = $inversion->liquidada_en ?? $inversion->movimientos()->whereIn('tipo', ['REDENCION', 'VENTA', 'RETIRO', 'LIQUIDACION_TOTAL'])->max('fecha') ?? $inversion->fecha_apertura;
+            ValoracionInversion::where('inversion_id', $inversion->id)
+                ->where('fecha', '>=', $fechaLiq)
+                ->update(['valor' => '0.00']);
+        }
+
+        $maxFechaMov = $inversion->movimientos()->max('fecha');
+        $maxFechaVal = $inversion->valoraciones()->max('fecha');
+        $corteStr = max(
+            CarbonImmutable::today()->toDateString(),
+            $maxFechaMov ? CarbonImmutable::parse($maxFechaMov)->toDateString() : '1970-01-01',
+            $maxFechaVal ? CarbonImmutable::parse($maxFechaVal)->toDateString() : '1970-01-01'
+        );
+        $hoy = CarbonImmutable::parse($corteStr);
 
         InversionService::reconciliarValoraciones($inversion);
 
@@ -425,6 +529,63 @@ class InversionController extends Controller
             ->where('anio_gravable', $hoy->year)
             ->first();
 
+        $datosAdministrados = null;
+        if (PortafolioInversionService::esProductoAdministrado($inversion->tipo)) {
+            $nivel = $inversion->nivel_riesgo ?? 'MEDIO';
+            $portafolio = PortafolioInversionService::obtenerPortafolio($inversion->tipo, $nivel);
+            $tasaEsperada = (float) ($inversion->rentabilidad_esperada_porc ?? 7.00);
+            $meses = (int) ($inversion->plazo_meses_esperado ?? 12);
+            $curvaEsperada = PortafolioInversionService::generarCurvaProyeccion(
+                (float) $inversion->monto_inicial,
+                $tasaEsperada,
+                $meses,
+                $inversion->fecha_apertura
+            );
+
+            // Curva real cronológica
+            $curvaReal = $valoracionesCronologicas->map(function ($val) {
+                return [
+                    'fecha' => $val->fecha->toDateString(),
+                    'etiqueta' => $val->fecha->format('d/m/Y'),
+                    'valor' => (float) $val->valor,
+                    'ea' => (float) ($val->precio_unitario ?? 0),
+                ];
+            })->values()->toArray();
+
+            // Última valoración real
+            $ultimaVal = $valoracionesCronologicas->last();
+            $eaRealActual = $ultimaVal && $ultimaVal->precio_unitario !== null ? (float) $ultimaVal->precio_unitario : $tasaEsperada;
+            $saldoRealActual = $ultimaVal ? (float) $ultimaVal->valor : (float) $inversion->monto_inicial;
+
+            // Saldo teórico esperado a la fecha de la última valoración
+            $fechaUltima = $ultimaVal ? $ultimaVal->fecha : $inversion->fecha_apertura;
+            $saldoEsperadoTeorico = PortafolioInversionService::calcularSaldoPorRendimiento(
+                (float) $inversion->monto_inicial,
+                $tasaEsperada,
+                $inversion->fecha_apertura,
+                $fechaUltima
+            );
+
+            $desviacionEa = round($eaRealActual - $tasaEsperada, 2);
+            $diferenciaSaldo = round($saldoRealActual - $saldoEsperadoTeorico, 2);
+            $gananciaNetaAcumulada = round($saldoRealActual - (float) $inversion->monto_inicial, 2);
+
+            $datosAdministrados = [
+                'portafolio' => $portafolio,
+                'curva_esperada' => $curvaEsperada,
+                'curva_real' => $curvaReal,
+                'tasa_esperada' => $tasaEsperada,
+                'meses_proyeccion' => $meses,
+                'ea_real_actual' => $eaRealActual,
+                'saldo_real_actual' => $saldoRealActual,
+                'saldo_esperado_teorico' => $saldoEsperadoTeorico,
+                'desviacion_ea' => $desviacionEa,
+                'diferencia_saldo' => $diferenciaSaldo,
+                'ganancia_neta_acumulada' => $gananciaNetaAcumulada,
+                'sobre_rendimiento' => $desviacionEa >= 0,
+            ];
+        }
+
         return view('inversiones.show', [
             'inversion' => $inversion,
             'presentacion' => $presentacion,
@@ -437,6 +598,7 @@ class InversionController extends Controller
             'ingresosGenerados' => $ingresosGenerados,
             'fics' => $fics,
             'perfilTributario' => $perfil,
+            'datosAdministrados' => $datosAdministrados,
         ]);
     }
 
@@ -599,8 +761,8 @@ class InversionController extends Controller
 
             // Campos específicos Acciones / ETF
             'simbolo' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'string', 'max:15'],
-            'unidades' => [Rule::requiredIf(in_array($tipo, ['ACCION_ETF', 'FIC'], true)), 'nullable', 'numeric', 'gt:0'],
-            'valor_unidad' => [Rule::requiredIf(in_array($tipo, ['ACCION_ETF', 'FIC'], true)), 'nullable', 'numeric', 'gt:0'],
+            'unidades' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'numeric', 'gt:0'],
+            'valor_unidad' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'numeric', 'gt:0'],
             'subtipo_renta_variable' => ['nullable', Rule::in(['ACCION', 'ETF'])],
             'mercado' => ['nullable', Rule::in(['BVC', 'EXTERIOR'])],
             'tipo_reparto' => ['nullable', Rule::in(['DISTRIBUTIVO', 'ACUMULATIVO', 'NO_APLICA'])],
@@ -608,8 +770,12 @@ class InversionController extends Controller
             'moneda_dividendo' => ['nullable', Rule::in(['COP', 'USD'])],
             'trm_dividendo' => ['nullable', 'numeric', 'gt:0'],
 
+            // Parámetros de proyección para fondos administrados (FIC, FPV, Cesantías)
+            'rentabilidad_esperada_porc' => ['nullable', 'numeric', 'between:-100,200'],
+            'plazo_meses_esperado' => ['nullable', 'integer', 'between:1,600'],
+
             // Campos específicos FIC
-            'fic_catalogo_id' => [Rule::requiredIf($tipo === 'FIC'), 'nullable', 'uuid', 'exists:fic_catalogo,id'],
+            'fic_catalogo_id' => ['nullable', 'uuid', 'exists:fic_catalogo,id'],
             'pacto_permanencia_dias' => ['nullable', 'integer', 'gte:0'],
 
             // Campos específicos FPV

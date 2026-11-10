@@ -37,13 +37,17 @@
         <form method="POST" action="{{ route('inversiones.store') }}" id="investment-form" style="margin-top: 1rem;">
             @csrf
 
-            <h3 style="margin-top: 0;">1. Identificación y Parámetros Generales</h3>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">Datos de la inversión</h3>
+                <span style="background: #c2410c; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">1</span>
+            </div>
+
             <div class="income-two-fields">
-                <x-ui.field name="nombre" label="Nombre de la inversión" :required="true" help="Entre 3 y 60 caracteres.">
-                    <input id="nombre" name="nombre" minlength="3" maxlength="60" value="{{ old('nombre') }}" placeholder="Ej: CDT Bancolombia 180 días" required>
+                <x-ui.field name="nombre" label="Nombre *" :required="true" help="Entre 3 y 60 caracteres.">
+                    <input id="nombre" name="nombre" minlength="3" maxlength="60" value="{{ old('nombre') }}" placeholder="Ej: Fondo Renta Conservador, CDT Bancolombia, etc." required>
                 </x-ui.field>
 
-                <x-ui.field name="tipo" label="Tipo de producto financiero" :required="true">
+                <x-ui.field name="tipo" label="Tipo *" :required="true">
                     <select id="tipo" name="tipo" required onchange="actualizarFormularioPorTipo(this.value)">
                         <option value="">Selecciona uno de los 6 productos</option>
                         @foreach($tipos as $type)
@@ -52,7 +56,7 @@
                     </select>
                 </x-ui.field>
 
-                <x-ui.field name="entidad_id" label="Entidad Financiera Emisora" help="Selecciona del catálogo institucional.">
+                <x-ui.field name="entidad_id" label="Entidad" help="Selecciona del catálogo institucional o ingresa abajo.">
                     <select id="entidad_id" name="entidad_id">
                         <option value="">Seleccionar entidad (Opcional)</option>
                         @foreach($entidades as $ent)
@@ -61,11 +65,17 @@
                     </select>
                 </x-ui.field>
 
-                <x-ui.field name="entidad" label="Otra Entidad / Nombre Emisor" help="Si no está en el listado.">
-                    <input id="entidad" name="entidad" maxlength="80" value="{{ old('entidad') }}" placeholder="Ej: Tyba, Fiduciaria Central, etc.">
+                <x-ui.field name="entidad" label="Otra Entidad / Emisor" help="Si la entidad no está en la lista.">
+                    <input id="entidad" name="entidad" maxlength="80" value="{{ old('entidad') }}" placeholder="Ej: Fiduciaria de Prueba, Skandia, Porvenir">
                 </x-ui.field>
 
-                <x-ui.field name="moneda" label="Moneda de la inversión" :required="true">
+                <x-ui.field name="monto_inicial" label="Monto inicial *" :required="true" help="Capital inicial a invertir o depositar">
+                    <input id="monto_inicial" name="monto_inicial" type="number" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Ej: 10000000" oninput="actualizarCalculosGenerales(); resolverDosDeTres('monto'); calcularProyeccionCdt(); actualizarWizardProyeccion();">
+                </x-ui.field>
+
+                <x-ui.date-input name="fecha_apertura" label="Fecha de apertura *" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
+
+                <x-ui.field name="moneda" label="Moneda *" :required="true">
                     <div class="ui-inline" role="group" aria-label="Moneda" style="margin-top: 0.25rem;">
                         <label class="ui-check"><input type="radio" name="moneda" value="COP" @checked(old('moneda', 'COP') === 'COP') onchange="toggleMoneda(this.value)"> COP ($)</label>
                         <label class="ui-check"><input type="radio" name="moneda" value="USD" @checked(old('moneda') === 'USD') onchange="toggleMoneda(this.value)"> USD (US$)</label>
@@ -78,36 +88,143 @@
                     </x-ui.field>
                 </div>
 
-                <x-ui.date-input name="fecha_apertura" label="Fecha de inicio / apertura" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
-
-                <x-ui.field name="nivel_riesgo" label="Nivel de riesgo estimado">
-                    <select id="nivel_riesgo" name="nivel_riesgo">
-                        <option value="">Automático sugerido por el sistema</option>
-                        @foreach(\App\Models\Inversion::NIVELES_RIESGO as $code)
-                            <option value="{{ $code }}" @selected(old('nivel_riesgo') === $code)>{{ $labels[$code] ?? $code }}</option>
-                        @endforeach
-                    </select>
-                </x-ui.field>
+                <!-- Input oculto para sincronizar nivel_riesgo con el backend -->
+                <input type="hidden" id="nivel_riesgo" name="nivel_riesgo" value="{{ old('nivel_riesgo', 'MEDIO') }}">
             </div>
 
-            <!-- MONTO, UNIDADES Y VALOR POR UNIDAD (AUTO-CÁLCULO 2 DE 3) -->
-            <div style="background: rgba(0,0,0,0.02); padding: 1rem; border-radius: 8px; margin: 1rem 0; border: 1px dashed var(--color-border, #ddd);">
-                <h4 style="margin-top: 0; margin-bottom: 0.5rem;">Aporte Inicial y Valores por Unidad</h4>
-                <p class="ui-help" style="margin-bottom: 0.75rem;">Para productos con unidades (Acción, ETF, FIC, FPV): Digita 2 de los 3 valores y el sistema calculará automáticamente el tercero.</p>
-                <div class="income-two-fields">
-                    <x-ui.field name="monto_inicial" label="Monto total del aporte inicial" :required="true">
-                        <input id="monto_inicial" name="monto_inicial" type="number" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Monto total en moneda base" oninput="resolverDosDeTres('monto'); calcularProyeccionCdt();">
-                    </x-ui.field>
+            <!-- PASO 2 Y PASO 3 WIZARD PARA PRODUCTOS ADMINISTRADOS (FIC, FPV, CESANTIAS) -->
+            @php
+                $isAdministradoInitial = in_array($selectedTipo, ['FIC', 'FPV', 'CESANTIAS'], true);
+                $initialRiesgo = old('nivel_riesgo', 'BAJO');
+            @endphp
+            <div id="wizard-administrados-pasos" style="{{ $isAdministradoInitial ? '' : 'display: none;' }} margin-top: 1.5rem;">
+                <!-- PASO 2: NIVEL DE RIESGO -->
+                <div style="border-top: 1px solid var(--color-border, #e5e7eb); padding-top: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">Nivel de riesgo *</h3>
+                        <span style="background: #c2410c; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">2</span>
+                    </div>
+                    <p class="ui-help" style="margin-top: 0; margin-bottom: 1rem; color: #64748b;">Como no sabemos cuánto va a rentar, usamos un rango estimado según el riesgo.</p>
 
-                    <div id="wrapper-unidades" style="{{ $usesUnitsInitial ? '' : 'display: none;' }}">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+                        <!-- Tarjeta Riesgo Bajo -->
+                        <div id="card-riesgo-BAJO" onclick="seleccionarNivelRiesgo('BAJO')" style="border: 2px solid {{ $initialRiesgo === 'BAJO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'BAJO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="radio" name="wizard_riesgo_radio" value="BAJO" @checked($initialRiesgo === 'BAJO') style="accent-color: #b45309; pointer-events: none;">
+                                <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Bajo</span>
+                            </div>
+                            <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre 4 % y 7 % EA</div>
+                            <div class="ui-help" style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.35;">CDT, cuentas de alto rendimiento, FIC conservadores</div>
+                        </div>
+
+                        <!-- Tarjeta Riesgo Medio -->
+                        <div id="card-riesgo-MEDIO" onclick="seleccionarNivelRiesgo('MEDIO')" style="border: 2px solid {{ $initialRiesgo === 'MEDIO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'MEDIO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="radio" name="wizard_riesgo_radio" value="MEDIO" @checked($initialRiesgo === 'MEDIO') style="accent-color: #b45309; pointer-events: none;">
+                                <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Medio</span>
+                            </div>
+                            <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre 6 % y 12 % EA</div>
+                            <div class="ui-help" style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.35;">FIC moderados, pensión voluntaria, cesantías</div>
+                        </div>
+
+                        <!-- Tarjeta Riesgo Alto -->
+                        <div id="card-riesgo-ALTO" onclick="seleccionarNivelRiesgo('ALTO')" style="border: 2px solid {{ $initialRiesgo === 'ALTO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'ALTO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="radio" name="wizard_riesgo_radio" value="ALTO" @checked($initialRiesgo === 'ALTO') style="accent-color: #b45309; pointer-events: none;">
+                                <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Alto</span>
+                            </div>
+                            <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre -10 % y 20 % EA</div>
+                            <div class="ui-help" style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.35;">Acciones, ETF y otros activos que cambian mucho</div>
+                        </div>
+                    </div>
+
+                    <!-- Panel de Composición de Activos Subyacentes Dinámico -->
+                    <div id="portafolio-activos-preview" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <strong id="portafolio-preview-titulo" style="color: #0f172a; font-size: 0.95rem;">Portafolio Conservador / Liquidez</strong>
+                            <span id="portafolio-preview-rango" style="background: #e2e8f0; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">Rango: 4% – 7% E.A.</span>
+                        </div>
+                        <p id="portafolio-preview-enfoque" class="ui-help" style="margin: 0 0 0.75rem 0; font-size: 0.85rem;">Preservación de capital con disponibilidad a la vista y vencimientos cortos.</p>
+                        <div id="portafolio-preview-lista-activos" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <!-- Inyectado dinámicamente vía JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PASO 3: PROYECCIÓN INICIAL INTERACTIVA -->
+                <div style="border-top: 1px solid var(--color-border, #e5e7eb); padding-top: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">Proyección y Expectativa de Rendimiento *</h3>
+                        <span style="background: #c2410c; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">3</span>
+                    </div>
+                    <p class="ui-help" style="margin-top: 0; margin-bottom: 1rem; color: #64748b;">Define la rentabilidad anual que esperas generar dentro del rango de tu portafolio y visualiza la curva de capitalización compuesta.</p>
+
+                    <div class="income-two-fields" style="align-items: flex-start;">
+                        <div>
+                            <x-ui.field name="rentabilidad_esperada_porc" label="Rentabilidad que crees que va a generar (% E.A.) *" :required="true" help="Ajusta dentro del rango de tu nivel de riesgo seleccionado">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <input id="rentabilidad_esperada_porc" name="rentabilidad_esperada_porc" type="number" step="0.1" value="{{ old('rentabilidad_esperada_porc', '5.5') }}" style="max-width: 140px; font-weight: 700; font-size: 1.05rem;" oninput="sincronizarSliderRentabilidad(this.value); actualizarWizardProyeccion();">
+                                    <span style="font-weight: 700; color: #475569;">% E.A.</span>
+                                </div>
+                            </x-ui.field>
+                            <input id="slider_rentabilidad_ea" type="range" min="4" max="7" step="0.1" value="{{ old('rentabilidad_esperada_porc', '5.5') }}" style="width: 100%; margin-top: 0.5rem; accent-color: #c2410c;" oninput="sincronizarInputRentabilidad(this.value); actualizarWizardProyeccion();">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem;">
+                                <span id="label-slider-min">Min: 4.0%</span>
+                                <span id="label-slider-max">Max: 7.0%</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <x-ui.field name="plazo_meses_esperado" label="Horizonte de proyección (Meses)" help="Tiempo estimado en el que mantendrás la inversión">
+                                <input id="plazo_meses_esperado" name="plazo_meses_esperado" type="number" min="1" max="600" value="{{ old('plazo_meses_esperado', 12) }}" style="font-weight: 700;" oninput="actualizarWizardProyeccion()">
+                            </x-ui.field>
+                            <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(6)">6 meses</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem; background: #e2e8f0;" onclick="fijarMesesProyeccion(12)">1 año</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(24)">2 años</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(36)">3 años</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(60)">5 años</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resumen Numérico de la Proyección -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; padding: 0.85rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--color-border, #e2e8f0);">
+                        <div>
+                            <span class="ui-help" style="font-size: 0.8rem;">Monto a Depositar:</span>
+                            <p id="wiz-prev-monto" style="margin: 0.15rem 0; font-weight: 700; font-size: 1rem; color: #0f172a;">$ 0 COP</p>
+                        </div>
+                        <div>
+                            <span class="ui-help" style="font-size: 0.8rem;">Rendimiento Estimado:</span>
+                            <p id="wiz-prev-ganancia" style="margin: 0.15rem 0; font-weight: 700; font-size: 1rem; color: #16a34a;">+$ 0 COP</p>
+                        </div>
+                        <div>
+                            <span class="ui-help" style="font-size: 0.8rem;">Saldo Proyectado al Final:</span>
+                            <p id="wiz-prev-total" style="margin: 0.15rem 0; font-weight: 800; font-size: 1.05rem; color: #0f172a;">$ 0 COP</p>
+                        </div>
+                    </div>
+
+                    <!-- Gráfica de Proyección en Tiempo Real -->
+                    <div style="position: relative; height: 260px; width: 100%; margin-top: 1rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.5rem;">
+                        <canvas id="wizardProjectionCanvas" role="img" aria-label="Curva de proyección esperada de la inversión"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- UNIDADES Y VALOR POR UNIDAD (SOLO ACCIONES / ETFS) -->
+            <div id="section-unidades-general" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }} background: rgba(0,0,0,0.02); padding: 1rem; border-radius: 8px; margin: 1rem 0; border: 1px dashed var(--color-border, #ddd);">
+                <h4 style="margin-top: 0; margin-bottom: 0.5rem;">Unidades y Cotización de Renta Variable</h4>
+                <p class="ui-help" style="margin-bottom: 0.75rem;">Para Acciones y ETFs: Digita la cantidad de títulos y el precio de compra unitario.</p>
+                <div class="income-two-fields">
+                    <div id="wrapper-unidades" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }}">
                         <x-ui.field name="unidades" label="Cantidad de unidades / títulos">
-                            <input id="unidades" name="unidades" type="number" step="0.00000001" min="0.00000001" value="{{ old('unidades') }}" placeholder="Ej: 10.50000000" oninput="resolverDosDeTres('unidades')" @disabled(!$usesUnitsInitial)>
+                            <input id="unidades" name="unidades" type="number" step="0.00000001" min="0.00000001" value="{{ old('unidades') }}" placeholder="Ej: 10.50000000" oninput="resolverDosDeTres('unidades')" @disabled($selectedTipo !== 'ACCION_ETF')>
                         </x-ui.field>
                     </div>
 
-                    <div id="wrapper-valor-unidad" style="{{ $usesUnitsInitial ? '' : 'display: none;' }}">
+                    <div id="wrapper-valor-unidad" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }}">
                         <x-ui.field name="valor_unidad" label="Valor / Precio de compra por unidad">
-                            <input id="valor_unidad" name="valor_unidad" type="number" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled(!$usesUnitsInitial)>
+                            <input id="valor_unidad" name="valor_unidad" type="number" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled($selectedTipo !== 'ACCION_ETF')>
                         </x-ui.field>
                     </div>
                 </div>
@@ -253,26 +370,9 @@
                 </div>
             </fieldset>
 
-            <!-- SECCIÓN 4: ESPECÍFICO FIC -->
-            <fieldset id="section-fic" @disabled($selectedTipo !== 'FIC') style="{{ $selectedTipo === 'FIC' ? '' : 'display: none;' }} border: 1px solid var(--color-border, #ccc); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                <legend style="font-weight: 600; color: var(--color-primary);">Catálogo Oficial de Fondos de Inversión Colectiva (FIC)</legend>
-                <div class="income-two-fields">
-                    <x-ui.field name="fic_catalogo_id" label="Selecciona el Fondo de Inversión">
-                        <select name="fic_catalogo_id" id="fic_catalogo_id">
-                            <option value="">Selecciona un fondo del catálogo</option>
-                            @foreach($fics as $fic)
-                                <option value="{{ $fic->id }}" @selected(old('fic_catalogo_id') === $fic->id)>
-                                    {{ $fic->nombre }} (Perfil: {{ $fic->perfil }} · Tarifa retención ponderada: {{ $fic->tarifaPonderada() }}%)
-                                </option>
-                            @endforeach
-                        </select>
-                    </x-ui.field>
-
-                    <x-ui.field name="pacto_permanencia_dias" label="Pacto de permanencia (Días)">
-                        <input name="pacto_permanencia_dias" type="number" min="0" value="{{ old('pacto_permanencia_dias', 0) }}" placeholder="0 si es a la vista">
-                    </x-ui.field>
-                </div>
-                <p class="ui-help">Regla 9.2: Sin comisiones de entrada. La retención se practica únicamente al redimir, sobre la utilidad acumulada pendiente de retiro con la tarifa ponderada del fondo.</p>
+            <!-- SECCIÓN 4: ESPECÍFICO FIC (Gestionado automáticamente por el Wizard de 3 Pasos) -->
+            <fieldset id="section-fic" style="display: none;" disabled>
+                <input type="hidden" name="pacto_permanencia_dias" value="0">
             </fieldset>
 
             <!-- SECCIÓN 5: ESPECÍFICO FPV -->
@@ -304,10 +404,6 @@
                             <option value="ANUALIZADO" @selected(old('regimen') === 'ANUALIZADO')>Ley 50 de 1990 (Anualizado en Fondo Privado)</option>
                             <option value="TRADICIONAL" @selected(old('regimen') === 'TRADICIONAL')>Tradicional (FNA / Retroactivo)</option>
                         </select>
-                    </x-ui.field>
-
-                    <x-ui.field name="tasa_interes_esperada" label="Rentabilidad anual esperada del fondo (%)">
-                        <input name="tasa_interes_esperada" type="number" step="0.01" min="0" max="100" value="{{ old('tasa_interes_esperada', '8.00') }}">
                     </x-ui.field>
 
                     <x-ui.field name="ingreso_laboral_promedio_6m" label="Salario mensual promedio últimos 6 meses (COP)" help="Base para calcular el porcentaje exento por UVT">
@@ -428,12 +524,19 @@
 <x-ui.calculation-notice />
 
 <script>
+window.PORTAFOLIOS_DATA = @json($portafoliosPorProducto ?? []);
+window.RANGOS_RIESGO_DATA = @json($rangosRiesgo ?? []);
+let wizardChartInstance = null;
+
+function actualizarCalculosGenerales() {
+    // Mantener sincronizado el display
+}
+
 function actualizarFormularioPorTipo(tipo) {
     const sectionMap = {
         'CDT': 'section-cdt',
         'CUENTA_ALTO_RENDIMIENTO': 'section-cuenta',
         'ACCION_ETF': 'section-accion',
-        'FIC': 'section-fic',
         'FPV': 'section-fpv',
         'CESANTIAS': 'section-cesantias'
     };
@@ -448,22 +551,251 @@ function actualizarFormularioPorTipo(tipo) {
         }
     });
 
+    const isAdministrado = ['FIC', 'FPV', 'CESANTIAS'].includes(tipo);
+    const wizardPasos = document.getElementById('wizard-administrados-pasos');
+    if (wizardPasos) {
+        wizardPasos.style.display = isAdministrado ? 'block' : 'none';
+    }
+
+    const sectionUnidades = document.getElementById('section-unidades-general');
     const wrapperUnidades = document.getElementById('wrapper-unidades');
     const wrapperPrecio = document.getElementById('wrapper-valor-unidad');
     const inputUnidades = document.getElementById('unidades');
     const inputPrecio = document.getElementById('valor_unidad');
-    const usesUnits = ['ACCION_ETF', 'FIC', 'FPV'].includes(tipo);
+    const usesUnits = (tipo === 'ACCION_ETF');
 
+    if (sectionUnidades) sectionUnidades.style.display = usesUnits ? 'block' : 'none';
     if (wrapperUnidades) wrapperUnidades.style.display = usesUnits ? 'block' : 'none';
     if (wrapperPrecio) wrapperPrecio.style.display = usesUnits ? 'block' : 'none';
     if (inputUnidades) inputUnidades.disabled = !usesUnits;
     if (inputPrecio) inputPrecio.disabled = !usesUnits;
 
-    if (tipo === 'CDT') {
+    if (isAdministrado) {
+        const nivelActual = getNivelRiesgoActual();
+        renderizarComposicionPortafolio(tipo, nivelActual);
+        actualizarWizardProyeccion();
+    } else if (tipo === 'CDT') {
         calcularProyeccionCdt();
     } else if (tipo === 'ACCION_ETF') {
         actualizarCamposRentaVariable();
     }
+}
+
+function getNivelRiesgoActual() {
+    const hidden = document.getElementById('nivel_riesgo');
+    return (hidden && hidden.value) ? hidden.value : 'MEDIO';
+}
+
+function seleccionarNivelRiesgo(nivel) {
+    const hidden = document.getElementById('nivel_riesgo');
+    if (hidden) hidden.value = nivel;
+
+    // Actualizar radios
+    const radios = document.getElementsByName('wizard_riesgo_radio');
+    radios.forEach(r => {
+        r.checked = (r.value === nivel);
+    });
+
+    // Actualizar estilos de las 3 tarjetas
+    ['BAJO', 'MEDIO', 'ALTO'].forEach(n => {
+        const card = document.getElementById('card-riesgo-' + n);
+        if (card) {
+            if (n === nivel) {
+                card.style.borderColor = '#b45309';
+                card.style.background = '#fffaf0';
+            } else {
+                card.style.borderColor = '#e2e8f0';
+                card.style.background = '#ffffff';
+            }
+        }
+    });
+
+    // Actualizar sliders y sugeridos de rentabilidad según rango
+    const config = window.RANGOS_RIESGO_DATA && window.RANGOS_RIESGO_DATA[nivel];
+    if (config) {
+        const slider = document.getElementById('slider_rentabilidad_ea');
+        const inputNum = document.getElementById('rentabilidad_esperada_porc');
+        const labelMin = document.getElementById('label-slider-min');
+        const labelMax = document.getElementById('label-slider-max');
+
+        if (slider) {
+            slider.min = config.min_ea;
+            slider.max = config.max_ea;
+            slider.value = config.sugerido_ea;
+        }
+        if (inputNum) {
+            inputNum.min = config.min_ea;
+            inputNum.max = config.max_ea;
+            inputNum.value = config.sugerido_ea;
+        }
+        if (labelMin) labelMin.innerText = 'Min: ' + config.min_ea + '%';
+        if (labelMax) labelMax.innerText = 'Max: ' + config.max_ea + '%';
+    }
+
+    const tipoSel = document.getElementById('tipo') ? document.getElementById('tipo').value : 'FIC';
+    renderizarComposicionPortafolio(tipoSel, nivel);
+    actualizarWizardProyeccion();
+}
+
+function renderizarComposicionPortafolio(tipo, nivel) {
+    const contenedor = document.getElementById('portafolio-preview-lista-activos');
+    const tituloEl = document.getElementById('portafolio-preview-titulo');
+    const enfoqueEl = document.getElementById('portafolio-preview-enfoque');
+    const rangoEl = document.getElementById('portafolio-preview-rango');
+
+    if (!contenedor || !window.PORTAFOLIOS_DATA) return;
+
+    const productoData = window.PORTAFOLIOS_DATA[tipo] || window.PORTAFOLIOS_DATA['FIC'];
+    const portafolio = productoData ? productoData[nivel] : null;
+
+    if (!portafolio) {
+        contenedor.innerHTML = '<p class="ui-help">Selecciona un producto y nivel de riesgo para ver la canasta de activos.</p>';
+        return;
+    }
+
+    if (tituloEl) tituloEl.innerText = portafolio.titulo || 'Portafolio de Inversión';
+    if (enfoqueEl) enfoqueEl.innerText = portafolio.enfoque || '';
+    if (rangoEl && portafolio.rango_ea) {
+        rangoEl.innerText = 'Rango: ' + portafolio.rango_ea.min_ea + '% a ' + portafolio.rango_ea.max_ea + '% E.A.';
+    }
+
+    let html = '';
+    const activos = portafolio.activos || [];
+    activos.forEach(act => {
+        html += `
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                    <span style="font-weight: 600; color: #334155;">${act.nombre}</span>
+                    <span style="font-weight: 700; color: #0f172a;">${act.porcentaje}% <span style="font-weight: normal; color: #64748b; font-size: 0.78rem;">(${act.categoria})</span></span>
+                </div>
+                <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                    <div style="width: ${act.porcentaje}%; height: 100%; background: #c2410c; border-radius: 4px;"></div>
+                </div>
+            </div>
+        `;
+    });
+
+    contenedor.innerHTML = html;
+}
+
+function sincronizarSliderRentabilidad(val) {
+    const slider = document.getElementById('slider_rentabilidad_ea');
+    if (slider) slider.value = val;
+}
+
+function sincronizarInputRentabilidad(val) {
+    const inputNum = document.getElementById('rentabilidad_esperada_porc');
+    if (inputNum) inputNum.value = val;
+}
+
+function fijarMesesProyeccion(meses) {
+    const input = document.getElementById('plazo_meses_esperado');
+    if (input) {
+        input.value = meses;
+        actualizarWizardProyeccion();
+    }
+}
+
+function actualizarWizardProyeccion() {
+    const montoEl = document.getElementById('monto_inicial');
+    const tasaEl = document.getElementById('rentabilidad_esperada_porc');
+    const mesesEl = document.getElementById('plazo_meses_esperado');
+
+    const monto = parseFloat(montoEl ? montoEl.value : 0) || 0;
+    const tasa = parseFloat(tasaEl ? tasaEl.value : 0) || 0;
+    const meses = parseInt(mesesEl ? mesesEl.value : 12) || 12;
+
+    const tasaDecimal = tasa / 100.0;
+    const diasTotales = meses * 30.4167;
+    const factorFinal = diasTotales > 0 ? Math.pow(Math.max(0.0001, 1.0 + tasaDecimal), diasTotales / 365.0) : 1.0;
+    const totalFinal = monto * factorFinal;
+    const gananciaFinal = totalFinal - monto;
+
+    const prevMonto = document.getElementById('wiz-prev-monto');
+    const prevGan = document.getElementById('wiz-prev-ganancia');
+    const prevTot = document.getElementById('wiz-prev-total');
+
+    if (prevMonto) prevMonto.innerText = '$ ' + monto.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
+    if (prevGan) prevGan.innerText = (gananciaFinal >= 0 ? '+$ ' : '-$ ') + Math.abs(gananciaFinal).toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
+    if (prevTot) prevTot.innerText = '$ ' + totalFinal.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
+
+    // Generar puntos para el Chart
+    const labels = [];
+    const dataValores = [];
+    const fechaAperturaEl = document.getElementById('fecha_apertura');
+    const fechaBase = fechaAperturaEl && fechaAperturaEl.value ? new Date(fechaAperturaEl.value) : new Date();
+
+    const pasoMeses = meses > 24 ? Math.ceil(meses / 12) : 1;
+    for (let m = 0; m <= meses; m += pasoMeses) {
+        const d = new Date(fechaBase);
+        d.setMonth(d.getMonth() + m);
+        const dias = m * 30.4167;
+        const f = dias > 0 ? Math.pow(Math.max(0.0001, 1.0 + tasaDecimal), dias / 365.0) : 1.0;
+        const valM = Math.round(monto * f * 100) / 100;
+
+        labels.push('Mes ' + m + ' (' + d.toLocaleDateString('es-CO', {month: 'short', year: '2-digit'}) + ')');
+        dataValores.push(valM);
+    }
+
+    renderWizardChart(labels, dataValores);
+}
+
+function renderWizardChart(labels, dataValores) {
+    const canvas = document.getElementById('wizardProjectionCanvas');
+    if (!canvas) return;
+
+    const ChartConstructor = window.Chart || (typeof Chart !== 'undefined' ? Chart : null);
+    if (!ChartConstructor) {
+        setTimeout(() => renderWizardChart(labels, dataValores), 100);
+        return;
+    }
+
+    if (wizardChartInstance) {
+        wizardChartInstance.destroy();
+    }
+
+    const ctx = canvas.getContext('2d');
+    wizardChartInstance = new ChartConstructor(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Saldo Proyectado (COP)',
+                data: dataValores,
+                borderColor: '#c2410c',
+                backgroundColor: 'rgba(194, 65, 12, 0.08)',
+                borderWidth: 2.5,
+                tension: 0.25,
+                fill: true,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#c2410c'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return ' Proyección: $ ' + Number(context.raw).toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: function(value) {
+                            return '$ ' + Number(value).toLocaleString('es-CO');
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function toggleMoneda(val) {

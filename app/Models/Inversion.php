@@ -44,7 +44,7 @@ class Inversion extends Model
     public const CON_TASA = ['CDT', 'CUENTA_ALTO_RENDIMIENTO', 'CESANTIAS'];
 
     /** Tipos con valor por unidad y cantidad de unidades */
-    public const CON_UNIDADES = ['ACCION_ETF', 'FIC', 'FPV'];
+    public const CON_UNIDADES = ['ACCION_ETF'];
 
     public const MONEDAS = ['COP', 'USD'];
 
@@ -202,11 +202,15 @@ class Inversion extends Model
 
     public function tieneUnidades(): bool
     {
+        if ($this->tipo === 'ACCION_ETF') {
+            return true;
+        }
+
         if ($this->tipo === 'FPV') {
             return $this->detalleFpv && $this->detalleFpv->unidades !== null && bccomp((string) $this->detalleFpv->unidades, '0', 8) > 0;
         }
 
-        return in_array($this->tipo, self::CON_UNIDADES, true);
+        return false;
     }
 
     public function estaLiquidada(): bool

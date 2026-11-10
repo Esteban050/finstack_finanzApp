@@ -26,7 +26,8 @@ class ReporteInversionController extends Controller
      */
     public function retenciones(Request $request): View|JsonResponse
     {
-        $anio = (int) $request->query('anio', CarbonImmutable::today()->year);
+        $anio = $this->resolverAnio($request);
+        $aniosDisponibles = $this->aniosDisponibles();
 
         $movimientos = MovimientoInversion::with(['inversion.entidadFinanciera'])
             ->where('usuario_id', Auth::id())
@@ -73,6 +74,7 @@ class ReporteInversionController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'anio' => $anio,
+                'anios_disponibles' => $aniosDisponibles,
                 'totales' => $totales,
                 'resumen_producto' => $resumenPorProducto,
                 'resumen_entidad' => $resumenPorEntidad,
@@ -82,6 +84,7 @@ class ReporteInversionController extends Controller
 
         return view('inversiones.reportes.retenciones', [
             'anio' => $anio,
+            'aniosDisponibles' => $aniosDisponibles,
             'totales' => $totales,
             'resumenPorProducto' => $resumenPorProducto,
             'resumenPorEntidad' => $resumenPorEntidad,
@@ -94,7 +97,8 @@ class ReporteInversionController extends Controller
      */
     public function utilidades(Request $request): View|JsonResponse
     {
-        $anio = (int) $request->query('anio', CarbonImmutable::today()->year);
+        $anio = $this->resolverAnio($request);
+        $aniosDisponibles = $this->aniosDisponibles();
 
         // Ingresos generados registrados en el módulo puente
         $ingresosPuente = IngresoInversion::with('inversion')
@@ -124,6 +128,7 @@ class ReporteInversionController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'anio' => $anio,
+                'anios_disponibles' => $aniosDisponibles,
                 'totales' => $totales,
                 'ingresos' => $ingresosPuente,
                 'deducibles' => $deduciblesPuente,
@@ -133,6 +138,7 @@ class ReporteInversionController extends Controller
 
         return view('inversiones.reportes.utilidades', [
             'anio' => $anio,
+            'aniosDisponibles' => $aniosDisponibles,
             'totales' => $totales,
             'ingresos' => $ingresosPuente,
             'deducibles' => $deduciblesPuente,
@@ -145,7 +151,7 @@ class ReporteInversionController extends Controller
      */
     public function exportarRetencionesCsv(Request $request): StreamedResponse
     {
-        $anio = (int) $request->query('anio', CarbonImmutable::today()->year);
+        $anio = $this->resolverAnio($request);
 
         $movimientos = MovimientoInversion::with(['inversion.entidadFinanciera'])
             ->where('usuario_id', Auth::id())
@@ -203,7 +209,7 @@ class ReporteInversionController extends Controller
      */
     public function exportarUtilidadesCsv(Request $request): StreamedResponse
     {
-        $anio = (int) $request->query('anio', CarbonImmutable::today()->year);
+        $anio = $this->resolverAnio($request);
 
         $ingresos = IngresoInversion::with('inversion')
             ->where('usuario_id', Auth::id())
@@ -243,5 +249,64 @@ class ReporteInversionController extends Controller
 
             fclose($handle);
         }, 200, $headers);
+    }
+
+    private function resolverAnio(Request $request): int
+    {
+        if ($request->filled('anio')) {
+            return (int) $request->query('anio');
+        }
+
+        $userId = Auth::id();
+        $anioActual = CarbonImmutable::today()->year;
+
+        // Verificar si el año actual tiene registros en retenciones o ingresos
+        $tieneEnAnioActual = MovimientoInversion::where('usuario_id', $userId)
+            ->whereYear('fecha', $anioActual)
+            ->where(fn ($q) => $q->where('retencion_aplicada', '>', 0)->orWhere('gmf_aplicado', '>', 0))
+            ->exists()
+            || IngresoInversion::where('usuario_id', $userId)->where('anio', $anioActual)->exists();
+
+        if ($tieneEnAnioActual) {
+            return $anioActual;
+        }
+
+        // Si el año actual está vacío de retenciones/ingresos, buscar el año más reciente con registros
+        $anioConRegistros = MovimientoInversion::where('usuario_id', $userId)
+            ->where(fn ($q) => $q->where('retencion_aplicada', '>', 0)->orWhere('gmf_aplicado', '>', 0))
+            ->selectRaw('EXTRACT(YEAR FROM fecha)::int AS anio')
+            ->orderByDesc('anio')
+            ->value('anio');
+
+        if (! $anioConRegistros) {
+            $anioConRegistros = IngresoInversion::where('usuario_id', $userId)
+                ->orderByDesc('anio')
+                ->value('anio');
+        }
+
+        return $anioConRegistros ? (int) $anioConRegistros : $anioActual;
+    }
+
+    private function aniosDisponibles(): array
+    {
+        $userId = Auth::id();
+        $aniosMovs = MovimientoInversion::where('usuario_id', $userId)
+            ->where(fn ($q) => $q->where('retencion_aplicada', '>', 0)->orWhere('gmf_aplicado', '>', 0))
+            ->selectRaw('DISTINCT EXTRACT(YEAR FROM fecha)::int AS anio')
+            ->pluck('anio');
+
+        $aniosIngresos = IngresoInversion::where('usuario_id', $userId)
+            ->selectRaw('DISTINCT anio')
+            ->pluck('anio');
+
+        $todos = $aniosMovs->merge($aniosIngresos)
+            ->push(CarbonImmutable::today()->year)
+            ->filter()
+            ->unique()
+            ->sortDesc()
+            ->values()
+            ->all();
+
+        return $todos;
     }
 }

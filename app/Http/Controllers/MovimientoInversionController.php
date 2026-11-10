@@ -72,6 +72,18 @@ class MovimientoInversionController extends Controller
             ]);
         }
 
+        // Normalizar montos numéricos que vengan formateados con separadores de miles y decimales
+        $camposNumericos = ['monto', 'unidades', 'valor_unidad', 'comision', 'impuesto_origen', 'trm', 'tasa_cambio_usada'];
+        $normalizados = [];
+        foreach ($camposNumericos as $campo) {
+            if ($request->has($campo)) {
+                $normalizados[$campo] = self::normalizarNumero($request->input($campo));
+            }
+        }
+        if (!empty($normalizados)) {
+            $request->merge($normalizados);
+        }
+
         if (! $request->filled('monto') && $request->filled('unidades') && $request->filled('valor_unidad')) {
             $montoCalc = IngresoService::redondear(bcmul((string) $request->input('unidades'), (string) $request->input('valor_unidad'), 4));
             $request->merge(['monto' => $montoCalc]);
@@ -245,6 +257,63 @@ class MovimientoInversionController extends Controller
                 $montoBruto = $monto;
                 $retencionAplicada = IngresoService::redondear(bcmul($montoBruto, bcdiv($tarifaRet, '100', 6), 4));
                 $monto = bcsub($montoBruto, $retencionAplicada, 2);
+                $datosPuente = [
+                    'parte_utilidad' => $montoBruto,
+                ];
+            }
+        }
+
+        // 4b. REDENCION en CDT (Liquidación de capital y rendimientos con retención en la fuente 4% - Art. 395 E.T. / Dec. 572/2025)
+        if ($inversion->tipo === 'CDT' && $tipo === 'REDENCION') {
+            $capital = (string) ($inversion->detalleCdt?->capital ?? $inversion->monto_inicial);
+            $interesesPrevios = MovimientoInversion::where('inversion_id', $inversion->id)
+                ->where('tipo', 'ABONO_INTERES')
+                ->sum('monto_bruto');
+
+            $detalle = $inversion->detalleCdt;
+            $rendimientoEstimado = '0.00';
+            if ($detalle) {
+                $calculoCdt = CalculoImpuestoInversionService::calcularCdt(
+                    capital: $capital,
+                    tasaValor: (string) $detalle->tasa_valor,
+                    tipoTasa: (string) $detalle->tipo_tasa,
+                    plazoDias: (int) $detalle->plazo_dias,
+                    baseDias: (int) ($detalle->base_dias ?? 365),
+                    periodicidadPago: (string) $detalle->periodicidad_pago,
+                    fecha: $fecha
+                );
+                $rendimientoEstimado = $calculoCdt['bruto'];
+            }
+
+            // Rendimiento pendiente por liquidar
+            $rendimientoPendiente = bcsub((string) $rendimientoEstimado, (string) $interesesPrevios, 2);
+            if (bccomp($rendimientoPendiente, '0', 2) < 0) {
+                $rendimientoPendiente = '0.00';
+            }
+
+            // Si el monto ingresado supera el capital, el exceso son rendimientos
+            if (bccomp($monto, $capital, 2) === 1) {
+                $rendimientoALiquidar = bcsub($monto, $capital, 2);
+                $montoBruto = $monto;
+            } elseif (bccomp($rendimientoPendiente, '0', 2) > 0) {
+                // Si el usuario ingresó solo el capital, pero es liquidación al vencimiento, se suman los rendimientos pactados
+                $rendimientoALiquidar = $rendimientoPendiente;
+                $montoBruto = bcadd($capital, $rendimientoALiquidar, 2);
+            } else {
+                $rendimientoALiquidar = '0.00';
+                $montoBruto = $monto;
+            }
+
+            if (bccomp($rendimientoALiquidar, '0', 2) > 0) {
+                $tarifaRet = ParametroTributarioService::obtenerValor('RETEFUENTE_RENTA_FIJA', $fecha);
+                $retencionAplicada = IngresoService::redondear(bcmul($rendimientoALiquidar, bcdiv($tarifaRet, '100', 6), 4));
+                $monto = bcsub($montoBruto, $retencionAplicada, 2);
+                $datosPuente = [
+                    'parte_utilidad' => $rendimientoALiquidar,
+                ];
+            } else {
+                $retencionAplicada = '0.00';
+                $monto = $montoBruto;
             }
         }
 
@@ -378,12 +447,15 @@ class MovimientoInversionController extends Controller
                     $aportesSinBeneficioDisponibles = '0.00';
                 }
 
-                // Si no se digitó manualmente la proporción de rendimientos, se calcula a partir de la valorización actual vs costo base
+                // Si no se digitó manualmente la proporción de rendimientos, se calcula a partir de la valorización actual vs costo base (capital aportado neto)
                 $proporcionRendimiento = (string) ($validated['proporcion_rendimiento'] ?? '0.00');
                 if (bccomp($proporcionRendimiento, '0', 4) === 0) {
                     $valoracionActual = InversionService::valorActual($inversion);
                     $valorMercado = $valoracionActual ? (string) $valoracionActual->valor : (string) ($inversion->detalleFpv?->saldo_actual ?? $inversion->monto_inicial);
-                    $costoBase = (string) ($inversion->detalleFpv?->saldo_actual ?? $inversion->monto_inicial);
+                    $costoBase = RentabilidadService::capitalAportadoNeto($inversion, CarbonImmutable::parse($fecha));
+                    if (bccomp($costoBase, '0', 2) <= 0) {
+                        $costoBase = (string) $inversion->monto_inicial;
+                    }
                     if (bccomp($valorMercado, $costoBase, 2) > 0 && bccomp($valorMercado, '0', 2) > 0) {
                         $gananciaTotal = bcsub($valorMercado, $costoBase, 2);
                         $proporcionRendimiento = bcdiv($gananciaTotal, $valorMercado, 8);
@@ -404,6 +476,9 @@ class MovimientoInversionController extends Controller
                 $datosPuente = [
                     'cumple_permanencia' => $cumplePermanencia,
                     'aportes_retirados' => $liqRetiroFpv['aportes_retirados'],
+                    'rendimientos_retirados' => $liqRetiroFpv['rendimientos_retirados'] ?? '0.00',
+                    'retencion_rendimientos' => $liqRetiroFpv['retencion_rendimientos'] ?? '0.00',
+                    'retencion_aportes' => $liqRetiroFpv['retencion_aportes'] ?? '0.00',
                 ];
             }
         }
@@ -480,22 +555,20 @@ class MovimientoInversionController extends Controller
                 }
             } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic) {
                 $det = $inversion->detalleFic;
-                if (in_array($tipo, ['APORTE', 'COMPRA'], true) && $unidades !== null) {
-                    $det->update([
-                        'unidades' => bcadd((string) $det->unidades, $unidades, 8),
-                        'valor_unidad_actual' => $valorUnidad ?? $det->valor_unidad_actual,
-                    ]);
-                } elseif (in_array($tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true) && $unidades !== null) {
-                    $nuevasUnidades = bcsub((string) $det->unidades, $unidades, 8);
-                    $det->update([
-                        'unidades' => $nuevasUnidades,
-                    ]);
-                    if (bccomp($nuevasUnidades, '0', 8) <= 0) {
-                        $inversion->update(['estado' => 'CERRADA']);
+                $valoracion = InversionService::valorActual($inversion);
+                $saldoFondo = $valoracion ? (string) $valoracion->valor : (string) $inversion->monto_inicial;
+
+                if (in_array($tipo, ['REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true)) {
+                    if (bccomp($montoBruto, $saldoFondo, 2) >= 0) {
+                        $inversion->update([
+                            'estado' => 'CERRADA',
+                            'liquidada_en' => $fecha,
+                        ]);
+                        $det->update(['unidades' => '0.00000000']);
                     }
                 }
             } elseif ($inversion->tipo === 'CDT' && $tipo === 'REDENCION') {
-                $inversion->update(['estado' => 'LIQUIDADA']);
+                $inversion->update(['estado' => 'LIQUIDADA', 'liquidada_en' => $fecha]);
             } elseif ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $inversion->detalleCuenta) {
                 $det = $inversion->detalleCuenta;
                 if (in_array($tipo, ['APORTE', 'ABONO_INTERES'], true)) {
@@ -512,37 +585,30 @@ class MovimientoInversionController extends Controller
                 }
             } elseif ($inversion->tipo === 'FPV' && $inversion->detalleFpv) {
                 $det = $inversion->detalleFpv;
-                $ultimaVal = ValoracionInversion::where('inversion_id', $inversion->id)->orderByDesc('fecha')->first();
-                $valorUnidad = $ultimaVal?->precio_unitario ?? $det->valor_unidad ?? $movimiento->valor_unidad;
 
                 if (in_array($tipo, ['APORTE', 'COMPRA'], true)) {
-                    if ($unidades === null && $valorUnidad !== null && bccomp((string) $valorUnidad, '0', 8) > 0) {
-                        $unidades = bcdiv($monto, (string) $valorUnidad, 8);
-                        $movimiento->update([
-                            'unidades' => $unidades,
-                            'valor_unidad' => $valorUnidad,
-                        ]);
-                    }
-                    $nuevasUnidades = $unidades !== null ? bcadd((string) ($det->unidades ?? '0'), $unidades, 8) : null;
+                    $nuevoSaldo = bcadd((string) $det->saldo_actual, $monto, 2);
                     $det->update([
-                        'saldo_actual' => bcadd((string) $det->saldo_actual, $monto, 2),
-                        'unidades' => $nuevasUnidades,
+                        'saldo_actual' => $nuevoSaldo,
+                        'unidades' => null,
+                        'valor_unidad' => null,
                     ]);
                 } elseif (in_array($tipo, ['RETIRO', 'RETIRO_PARCIAL'], true)) {
-                    if ($unidades === null && $valorUnidad !== null && bccomp((string) $valorUnidad, '0', 8) > 0) {
-                        $unidades = bcdiv($montoBruto, (string) $valorUnidad, 8);
-                        $movimiento->update([
-                            'unidades' => $unidades,
-                            'valor_unidad' => $valorUnidad,
-                        ]);
+                    $nuevoSaldo = bcsub((string) $det->saldo_actual, $montoBruto, 2);
+                    if (bccomp($nuevoSaldo, '0', 2) < 0) {
+                        $nuevoSaldo = '0.00';
                     }
-                    $nuevasUnidades = $unidades !== null ? bcsub((string) ($det->unidades ?? '0'), $unidades, 8) : null;
                     $det->update([
-                        'saldo_actual' => bcsub((string) $det->saldo_actual, $montoBruto, 2),
-                        'unidades' => $nuevasUnidades,
+                        'saldo_actual' => $nuevoSaldo,
+                        'unidades' => null,
+                        'valor_unidad' => null,
                     ]);
-                    if ($nuevasUnidades !== null && bccomp($nuevasUnidades, '0', 8) <= 0) {
-                        $inversion->update(['estado' => 'CERRADA']);
+                    // Solo se cierra si el saldo del fondo se agota completamente
+                    if (bccomp($nuevoSaldo, '0', 2) <= 0) {
+                        $inversion->update([
+                            'estado' => 'CERRADA',
+                            'liquidada_en' => $fecha,
+                        ]);
                     }
                 }
             }
@@ -667,7 +733,7 @@ class MovimientoInversionController extends Controller
     {
         return [
             'tipo' => ['required', Rule::in(Inversion::MOVIMIENTOS_PERMITIDOS[$inversion->tipo] ?? MovimientoInversion::TIPOS)],
-            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString(), 'before_or_equal:today'],
+            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString()],
             'monto' => ['required', 'numeric', 'gt:0', 'max:999999999999.99'],
             'unidades' => ['nullable', 'numeric', 'gt:0'],
             'valor_unidad' => ['nullable', 'numeric', 'gt:0'],
@@ -694,5 +760,39 @@ class MovimientoInversionController extends Controller
             'monto.required' => 'Indique el monto de la transacción.',
             'monto.gt' => 'El monto debe ser mayor que cero.',
         ];
+    }
+
+    public static function normalizarNumero(mixed $val): ?string
+    {
+        if ($val === null || $val === '') {
+            return null;
+        }
+
+        if (!is_string($val)) {
+            return (string) $val;
+        }
+
+        $limpio = trim(str_replace(['$', 'COP', 'USD', ' ', "\u{00A0}"], '', $val));
+        if ($limpio === '') {
+            return null;
+        }
+
+        // Formato latino con puntos de miles y coma decimal (ej. 1.050.700,50 o 60.000,00)
+        if (str_contains($limpio, '.') && str_contains($limpio, ',')) {
+            $limpio = str_replace('.', '', $limpio);
+            $limpio = str_replace(',', '.', $limpio);
+        } elseif (str_contains($limpio, ',') && !str_contains($limpio, '.')) {
+            // Formato con coma decimal (ej. 1050700,50)
+            $limpio = str_replace(',', '.', $limpio);
+        } elseif (substr_count($limpio, '.') > 1) {
+            // Múltiples puntos de miles (ej. 1.000.000)
+            $limpio = str_replace('.', '', $limpio);
+        } elseif (str_contains($limpio, '.') && preg_match('/\.\d{3}$/', $limpio)) {
+            // Punto único con exactamente 3 dígitos al final (ej. 60.000, 1.000, 500.000)
+            // En formato latino esto representa miles, no decimales.
+            $limpio = str_replace('.', '', $limpio);
+        }
+
+        return $limpio;
     }
 }

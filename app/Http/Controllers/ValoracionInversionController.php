@@ -8,6 +8,7 @@ use App\Models\ValoracionInversion;
 use App\Services\BitacoraService;
 use App\Services\IngresoService;
 use App\Services\InversionService;
+use App\Services\PortafolioInversionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -66,10 +67,22 @@ class ValoracionInversionController extends Controller
     {
         $inversion = $this->inversionPropia($id);
 
+        $camposNumericos = ['valor', 'precio_unitario', 'rentabilidad_real_ea'];
+        $normalizados = [];
+        foreach ($camposNumericos as $campo) {
+            if ($request->has($campo)) {
+                $normalizados[$campo] = MovimientoInversionController::normalizarNumero($request->input($campo));
+            }
+        }
+        if (!empty($normalizados)) {
+            $request->merge($normalizados);
+        }
+
         $validated = $request->validate([
-            'fecha' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:'.$inversion->fecha_apertura->toDateString()],
+            'fecha' => ['required', 'date', 'after_or_equal:'.$inversion->fecha_apertura->toDateString()],
             'valor' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'precio_unitario' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
+            'rentabilidad_real_ea' => ['nullable', 'numeric', 'between:-100,500'],
             'usar_valor_causado' => ['nullable', 'boolean'],
         ], $this->mensajes());
 
@@ -98,9 +111,17 @@ class ValoracionInversionController extends Controller
                 $inversion->detalleRentaVariable->update([
                     'valor_actual_unidad' => $atributos['precio_unitario'],
                 ]);
-            } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic && !empty($atributos['precio_unitario'])) {
+            } elseif ($inversion->tipo === 'FIC' && $inversion->detalleFic && !empty($atributos['valor'])) {
                 $inversion->detalleFic->update([
-                    'valor_unidad_actual' => $atributos['precio_unitario'],
+                    'valor_unidad_actual' => $atributos['valor'],
+                ]);
+            } elseif ($inversion->tipo === 'FPV' && $inversion->detalleFpv && !empty($atributos['valor'])) {
+                $inversion->detalleFpv->update([
+                    'saldo_actual' => $atributos['valor'],
+                ]);
+            } elseif ($inversion->tipo === 'CESANTIAS' && $inversion->detalleCesantias && !empty($atributos['valor'])) {
+                $inversion->detalleCesantias->update([
+                    'saldo' => $atributos['valor'],
                 ]);
             } elseif ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $inversion->detalleCuenta && !empty($atributos['valor'])) {
                 $inversion->detalleCuenta->update([
@@ -225,6 +246,46 @@ class ValoracionInversionController extends Controller
                 'unidades' => null,
                 'origen' => 'CAUSADO',
             ];
+        }
+
+        // Fondos Administrados (FIC, FPV, CESANTIAS): Valoración por tasa de rendimiento % E.A.
+        if (PortafolioInversionService::esProductoAdministrado($inversion->tipo)) {
+            $tasaEa = $validated['rentabilidad_real_ea'] ?? null;
+            if ($tasaEa !== null && $tasaEa !== '') {
+                $valor = PortafolioInversionService::calcularSaldoPorRendimiento(
+                    (float) $inversion->monto_inicial,
+                    (float) $tasaEa,
+                    $inversion->fecha_apertura,
+                    $fecha
+                );
+
+                return [
+                    'valor' => number_format($valor, 2, '.', ''),
+                    'precio_unitario' => (string) $tasaEa,
+                    'unidades' => null,
+                    'origen' => 'MANUAL',
+                ];
+            }
+
+            if (isset($validated['valor'])) {
+                $eaCalculada = PortafolioInversionService::calcularRendimientoRealEa(
+                    (float) $inversion->monto_inicial,
+                    (float) $validated['valor'],
+                    $inversion->fecha_apertura,
+                    $fecha
+                );
+
+                return [
+                    'valor' => (string) $validated['valor'],
+                    'precio_unitario' => (string) $eaCalculada,
+                    'unidades' => null,
+                    'origen' => 'MANUAL',
+                ];
+            }
+
+            throw ValidationException::withMessages([
+                'rentabilidad_real_ea' => 'Indique la rentabilidad real observada (% E.A.) reportada por el fondo a la fecha de corte.',
+            ]);
         }
 
         if (isset($validated['precio_unitario'])) {
