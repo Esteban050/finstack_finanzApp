@@ -3385,6 +3385,368 @@
           }
         }
       ]
+    },
+    {
+      "name": "70 · RF-053 Indicador de endeudamiento",
+      "item": [
+        {
+          "name": "70.1 GET /creditos/endeudamiento · indicador del mes con sus partes (RF-053)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-053 · la respuesta tiene la forma del contrato', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Endeudamiento calculado.');",
+                  "    const d = j.data;",
+                  "    const hoy = new Date();",
+                  "    const periodo = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');",
+                  "    pm.expect(d.periodo).to.eql(periodo);",
+                  "    pm.expect(d.pagos_mes.creditos).to.be.an('array');",
+                  "    pm.expect(d.ingresos_netos.meses).to.have.lengthOf(3);",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(c).to.have.all.keys('credito_id', 'banco', 'proposito', 'tipo_credito', 'numero_cuotas', 'cuota', 'seguros_cargos', 'total');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 · los totales salen de sus partes', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const suma = (xs, k) => xs.reduce((t, x) => t + Number(x[k]), 0);",
+                  "    pm.expect(Number(d.pagos_mes.total)).to.eql(suma(d.pagos_mes.creditos, 'total'));",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(Number(c.total)).to.eql(Number(c.cuota) + Number(c.seguros_cargos));",
+                  "    });",
+                  "    pm.expect(Number(d.ingresos_netos.total)).to.eql(suma(d.ingresos_netos.meses, 'ingreso_neto'));",
+                  "    pm.expect(Number(d.ingresos_netos.promedio)).to.eql(Math.round(Number(d.ingresos_netos.total) / 3));",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 / RN-053.3 · indicador = pagos / promedio × 100, o null sin ingresos', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const promedio = Number(d.ingresos_netos.promedio);",
+                  "    if (promedio === 0) {",
+                  "        pm.expect(d.indicador_porc).to.be.null;",
+                  "    } else {",
+                  "        const esperado = Math.round(Number(d.pagos_mes.total) * 10000 / promedio) / 100;",
+                  "        pm.expect(Number(d.indicador_porc)).to.be.closeTo(esperado, 0.005);",
+                  "        pm.expect(d.indicador_porc).to.match(/^\\d+\\.\\d{2}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('endeudamiento_total_antes', pm.response.json().data.pagos_mes.total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/endeudamiento",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "endeudamiento"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.2 POST /creditos · $ 1.200.000 a tasa 0 con cuota el 1.º de este mes (RF-048)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Desembolso el 1.º del mes anterior: la cuota 1 vence el 1.º de este mes.",
+                  "const hoy = new Date();",
+                  "const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);",
+                  "pm.collectionVariables.set('fecha_inicio_endeudamiento', inicio.getFullYear() + '-' + String(inicio.getMonth() + 1).padStart(2, '0') + '-01');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-048 · registra el crédito de cuota $ 100.000', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.calculo.cuota).to.eql('100000');",
+                  "    pm.collectionVariables.set('credito_endeudamiento_id', d.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_credito\": \"LIBRE_INVERSION\",\n  \"banco\": \"Banco Prueba\",\n  \"proposito\": \"Prueba de endeudamiento\",\n  \"monto\": \"1200000\",\n  \"tasa\": \"0\",\n  \"tipo_tasa\": \"EA\",\n  \"plazo_meses\": 12,\n  \"periodicidad\": \"MENSUAL\",\n  \"fecha_inicio\": \"{{fecha_inicio_endeudamiento}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/creditos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.3 GET /creditos/endeudamiento · el crédito nuevo suma su cuota del mes (RN-053.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-053 · la respuesta tiene la forma del contrato', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Endeudamiento calculado.');",
+                  "    const d = j.data;",
+                  "    const hoy = new Date();",
+                  "    const periodo = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');",
+                  "    pm.expect(d.periodo).to.eql(periodo);",
+                  "    pm.expect(d.pagos_mes.creditos).to.be.an('array');",
+                  "    pm.expect(d.ingresos_netos.meses).to.have.lengthOf(3);",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(c).to.have.all.keys('credito_id', 'banco', 'proposito', 'tipo_credito', 'numero_cuotas', 'cuota', 'seguros_cargos', 'total');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 · los totales salen de sus partes', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const suma = (xs, k) => xs.reduce((t, x) => t + Number(x[k]), 0);",
+                  "    pm.expect(Number(d.pagos_mes.total)).to.eql(suma(d.pagos_mes.creditos, 'total'));",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(Number(c.total)).to.eql(Number(c.cuota) + Number(c.seguros_cargos));",
+                  "    });",
+                  "    pm.expect(Number(d.ingresos_netos.total)).to.eql(suma(d.ingresos_netos.meses, 'ingreso_neto'));",
+                  "    pm.expect(Number(d.ingresos_netos.promedio)).to.eql(Math.round(Number(d.ingresos_netos.total) / 3));",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 / RN-053.3 · indicador = pagos / promedio × 100, o null sin ingresos', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const promedio = Number(d.ingresos_netos.promedio);",
+                  "    if (promedio === 0) {",
+                  "        pm.expect(d.indicador_porc).to.be.null;",
+                  "    } else {",
+                  "        const esperado = Math.round(Number(d.pagos_mes.total) * 10000 / promedio) / 100;",
+                  "        pm.expect(Number(d.indicador_porc)).to.be.closeTo(esperado, 0.005);",
+                  "        pm.expect(d.indicador_porc).to.match(/^\\d+\\.\\d{2}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 · el crédito nuevo aparece y sube el total en $ 100.000', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const c = d.pagos_mes.creditos.find(x => x.credito_id === pm.collectionVariables.get('credito_endeudamiento_id'));",
+                  "    pm.expect(c, 'el crédito nuevo en pagos_mes').to.not.be.undefined;",
+                  "    pm.expect(c.numero_cuotas).to.eql(1);",
+                  "    pm.expect(c.total).to.eql('100000');",
+                  "    pm.expect(Number(d.pagos_mes.total)).to.eql(Number(pm.collectionVariables.get('endeudamiento_total_antes')) + 100000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/endeudamiento",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "endeudamiento"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.4 DELETE /creditos/{id} · limpieza del crédito de prueba (RNG-07)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RNG-07 · elimina el crédito de prueba', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/{{credito_endeudamiento_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "{{credito_endeudamiento_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "70.5 GET /creditos/endeudamiento · el crédito eliminado ya no cuenta (RN-053.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RF-053 · la respuesta tiene la forma del contrato', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.mensaje).to.eql('Endeudamiento calculado.');",
+                  "    const d = j.data;",
+                  "    const hoy = new Date();",
+                  "    const periodo = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');",
+                  "    pm.expect(d.periodo).to.eql(periodo);",
+                  "    pm.expect(d.pagos_mes.creditos).to.be.an('array');",
+                  "    pm.expect(d.ingresos_netos.meses).to.have.lengthOf(3);",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(c).to.have.all.keys('credito_id', 'banco', 'proposito', 'tipo_credito', 'numero_cuotas', 'cuota', 'seguros_cargos', 'total');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 · los totales salen de sus partes', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const suma = (xs, k) => xs.reduce((t, x) => t + Number(x[k]), 0);",
+                  "    pm.expect(Number(d.pagos_mes.total)).to.eql(suma(d.pagos_mes.creditos, 'total'));",
+                  "    d.pagos_mes.creditos.forEach(function (c) {",
+                  "        pm.expect(Number(c.total)).to.eql(Number(c.cuota) + Number(c.seguros_cargos));",
+                  "    });",
+                  "    pm.expect(Number(d.ingresos_netos.total)).to.eql(suma(d.ingresos_netos.meses, 'ingreso_neto'));",
+                  "    pm.expect(Number(d.ingresos_netos.promedio)).to.eql(Math.round(Number(d.ingresos_netos.total) / 3));",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 / RN-053.3 · indicador = pagos / promedio × 100, o null sin ingresos', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    const promedio = Number(d.ingresos_netos.promedio);",
+                  "    if (promedio === 0) {",
+                  "        pm.expect(d.indicador_porc).to.be.null;",
+                  "    } else {",
+                  "        const esperado = Math.round(Number(d.pagos_mes.total) * 10000 / promedio) / 100;",
+                  "        pm.expect(Number(d.indicador_porc)).to.be.closeTo(esperado, 0.005);",
+                  "        pm.expect(d.indicador_porc).to.match(/^\\d+\\.\\d{2}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('RN-053.1 · el total vuelve al valor inicial', function () {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.pagos_mes.creditos.map(x => x.credito_id)).to.not.include(pm.collectionVariables.get('credito_endeudamiento_id'));",
+                  "    pm.expect(d.pagos_mes.total).to.eql(pm.collectionVariables.get('endeudamiento_total_antes'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrf}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/creditos/endeudamiento",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "creditos",
+                "endeudamiento"
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -3460,6 +3822,21 @@
     },
     {
       "key": "fecha_hoy",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "endeudamiento_total_antes",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "credito_endeudamiento_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_inicio_endeudamiento",
       "value": "",
       "type": "string"
     }

@@ -9,6 +9,7 @@ use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\AlertaCreditoService;
 use App\Services\BitacoraService;
 use App\Services\CreditoService;
+use App\Services\EndeudamientoService;
 use App\Services\PagoCreditoService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -255,6 +256,19 @@ class CreditoController extends Controller
                 ...$this->presentar($credito, situacion: $situacion),
                 'estado_cuenta' => PagoCreditoService::estadoCuenta($credito, $situacion),
             ],
+        ]);
+    }
+
+    /**
+     * RF-053 / RN-053.1 / RN-053.3: indicador de endeudamiento del mes actual
+     * con sus dos partes (pagos del mes por crédito e ingresos netos de los
+     * últimos meses completos). Sin semáforo ni umbrales: los pone el frontend.
+     */
+    public function endeudamiento(): JsonResponse
+    {
+        return response()->json([
+            'mensaje' => 'Endeudamiento calculado.',
+            'data' => EndeudamientoService::calcular(Auth::id()),
         ]);
     }
 

@@ -720,6 +720,7 @@ entorno. Las peticiones guardan los ids que usan las siguientes.
 | 40 · Fase 2 | 18 | Plan guardado (RF-22, RF-26), imputación (RF-29 a RF-32), abono (RF-34, RF-35), mora (RF-38, RF-39), reverso (RF-33) y el gasto de cada pago |
 | 50 · Fase 3 | 8 | Sistema alemán, simulación inversa (RF-17), comparación de escenarios (RF-18) |
 | 60 · Fase 4 | 10 | Primer pago irregular (RF-12, RF-14), seguros y cargos (RF-16, RF-21), saldo para cancelar, prepago y paz y salvo (RF-37), usura (RF-07), capacidad de pago y financiación (RN-03, RN-07) |
+| 70 · RF-053 Endeudamiento | 5 | Indicador del mes con sus dos partes (RN-053.1), `null` sin ingresos (RN-053.3); un crédito nuevo suma su cuota y al eliminarlo deja de contar |
 
 ## Datos
 
@@ -730,8 +731,13 @@ entorno. Las peticiones guardan los ids que usan las siguientes.
   colección.
 - Las fechas de pago de la carpeta 60 son las del día en que se corre: un pago
   no puede tener fecha futura.
+- La carpeta 70 no espera cifras fijas: comprueba que los totales salgan de sus
+  partes y compara el total antes y después de registrar su crédito, así que
+  sirve con cualquier dato de la cuenta.
 
 ## Estado de verificación
 
 Comprobado el 10/11/2026: **la colección completa se ejecutó con Postman CLI**
 contra `http://localhost:8000`: **62 peticiones, 71 aserciones, 0 fallos**.
+Tras agregar la carpeta 70 (10/11/2026, con Newman): **67 peticiones, 84
+aserciones, 0 fallos**.

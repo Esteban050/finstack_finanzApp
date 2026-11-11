@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Credito;
 use App\Models\CuotaCredito;
-use App\Models\Ingreso;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\TasaUsura;
 use Carbon\CarbonImmutable;
@@ -192,22 +191,12 @@ class AlertaCreditoService
 
     /**
      * Créditos RN-03 / RN-07: promedio mensual de los ingresos netos
-     * confirmados de los últimos meses calendario completos (MOD-03).
+     * confirmados de los últimos meses calendario completos (MOD-03). Es el
+     * mismo promedio del indicador de endeudamiento (RN-053.1).
      */
     public static function ingresoMensualPromedio(string $usuarioId): string
     {
-        $meses = (int) config('scfp.creditos.meses_promedio_ingresos');
-        $hoy = CarbonImmutable::today();
-        $desde = $hoy->startOfMonth()->subMonthsNoOverflow($meses);
-        $hasta = $hoy->startOfMonth()->subDay();
-
-        $total = Ingreso::withoutGlobalScope(DelUsuarioAutenticado::class)
-            ->where('usuario_id', $usuarioId)
-            ->where('estado', 'CONFIRMADO')
-            ->whereBetween('fecha_recepcion', [$desde->toDateString(), $hasta->toDateString()])
-            ->sum('monto_neto_cop');
-
-        return bcdiv((string) $total, (string) $meses, 0);
+        return EndeudamientoService::ingresosNetosPorMes($usuarioId, CarbonImmutable::today())['promedio'];
     }
 
     /**

@@ -253,6 +253,8 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::post('/calcular-monto', [CreditoController::class, 'calcularMonto'])->name('calcular-monto');
         // Créditos RF-18: comparar hasta tres escenarios
         Route::post('/comparar', [CreditoController::class, 'comparar'])->name('comparar');
+        // RF-053: indicador de endeudamiento del mes y sus partes
+        Route::get('/endeudamiento', [CreditoController::class, 'endeudamiento'])->name('endeudamiento');
 
         // RF-048: registro de créditos; el detalle trae la tabla (RF-049)
         Route::get('/', [CreditoController::class, 'index'])->name('index');
