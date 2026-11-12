@@ -19,6 +19,8 @@ function sg_e(mixed $value): string {
 final class SgAttributes {
     public function __construct(public array $values) {}
     public function has(string $key): bool { return array_key_exists($key, $this->values); }
+    public function get(string $key, mixed $default = null): mixed { return $this->values[$key] ?? $default; }
+    public function except(array|string $keys): self { return new self(array_diff_key($this->values, array_flip((array) $keys))); }
     public function class(string|array $classes): self {
         if (is_array($classes)) $classes = implode(' ', array_map(fn($key, $value) => is_int($key) ? $value : ($value ? $key : ''), array_keys($classes), $classes));
         return $this->merge(['class' => $classes]);
@@ -56,7 +58,7 @@ function route(string $name, string $id = ''): string {
         'gastos.index' => '/gastos', 'gastos.categorias.index' => '/gastos/categorias',
         'seguridad-social.index' => '/seguridad-social', 'inversiones.index' => '/inversiones',
         'logout' => '/logout', 'politica.mostrar' => '/politica-datos', 'ingresos.fuentes.index' => '/ingresos/fuentes',
-        'profile.show' => '/perfil',
+        'profile.show' => '/perfil', 'creditos.index' => '/creditos', 'renta.index' => '/renta',
         'ingresos.confirmar' => '/ingresos/'.$id.'/confirmar', 'ingresos.edit' => '/ingresos/'.$id.'/editar', 'ingresos.destroy' => '/ingresos/'.$id,
         default => throw new RuntimeException('Ruta de fixture no declarada: '.$name),
     };

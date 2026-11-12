@@ -14,6 +14,7 @@ use App\Services\PagoCreditoService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -26,7 +27,7 @@ use Illuminate\Validation\ValidationException;
  * mensual y se responde en sus tres expresiones (documento de créditos,
  * citado como "Créditos RF-xx": RF-05, RF-06, RF-10, RF-11 y RN-08).
  *
- * Solo responde JSON: esta entrega no incluye interfaz Blade.
+ * Conserva el contrato JSON y sirve la interfaz Blade en la navegación HTML.
  */
 class CreditoController extends Controller
 {
@@ -180,8 +181,11 @@ class CreditoController extends Controller
      * RF-048: Créditos del Usuario, del más reciente al más antiguo (RNG-10),
      * cada uno con su cuota y su deuda total.
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse|View
     {
+        if (! $request->expectsJson()) {
+            return view('creditos.index', ['creditoId' => null]);
+        }
         $porPagina = (int) $request->query('por_pagina', 20);
         if (! in_array($porPagina, self::POR_PAGINA, true)) {
             $porPagina = 20;
@@ -196,7 +200,10 @@ class CreditoController extends Controller
         return response()->json([
             'mensaje' => 'Créditos consultados.',
             'data' => [
-                'creditos' => collect($creditos->items())->map(fn (Credito $c) => $this->presentar($c, conTabla: false, conAlertas: false))->all(),
+                'creditos' => collect($creditos->items())->map(fn (Credito $c) => [
+                    ...$this->presentar($c, conTabla: false, conAlertas: false),
+                    'estado_cuenta' => PagoCreditoService::estadoCuenta($c, PagoCreditoService::situacion($c, CarbonImmutable::today())),
+                ])->all(),
                 'meta' => [
                     'pagina_actual' => $creditos->currentPage(),
                     'por_pagina' => $creditos->perPage(),
@@ -245,9 +252,12 @@ class CreditoController extends Controller
      * RF-049 / Créditos RF-21, RF-25, RF-41..43: el crédito con su plan
      * vigente (estado y lo pagado de cada cuota) y su estado de cuenta a hoy.
      */
-    public function show(string $id): JsonResponse
+    public function show(string $id, Request $request): JsonResponse|View
     {
         $credito = $this->creditoPropio($id);
+        if (! $request->expectsJson()) {
+            return view('creditos.index', ['creditoId' => $credito->id]);
+        }
         $situacion = PagoCreditoService::situacion($credito, CarbonImmutable::today());
 
         return response()->json([
@@ -264,8 +274,11 @@ class CreditoController extends Controller
      * con sus dos partes (pagos del mes por crédito e ingresos netos de los
      * últimos meses completos). Sin semáforo ni umbrales: los pone el frontend.
      */
-    public function endeudamiento(): JsonResponse
+    public function endeudamiento(Request $request): JsonResponse|View
     {
+        if (! $request->expectsJson()) {
+            return view('creditos.index', ['creditoId' => null]);
+        }
         return response()->json([
             'mensaje' => 'Endeudamiento calculado.',
             'data' => EndeudamientoService::calcular(Auth::id()),

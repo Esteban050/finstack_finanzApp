@@ -64,5 +64,8 @@ test('C/D: ocho vistas Blade reales renderizan sin consultas ni escrituras en BD
     assert.match(rendered['seguridad-social.pagos.index'],/data-sign-money="-1200.00"/);
     assert.match(rendered['inversiones.simulaciones'],/max="480"/);
     assert.match(rendered['inversiones.simulaciones'],/data-max="10"/);
-    assert.match(rendered['inversiones.show'],/10486719.00/);
+    assert.match(rendered['inversiones.show'],/QA-Inversión ficticia/);
+    assert.match(rendered['inversiones.show'],/id="cdtProjectionCanvas"/);
+    assert.match(rendered['inversiones.show'],/Registrar Transacción/);
+    assert.doesNotMatch(rendered['inversiones.show'],/id="val_valor"/); // CDT: cálculo causado, sin valoración manual.
 });

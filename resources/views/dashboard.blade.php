@@ -45,5 +45,12 @@
             </div>
         </div>
     </section>
+    <section class="ui-card" data-credit-dashboard="{{ route('creditos.index') }}" aria-labelledby="dashboard-credit-title">
+        <h2 id="dashboard-credit-title">Endeudamiento del mes actual</h2>
+        <div data-credit-widget-loading><x-ui.skeleton :lines="2" /></div>
+        <div data-credit-widget-result aria-live="polite"></div>
+        <p data-credit-widget-status role="alert" hidden></p>
+        <a href="{{ route('creditos.endeudamiento') }}">Ver detalle del endeudamiento</a>
+    </section>
 </div>
 @endsection

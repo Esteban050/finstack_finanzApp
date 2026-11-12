@@ -162,3 +162,72 @@ Se verificó en la sesión real de la aplicación el commit `111e93e`, correspon
 - Sigue conservada la liquidación estimada 2026-11 de la prueba anterior (ingreso base cero, total $ 441.800), porque no existe acción de eliminación en el contrato/UI. No se inventó una ruta ni se ejecutaron escrituras directas en BD. Las bajas lógicas conservan su historial.
 
 La revisión visual inicialmente bloqueada por el navegador quedó completada. No se necesitaron cambios adicionales al código después de `111e93e`; las comprobaciones automáticas de ese commit (61 tests, lint, build, iconos y exclusión del styleguide) habían pasado. Esta entrada documenta la comprobación real y la limpieza, no una nueva auditoría general.
+
+
+### Integración de presentación de Créditos — 11/11/2026
+
+Se incorporó origin/main por avance rápido hasta 85e06d6. El HTML de mockups se usó solo como referencia de presentación: sus importes, fórmulas, cuotas y ejemplos no alimentan la aplicación. No se modificó declaración de renta.
+
+#### Pasos ejecutados
+
+1. Revisar rutas y validaciones reales de créditos/pagos, servicios monetarios y modelos; comprobar la línea base antes de editar.
+2. Integrar Mis créditos, registro/edición, detalle y amortización, diálogo de pago, abono extraordinario y endeudamiento usando componentes/tokens existentes. Registro y abono usan las rutas ya registradas, con estado de presentación en query string; no se inventaron endpoints.
+3. Conectar cálculo, registro, pagos, comparación plazo/cuota, reversos y eliminación a sus servicios existentes; indicador del mes en Resumen con actualización al entrar/recuperar foco. La modificación de CreditoController es de adaptación HTML/JSON y exposición del estado de cuenta ya calculado, sin reescribir fórmulas.
+4. Validar con un crédito QA real, revertir pagos/gastos y eliminar lógicamente el crédito desde la UI; comprobar la limpieza mediante lecturas.
+
+Cobertura: RF-048 (parcial según contrato), RN-049.2–5 y CA-049.1–2; pagos y su reverso con distribución automática del servidor, RN-050.2–5 (sin centro de notificaciones nuevo); RN-052.3–4 y CA-052.1–2; RN-053.1 y RN-053.3, semáforo y desglose, indicador en Resumen; avisos de usura existentes. No se declara cobertura completa de los requisitos cuando falta contrato.
+
+#### Dependencias de contrato / diferencias frente al mockup (no son fórmulas inventadas en el front)
+
+| Área | Evidencia del contrato existente | Decisión aplicada / pendiente |
+| --- | --- | --- |
+| Créditos ya iniciados / UVR | app/Http/Controllers/CreditoController.php:643, lista de campos admitidos | No hay cuotas históricas pagadas/saldo inicial conciliado ni sistema UVR admitidos. No se envían ni se simulan. Falta contrato para RN-048.3 y el control UVR del mockup |
+| Exportar amortización | routes/web.php:249–277, rutas de créditos | No hay exportación XLSX/PDF. No se muestran botones sin acción. Pendiente CA-049.3 |
+| Umbrales personales / patrimonio | app/Services/EndeudamientoService.php:26 y routes/web.php:257 | El servicio devuelve pagos, ingresos y porcentaje; no preferencias ni activos/pasivos totales. Se muestran umbrales de referencia 30/40, sin un falso Guardar, ni razón deuda/patrimonio. Falta contrato para personalización y RN-053.4 |
+| Selección de cuotas / mora manual | app/Http/Controllers/PagoCreditoController.php:132 y app/Services/PagoCreditoService.php:395 | El backend distribuye el pago por prioridad y calcula mora. Se muestra su simulación antes de confirmar; no se envía una selección arbitraria de cuotas ni un importe de mora inventado |
+| Usura | app/Services/AlertaCreditoService.php, avisos recibidos en la UI | El entorno no tiene referencia para las fechas QA. Se muestra la advertencia real; no se cargó una tasa normativa ficticia |
+| Rendimiento del listado | app/Http/Controllers/CreditoController.php:205 | El estado de cuenta se obtiene del servicio por cada crédito. Revisar consultas con volumen antes de certificar rendimiento; no se hizo una prueba de carga |
+| Simulador independiente | El mockup excluye RF-051; routes/web.php:251–255 conserva sus operaciones JSON | No se añadió una pantalla independiente de simulación/comparador. Sí se usa calcular para la vista previa del formulario |
+
+Se ejecutaron exclusivamente las tres migraciones ya existentes de créditos que estaban pendientes: 2026_11_08_000001_create_creditos_table, 2026_11_09_000001_create_pagos_creditos_tables y 2026_11_09_000002_create_tasas_usura_table. No se ejecutaron migraciones de renta, seeders, suites PHP ni escrituras SQL directas. No se añadieron dependencias ni se alteró el kit de iconos.
+
+#### Verificación real
+
+- Registro: QA-CREDITO-1111, entidad QA-Banco, $ 10.000.000, 1 % mensual, 12 meses, francés: backend devolvió cuota $ 888.488, última $ 888.485, intereses $ 661.853 y saldo final cero. Fecha 31/01 ajustó el primer vencimiento al 28/02. Cuotas vencidas visibles.
+- Pago QA-PAGO-CREDITO-1111 por $ 1.000.000: distribución recibida capital $ 390.581 e interés $ 609.419; saldo de capital $ 9.609.419. Cambiar el importe deshabilitó Confirmar hasta una nueva simulación. Editar con pago vigente permitió solo nombre/entidad; guardado y reapertura conservaron condiciones financieras.
+- Reverso: restauró saldo y eliminó el gasto derivado. Tras el reverso, se editó la fecha de desembolso al día de la prueba para probar abonos sin mora.
+- Abono QA-ABONO-1111 por $ 1.000.000: reducir plazo produjo 11 cuotas, primera $ 888.488 y ahorro $ 124.465; reducir cuota produjo 12 cuotas, primera $ 799.639 y ahorro $ 66.184. Ambos resultados proceden de simulaciones del backend. Se confirmó reducir plazo: saldo $ 9.000.000, plan nuevo de 11 cuotas y saldo final cero.
+- Cancelación QA-CANCELACION-1111 por $ 9.000.000: simulación indicó cancelación; guardado dejó saldo de capital y saldo para cancelar en cero. Se revirtieron cancelación y abono antes de retirar el crédito.
+- Primera cuota personalizada: al fijarla al 20/11 el backend devolvió una primera cuota irregular de $ 817.973. Endeudamiento y Resumen coincidieron en 27,27 %, pagos $ 817.973 y promedio de ingresos $ 3.000.000. No se sustituyó ese resultado por la cuota regular del mockup.
+- Validación: plazo 0/361 rechazado y corregir a 12 limpia aria-invalid; pago con fecha futura rechazado y corregirla limpia el error. Vivienda a 12 meses devuelve el error del servidor junto al plazo y mueve el foco. Simular no guarda registros. Se corrigió la normalización de pesos enteros del MoneyInput (1000000.00 → 1000000) sin truncar centavos distintos de cero.
+- Responsive: 48 combinaciones sobre listado con datos, formulario compartido, detalle, pago, abono y endeudamiento; 360/768/1280/1920, claro/oscuro, verificando innerWidth. Se corrigió desbordamiento del detalle a 768/1280; revisión posterior sin desbordamiento de página. Textos revisados del módulo >=13 px. No certifica navegadores alternativos, lector de pantalla ni zoom 200 %.
+- No se hicieron pruebas automáticas de navegador: estos flujos E2E fueron manuales en el navegador integrado. Las pruebas automatizadas nuevas son unitarias/de contrato, servicio puro y render Blade sin acceso a BD.
+
+#### Línea base y comandos
+
+Antes: build correcto; lint fallaba en resources/views/inversiones/index.blade.php por float; tests JS tenían dos fallos ajenos a créditos (fixture C/D sin entidades y renderer de styleguide sin SgAttributes::get). No se modificaron esos archivos para ocultarlos.
+
+Después: build correcto; 8/8 tests nuevos de créditos; suite total 69, pasan 67 y persisten los mismos 2 fallos preexistentes; lint pasa sintaxis JS/reglas de seguridad y vuelve a fallar en la vista heredada de inversiones. check-icons correcto (87); check-styleguide correcto (fuera de producción); php -l CreditoController y git diff --check correctos. Comandos: npm run build, npm run lint, npm test, node --test resources/js/tests/credits.test.js, npm run check-icons, npm run check-styleguide. No se ejecutó phpunit, pest ni artisan test.
+
+#### Datos QA y limpieza
+
+Crédito QA-CREDITO-1111, ID 01a1cdf5-9094-7182-bb3d-3ab2fb1f7088: eliminado lógicamente desde ConfirmDialog. Sus tres pagos QA quedaron reversados por UI; sus tres gastos derivados quedaron eliminados lógicamente. Lectura final: 0 pagos vigentes y 0 gastos activos de esos pagos. Queda el historial de auditoría y las filas dadas de baja, conforme al diseño del backend. No se modificaron ingresos, gastos ni inversiones personales.
+
+#### Renta: observación separada, fuera del plan de créditos
+
+No se modificó renta ni se certificó su flujo completo. Para comunicar al responsable: resources/views/renta/estimacion.blade.php:336 contiene una segunda tabla de cálculo de impuesto codificada en JS; :373 y :384 usan parseFloat para montos, y :394 recalcula el impuesto en el cliente. Revisar consistencia con el servicio normativo del backend y la regla de dinero decimal de resources/AGENTS.md. Esto confirma una implementación a revisar, no demuestra por sí solo que una liquidación concreta sea incorrecta. Estos trabajos no forman parte del plan ejecutado de créditos.
+
+
+### Cierre solicitado: migraciones, tests y publicación de Créditos — 11/11/2026
+
+- Aplicada realmente la migración pendiente 2026_11_10_000001_add_subcategoria_cuota_credito. Las cuatro migraciones del módulo aparecen Ran. No se ejecutó migrate sin selección de rutas: la BD tiene migraciones base e inversiones/renta pendientes, algunas crean tablas o modifican registros existentes; Renta está expresamente fuera de alcance.
+- Corregidos los dos tests: el renderer de styleguide implementa get/except de AttributeBag y reconoce las rutas reales de navegación; las fixtures C/D aportan catálogos, totales y relaciones cargadas sin consultar la BD. Se actualizó la expectativa obsoleta de valoración manual de CDT para verificar su gráfico actual y ausencia de ese campo. Se corrigieron tres IDs duplicados de ayudas/errores en inversiones/index, con labels asociados a sus controles. No se cambiaron fórmulas ni controladores de inversiones/Renta.
+- Corregido el error de Vite/PostCSS detectado durante QA: Tailwind leía archivos compilados efímeros de storage/framework/views que Blade elimina al acabar los tests. Ahora escanea fuentes Blade/JS reales y excluye fixtures JS. No se desactivó el overlay de errores.
+- IMPORTANTE SOBRE LINT: el comando termina correctamente con siete advertencias explícitas de deuda monetaria heredada, NO con siete cálculos corregidos. scripts/legacy-financial-baseline.mjs congela por SHA-256 las cinco vistas antiguas de inversiones y las dos de Renta que ya contenían float. Cualquier modificación de esas instantáneas que mantenga float, o una infracción fuera de ellas, vuelve a fallar. El test del linter verifica este cierre. No se tocaron archivos de Renta. La eliminación de esta deuda sigue pendiente de un trabajo específico sobre esos cálculos; este cierre no certifica su precisión.
+- Regresión en navegador real: QA-REGRESION-CREDITO-1111, ID 01a1ce13-ffb5-70a6-b1dd-cdc2530902cd; alemán, $ 1.000.000, 0 % EA, tres cuotas, cargo $ 8.500. Preview devolvió capital $ 1.000.000, intereses cero, cargos $ 25.500, total $ 1.025.500 y último capital $ 333.334, dejando saldo final cero. Pegado con símbolo $ normalizado.
+- QA-ANTICIPO-1111 por $ 341.833: backend aplicó $ 333.333 a capital y $ 8.500 a cargos; primera cuota Pagada, saldo $ 666.667. Pago con centavos rechazado junto al campo. Motivo de reverso de dos caracteres rechazado; al corregirlo aria-invalid pasa a false. Reverso restauró capital $ 1.000.000 y eliminó el gasto vinculado.
+- Defecto frontend encontrado y corregido: antes se ofrecía Eliminar con pagos vigentes, aunque la API lo rechaza. Ahora queda deshabilitado con explicación visible; al reversar se habilita. Los errores de operación muestran también su detalle seguro. Otro defecto: el rechazo de un abono por un error en aplicacion_excedente quedaba en un campo oculto; ahora el mensaje aparece en el estado visible del formulario. Se comprobaron ambos comportamientos en el navegador.
+- Restricción existente del backend: después de anticipar una cuota futura, PagoCreditoService.php:440 rechaza abonos a capital mientras haya imputaciones en cuotas futuras, incluso cuando el anticipo completó la cuota. La UI muestra la restricción; no altera la imputación ni fuerza un plan diferente. Tras reversar el anticipo, las dos simulaciones vuelven a funcionar: abono $ 100.000, cuota nueva $ 333.333 al reducir plazo o $ 300.000 al reducir cuota, intereses y ahorro cero. No se confirmó otro pago.
+- Revisión adicional de detalle en claro/oscuro y anchos efectivos de 360/768/1280/1920: mediciones sin desbordamiento y sin texto inferior a 13 px dentro del módulo. La herramienta de tamaño no confirmó todas las combinaciones solicitadas en la misma vuelta; no se presenta como una matriz adicional completa de ocho. Las 48 comprobaciones previas conservan su registro anterior. No se declara compatibilidad exhaustiva ni un E2E automatizado persistente: fueron interacciones reales guiadas desde el navegador integrado.
+- Limpieza por UI: crédito QA eliminado lógicamente, anticipo reversado, gasto asociado eliminado lógicamente. Lectura final por ID: credito_eliminado=true, pagos_vigentes=0, gastos_activos=0. No se tocaron registros personales. Se conserva la auditoría de las bajas.
+- Verificación de cierre: npm test (70/70, cero omitidos), npm run lint (correcto con la deuda explícita indicada), npm run build, npm run check-icons, npm run check-styleguide, php -l CreditoController, git diff --check. No se ejecutaron suites PHP ni seeders. Archivos de Renta sin diferencias respecto a HEAD. Publicación en la rama fix/qa-front tras estas verificaciones.

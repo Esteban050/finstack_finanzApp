@@ -1,0 +1,15 @@
+.credit-page { max-width: 100%; }
+.credit-page > section, .credit-page form[data-credit-form], .credit-page [data-credit-detail], .credit-page [data-credit-debt] { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-6); min-width: 0; }
+.credit-page [data-credit-detail] > *, .credit-page [data-credit-indicator], .credit-page [data-credit-list] { min-width: 0; }
+.credit-page [data-credit-screen=list] { gap: var(--ui-space-6); }
+.credit-page .ui-table-scroll { max-width: 100%; overflow-x: auto; }
+.credit-page .ui-table td, .credit-page .ui-table th { overflow-wrap: normal; word-break: normal; }
+.credit-page .ui-table td.ui-number { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.credit-page [data-credit-status] { padding: var(--ui-space-4); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
+.credit-page .credit-form-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1.5rem; }
+.credit-page [data-credit-payment-preview] { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+.credit-payment-dialog { width: min(58rem, calc(100vw - 2rem)); max-width: calc(100vw - 2rem); }
+.credit-page [data-credit-preview] { min-height: 4rem; margin-block: 1.5rem; }
+.credit-page [aria-busy=true] { cursor: progress; }
+.credit-page .ui-pagination select { min-height: 44px; }
+@media (max-width:767px) { .credit-page .ui-pagination { flex-wrap: wrap; } }

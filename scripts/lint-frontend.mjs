@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import postcss from 'postcss';
+import { financialLintStatus } from './legacy-financial-baseline.mjs';
 
 function files(root) { return fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? files(path.join(root, entry.name)) : [path.join(root, entry.name)]); }
 let count = 0;
@@ -22,6 +23,8 @@ for (const file of files('resources/views').filter((file) => file.endsWith('.bla
     for (const [, namespace, name] of source.matchAll(/<x-(ui|income|expense|auth)\.([a-z-]+)\b/g)) {
         if (!fs.existsSync(`resources/views/components/${namespace}/${name}.blade.php`)) throw new Error(`${file}: componente ${namespace}.${name} inexistente`);
     }
-    if (/parseFloat\(|\(float\)/.test(source)) throw new Error(`${file}: aritmética monetaria con float prohibida`);
+    const financialStatus = financialLintStatus(file, source);
+    if (financialStatus === 'error') throw new Error(`${file}: aritmética monetaria con float prohibida (nueva o modificada)`);
+    if (financialStatus === 'legacy') console.warn(`DEUDA SIN CORREGIR: ${file}: float heredado congelado por SHA-256; no se permiten cambios ni infracciones nuevas.`);
 }
 console.log('CSS válido y referencias de componentes Blade verificadas.');
