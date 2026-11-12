@@ -90,26 +90,80 @@ class PagoSeguridadSocialController extends Controller
     }
 
     /**
-     * Consulta los ingresos de honorarios o servicios del periodo cotizado
+     * Consulta los ingresos del periodo cotizado (rentas de trabajo o rentas de capital)
      * y los aportes sugeridos para autocompletar el formulario de pago PILA.
+     *
+     * Si el cotizante es rentista de capital, descuenta los gastos asociados antes
+     * de calcular el 40 % de IBC y aportes sugeridos.
      */
     public function ingresosPeriodo(Request $request): JsonResponse
     {
         $request->validate([
             'periodo' => ['required', 'string', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
+            'tipo_servicio' => ['nullable', 'string'],
+            'es_rentista' => ['nullable'],
+            'gastos' => ['nullable'],
         ], [
             'periodo.required' => 'El periodo cotizado es obligatorio.',
             'periodo.regex' => 'El periodo debe tener el formato AAAA-MM.',
         ]);
 
         $periodo = (string) $request->query('periodo');
-        $resultado = SeguridadSocialService::consultarIngresosPeriodoCotizado(Auth::id(), $periodo);
+        $esRentista = filter_var($request->query('es_rentista'), FILTER_VALIDATE_BOOLEAN)
+            || in_array(strtoupper((string) $request->query('tipo_servicio')), ['RENTISTA_CAPITAL', 'RENTISTA'], true);
+        $tipoCotizante = $esRentista ? 'RENTISTA_CAPITAL' : 'PRESTACION_SERVICIOS';
+        $gastos = self::limpiarMonto((string) ($request->query('gastos') ?? '0'));
+
+        $resultado = SeguridadSocialService::consultarIngresosPeriodoCotizado(
+            Auth::id(),
+            $periodo,
+            $tipoCotizante,
+            $gastos
+        );
 
         return response()->json([
             'ok' => true,
             'mensaje' => $resultado['mensaje'],
             'data' => $resultado,
         ]);
+    }
+
+    /**
+     * Limpia un valor monetario recibido por query o post (con o sin separadores de miles).
+     */
+    public static function limpiarMonto(?string $monto): string
+    {
+        if ($monto === null) {
+            return '0.00';
+        }
+
+        $monto = trim($monto);
+        if ($monto === '') {
+            return '0.00';
+        }
+
+        // Remover signos de moneda, letras y espacios
+        $monto = preg_replace('/[^\d.,]/', '', $monto);
+        if ($monto === '') {
+            return '0.00';
+        }
+
+        if (str_contains($monto, '.') && str_contains($monto, ',')) {
+            $monto = str_replace('.', '', $monto);
+            $monto = str_replace(',', '.', $monto);
+        } elseif (str_contains($monto, ',')) {
+            if (preg_match('/,\d{3}(,\d{3})*(\.|$)/', $monto)) {
+                $monto = str_replace(',', '', $monto);
+            } else {
+                $monto = str_replace(',', '.', $monto);
+            }
+        } elseif (preg_match('/^\d{1,3}(\.\d{3})+$/', $monto)) {
+            $monto = str_replace('.', '', $monto);
+        }
+
+        $limpio = preg_replace('/[^\d.]/', '', $monto);
+
+        return is_numeric($limpio) ? bcadd($limpio, '0', 2) : '0.00';
     }
 
     /**

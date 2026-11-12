@@ -26,10 +26,13 @@ class SeguridadSocialService
     /** RN-033.3 */
     public const AVISO_BAJO_SMMLV = 'Con ingresos inferiores a 1 SMMLV no existe obligación de cotizar como independiente; el cálculo mostrado es voluntario sobre 1 SMMLV.';
 
+    public const OCUPACION_RENTISTA = 'Rentista de capital';
+
     /** RF-033: ocupaciones del perfil (RF-008) que cotizan como independientes. */
     public const OCUPACIONES_INDEPENDIENTE = [
         'Independiente por cuenta propia',
         'Contratista por prestación de servicios',
+        'Rentista de capital',
     ];
 
     public const OCUPACION_ASALARIADO = 'Asalariado';
@@ -123,24 +126,40 @@ class SeguridadSocialService
     }
 
     /**
-     * Consulta los ingresos por honorarios o servicios (rentas de trabajo no asalariadas)
-     * del periodo cotizado y calcula los aportes sugeridos para el pago PILA.
+     * Consulta los ingresos del periodo cotizado y calcula los aportes sugeridos
+     * para el pago PILA, según sea prestación de servicios o rentista de capital.
+     *
+     * Si es rentista de capital, permite descontar los gastos asociados de los ingresos
+     * brutos antes de calcular el 40 % de IBC y aportes.
      *
      * Como PILA se paga mes vencido, el periodo cotizado (AAAA-MM) corresponde al mes en
      * el que se devengaron los ingresos.
      */
-    public static function consultarIngresosPeriodoCotizado(string $usuarioId, string $periodo): array
-    {
+    public static function consultarIngresosPeriodoCotizado(
+        string $usuarioId,
+        string $periodo,
+        string $tipoCotizante = 'PRESTACION_SERVICIOS',
+        string $gastos = '0'
+    ): array {
         $inicioMes = self::inicioDelPeriodo($periodo);
         $finMes = $inicioMes->endOfMonth();
 
-        $ingresos = Ingreso::query()
+        $esRentista = in_array(strtoupper($tipoCotizante), ['RENTISTA_CAPITAL', 'RENTISTA'], true);
+
+        $query = Ingreso::query()
             ->where('usuario_id', $usuarioId)
             ->confirmados()
-            ->where('clasificacion_tributaria', 'RENTAS_TRABAJO')
             ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $finMes->toDateString()])
-            ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario())
-            ->with('fuente:id,nombre')
+            ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario());
+
+        if ($esRentista) {
+            // Rentistas de capital: busca rentas de capital prioritariamente o rentas de trabajo
+            $query->whereIn('clasificacion_tributaria', ['RENTAS_CAPITAL', 'RENTAS_TRABAJO']);
+        } else {
+            $query->where('clasificacion_tributaria', 'RENTAS_TRABAJO');
+        }
+
+        $ingresos = $query->with('fuente:id,nombre')
             ->orderBy('fecha_recepcion')
             ->get();
 
@@ -149,15 +168,23 @@ class SeguridadSocialService
         $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
 
         if (! $tieneIngresos) {
+            $msg = $esRentista
+                ? "No se encontraron ingresos de rentas de capital o trabajo asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente."
+                : "No se encontraron ingresos de honorarios o servicios (rentas de trabajo) asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.";
+
             return [
                 'periodo' => $periodo,
+                'tipo_cotizante' => $esRentista ? 'RENTISTA_CAPITAL' : 'PRESTACION_SERVICIOS',
                 'tiene_ingresos' => false,
                 'cantidad_ingresos' => 0,
                 'total_ingresos' => '0.00',
+                'total_ingresos_brutos' => '0.00',
+                'gastos_asociados' => bcadd($gastos ?: '0', '0', 2),
+                'ingreso_neto' => '0.00',
                 'ingresos' => [],
                 'calculo' => null,
                 'liquidacion' => null,
-                'mensaje' => "No se encontraron ingresos de honorarios o servicios (rentas de trabajo) asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.",
+                'mensaje' => $msg,
             ];
         }
 
@@ -168,7 +195,11 @@ class SeguridadSocialService
             ->where('periodo', $periodo)
             ->first();
 
-        $calculo = self::calcularIndependiente($totalIngresos, $parametro, $perfil);
+        if ($esRentista) {
+            $calculo = self::calcularRentistaCapital($totalIngresos, $gastos, $parametro, $perfil);
+        } else {
+            $calculo = self::calcularIndependiente($totalIngresos, $parametro, $perfil);
+        }
 
         $listaIngresos = $ingresos->map(fn ($ing) => [
             'id' => $ing->id,
@@ -176,15 +207,26 @@ class SeguridadSocialService
             'fuente' => $ing->fuente?->nombre ?? 'Sin fuente',
             'monto' => (string) $ing->monto_bruto_cop,
             'descripcion' => $ing->descripcion ?? '',
+            'clasificacion' => $ing->clasificacion_tributaria,
         ])->values()->all();
+
+        $tipoMensaje = $esRentista ? 'rentas de capital o trabajo' : 'rentas de trabajo';
 
         return [
             'periodo' => $periodo,
+            'tipo_cotizante' => $esRentista ? 'RENTISTA_CAPITAL' : 'PRESTACION_SERVICIOS',
             'tiene_ingresos' => true,
             'cantidad_ingresos' => $ingresos->count(),
             'total_ingresos' => $totalIngresos,
+            'total_ingresos_brutos' => $totalIngresos,
+            'gastos_asociados' => $esRentista ? bcadd($gastos ?: '0', '0', 2) : '0.00',
+            'ingreso_neto' => $esRentista ? ($calculo['ingreso_neto'] ?? $totalIngresos) : $totalIngresos,
             'ingresos' => $listaIngresos,
             'calculo' => [
+                'tipo_cotizante' => $calculo['tipo_cotizante'] ?? 'PRESTACION_SERVICIOS',
+                'ingresos_brutos' => $totalIngresos,
+                'gastos_asociados' => $calculo['gastos_asociados'] ?? '0.00',
+                'ingreso_neto' => $calculo['ingreso_neto'] ?? $totalIngresos,
                 'ingreso_base' => $calculo['ingreso_base'],
                 'ibc' => $calculo['ibc'],
                 'salud' => $calculo['salud'],
@@ -202,7 +244,7 @@ class SeguridadSocialService
                 'arl' => (string) $liquidacion->arl,
                 'total' => (string) $liquidacion->total,
             ] : null,
-            'mensaje' => "Se encontraron {$ingresos->count()} ingreso(s) de rentas de trabajo en el periodo {$periodo}.",
+            'mensaje' => "Se encontraron {$ingresos->count()} ingreso(s) de {$tipoMensaje} en el periodo {$periodo}.",
         ];
     }
 
@@ -262,6 +304,52 @@ class SeguridadSocialService
                 'clase_riesgo_arl' => $tarifaArl === null ? null : $perfil?->clase_riesgo_arl,
                 'tarifa_arl' => $tarifaArl,
                 'pensionado' => $pensionado,
+            ]),
+            'aviso_legal' => self::AVISO_LEGAL,
+        ];
+    }
+
+    /**
+     * Cálculo de aportes a seguridad social para Rentista de Capital.
+     *
+     * A diferencia del contratista o independiente por prestación de servicios, el
+     * rentista de capital puede deducir los gastos procedentes o asociados de su actividad
+     * (por ejemplo reparaciones, administración o mantenimiento) antes de aplicar el 40 % de IBC.
+     *
+     * Base neta = max(0, Ingresos brutos − Gastos asociados)
+     * IBC = 40 % de la base neta, acotado entre 1 y 25 SMMLV al peso superior.
+     */
+    public static function calcularRentistaCapital(string $ingresosBrutos, string $gastos, ParametroNormativo $parametro, ?PerfilTributario $perfil): array
+    {
+        $brutos = bcadd($ingresosBrutos, '0', 2);
+        $gastosLimpios = bcadd($gastos ?: '0', '0', 2);
+
+        $baseNeta = bcsub($brutos, $gastosLimpios, 2);
+        if (bccomp($baseNeta, '0', 2) < 0) {
+            $baseNeta = '0.00';
+        }
+
+        $calculo = self::calcularIndependiente($baseNeta, $parametro, $perfil);
+        $smmlv = (string) $parametro->valor_smmlv;
+
+        return [
+            'tipo_cotizante' => 'RENTISTA_CAPITAL',
+            'ingresos_brutos' => $brutos,
+            'gastos_asociados' => $gastosLimpios,
+            'ingreso_neto' => $baseNeta,
+            'ingreso_base' => $baseNeta,
+            'ibc' => $calculo['ibc'],
+            'salud' => $calculo['salud'],
+            'pension' => $calculo['pension'],
+            'fsp' => $calculo['fsp'],
+            'arl' => $calculo['arl'],
+            'total' => $calculo['total'],
+            'avisos' => bccomp($baseNeta, $smmlv, 2) < 0 ? [self::AVISO_BAJO_SMMLV] : [],
+            'parametros_usados' => array_merge($calculo['parametros_usados'], [
+                'tipo_cotizante' => 'Rentista de capital',
+                'ingresos_brutos' => $brutos,
+                'gastos_asociados' => $gastosLimpios,
+                'ingreso_neto' => $baseNeta,
             ]),
             'aviso_legal' => self::AVISO_LEGAL,
         ];

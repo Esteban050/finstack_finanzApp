@@ -1,4 +1,9 @@
 @props(['payment' => null, 'prefix' => 'pila'])
+@php
+    $userProfile = auth()->user()?->perfilTributarioActivo;
+    $esRentistaPerfil = in_array(\App\Services\SeguridadSocialService::OCUPACION_RENTISTA, $userProfile?->ocupaciones ?? [], true);
+    $tipoServicioInicial = old('tipo_servicio', $esRentistaPerfil ? 'RENTISTA_CAPITAL' : 'PRESTACION_SERVICIOS');
+@endphp
 <div class="income-two-fields">
 <x-ui.field name="periodo" :id="$prefix.'-periodo'" label="Periodo cotizado" :required="true"><input id="{{ $prefix }}-periodo" name="periodo" type="month" required value="{{ old('periodo', $payment['periodo'] ?? now('America/Bogota')->startOfMonth()->subMonth()->format('Y-m')) }}"></x-ui.field>
 <x-ui.field name="fecha_pago" :id="$prefix.'-fecha'" label="Fecha de pago" :required="true"><input id="{{ $prefix }}-fecha" name="fecha_pago" type="date" data-date-no-future required value="{{ old('fecha_pago', substr($payment['fecha_pago'] ?? now('America/Bogota')->format('Y-m-d'),0,10)) }}"></x-ui.field>
@@ -8,10 +13,34 @@
 </div>
 <label class="ui-check"><input type="checkbox" name="es_correccion" value="1" @checked((string) old('es_correccion', $payment['es_correccion'] ?? false) === '1')> Planilla de corrección</label><p class="ui-help">La corrección registra la diferencia frente al pago original del periodo.</p>
 <div class="pila-autofill-box" data-pila-autofill-container>
+    <div class="income-two-fields" style="align-items: start;">
+        <x-ui.field name="tipo_servicio" :id="$prefix.'-tipo-servicio'" label="Tipo de cotizante / servicio" help="Selecciona si cotizas por honorarios o como rentista de capital.">
+            <select id="{{ $prefix }}-tipo-servicio" name="tipo_servicio" data-pila-service-select data-target-prefix="{{ $prefix }}">
+                <option value="PRESTACION_SERVICIOS" @selected($tipoServicioInicial === 'PRESTACION_SERVICIOS')>Prestación de servicios (Contratista / Independiente)</option>
+                <option value="RENTISTA_CAPITAL" @selected($tipoServicioInicial === 'RENTISTA_CAPITAL')>Rentista de capital (Arrendamientos, dividendos, etc.)</option>
+            </select>
+        </x-ui.field>
+
+        <div id="{{ $prefix }}-rentista-gastos-box" data-pila-rentista-box @if($tipoServicioInicial !== 'RENTISTA_CAPITAL') hidden style="display: none;" @endif>
+            <x-ui.money-input
+                name="gastos_asociados"
+                :id="$prefix.'-gastos-asociados'"
+                label="Gastos asociados deducibles"
+                help="Digita cuánto se gastó en reparaciones, administración o mantenimiento para descontarlo de los ingresos brutos."
+                :allow-zero="true"
+                value="0"
+            />
+        </div>
+    </div>
+
     <div class="pila-autofill-header">
         <div>
-            <h4 class="pila-autofill-title">Autocompletar desde ingresos de rentas de trabajo</h4>
-            <p class="ui-help">Consulta tus honorarios o servicios del mes cotizado y calcula automáticamente los aportes sugeridos.</p>
+            <h4 class="pila-autofill-title" data-pila-autofill-title>
+                {{ $tipoServicioInicial === 'RENTISTA_CAPITAL' ? 'Autocompletar aportes para Rentista de Capital' : 'Autocompletar desde ingresos de rentas de trabajo' }}
+            </h4>
+            <p class="ui-help" data-pila-autofill-desc>
+                {{ $tipoServicioInicial === 'RENTISTA_CAPITAL' ? 'Consulta tus ingresos, descuenta los gastos asociados registrados y calcula automáticamente el IBC (40% sobre la base neta) y los aportes sugeridos.' : 'Consulta tus honorarios o servicios del mes cotizado y calcula automáticamente los aportes sugeridos.' }}
+            </p>
         </div>
         <button type="button" class="ui-button ui-button--secondary" data-pila-autofill-btn data-url="{{ route('seguridad-social.pagos.ingresos-periodo') }}" data-target-prefix="{{ $prefix }}">
             <span data-pila-autofill-btn-text>Traer datos de ingresos</span>
@@ -27,8 +56,10 @@
         </div>
         <div class="pila-autofill-details" data-pila-autofill-details hidden>
             <div class="pila-autofill-metrics">
-                <span class="pila-metric-item">Total ingresos: <strong data-pila-metric-ingresos>$ 0</strong></span>
-                <span class="pila-metric-item">IBC estimado: <strong data-pila-metric-ibc>$ 0</strong></span>
+                <span class="pila-metric-item">Ingresos brutos: <strong data-pila-metric-ingresos>$ 0</strong></span>
+                <span class="pila-metric-item" data-pila-metric-gastos-wrapper hidden>Gastos asociados: <strong data-pila-metric-gastos>-$ 0</strong></span>
+                <span class="pila-metric-item" data-pila-metric-neto-wrapper hidden>Base neta: <strong data-pila-metric-neto>$ 0</strong></span>
+                <span class="pila-metric-item">IBC estimado (40%): <strong data-pila-metric-ibc>$ 0</strong></span>
                 <span class="pila-metric-item">Total aportes: <strong data-pila-metric-total>$ 0</strong></span>
             </div>
             <ul class="pila-autofill-items" data-pila-autofill-items></ul>

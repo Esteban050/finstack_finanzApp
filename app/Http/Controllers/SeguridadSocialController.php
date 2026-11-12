@@ -95,6 +95,9 @@ class SeguridadSocialController extends Controller
             || stripos($f->nombre, 'prestaci') !== false
             || stripos($f->nombre, 'honorario') !== false
             || stripos($f->nombre, 'contrat') !== false
+            || $f->clasificacion_tributaria === 'RENTAS_CAPITAL'
+            || stripos($f->tipoFuente?->nombre ?? '', 'arrendamiento') !== false
+            || stripos($f->tipoFuente?->nombre ?? '', 'capital') !== false
         ) || SeguridadSocialService::tieneOcupacion($perfil, SeguridadSocialService::OCUPACIONES_INDEPENDIENTE);
 
         $esDobleObligacion = $tieneSalario && $tienePrestacionServicios;
@@ -283,11 +286,22 @@ class SeguridadSocialController extends Controller
         $validated = $request->validate([
             'periodo' => $this->reglaPeriodo(),
             'ingreso_base' => $this->reglaMonto(permiteCero: true),
+            'es_rentista' => ['nullable'],
+            'tipo_servicio' => ['nullable', 'string'],
+            'gastos' => ['nullable'],
         ], $this->mensajes());
 
         [, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
 
-        $calculo = SeguridadSocialService::calcularIndependiente((string) $validated['ingreso_base'], $parametro, $perfil);
+        $esRentista = $request->boolean('es_rentista')
+            || in_array(strtoupper((string) $request->input('tipo_servicio')), ['RENTISTA_CAPITAL', 'RENTISTA'], true);
+
+        if ($esRentista) {
+            $gastos = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('gastos') ?? '0'));
+            $calculo = SeguridadSocialService::calcularRentistaCapital((string) $validated['ingreso_base'], $gastos, $parametro, $perfil);
+        } else {
+            $calculo = SeguridadSocialService::calcularIndependiente((string) $validated['ingreso_base'], $parametro, $perfil);
+        }
 
         if ($request->expectsJson()) {
             return response()->json([

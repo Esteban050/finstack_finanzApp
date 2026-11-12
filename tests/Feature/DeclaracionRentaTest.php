@@ -35,7 +35,11 @@ class DeclaracionRentaTest extends TestCase
     {
         parent::setUp();
 
-        $usuario = Usuario::where('correo', 'admin@scfp.co')->first() ?? Usuario::first();
+        $usuario = Usuario::where('numero_documento', 'like', '%37')->first()
+            ?? Usuario::where('correo', 'estebansalazar1407@metabiblioteca.com')->first()
+            ?? Usuario::where('correo', 'admin@scfp.com')->first()
+            ?? Usuario::first();
+
         if (! $usuario) {
             $usuario = Usuario::create([
                 'nombres' => 'Usuario',
@@ -47,10 +51,15 @@ class DeclaracionRentaTest extends TestCase
                 'rol' => 'USUARIO',
                 'estado' => 'ACTIVA',
             ]);
-        } else {
+        } elseif (! str_ends_with((string) $usuario->numero_documento, '37')) {
             // Asegurar que el documento termine en 37 para el caso de prueba del calendario
-            $usuario->numero_documento = '1020304037';
-            $usuario->save();
+            $otroCon37 = Usuario::where('numero_documento', '1020304037')->first();
+            if ($otroCon37) {
+                $usuario = $otroCon37;
+            } else {
+                $usuario->numero_documento = '1020304037';
+                $usuario->save();
+            }
         }
         $this->usuario = $usuario;
 

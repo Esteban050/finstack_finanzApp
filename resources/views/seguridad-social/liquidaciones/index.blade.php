@@ -13,6 +13,10 @@
 <p class="ui-help">La simulación no reemplaza ni altera la liquidación guardada.</p>
 <x-ui.field name="periodo" id="sim-period" label="Periodo" :required="true"><input id="sim-period" name="periodo" type="month" required value="{{ old('periodo', now('America/Bogota')->format('Y-m')) }}"></x-ui.field>
 <x-ui.money-input name="ingreso_base" label="Ingreso bruto mensual" :allow-zero="true" />
+<label class="ui-check"><input name="es_rentista" id="sim-es-rentista" type="checkbox" value="1" @checked(old('es_rentista')) onchange="document.getElementById('sim-gastos-box').style.display = this.checked ? 'block' : 'none'"> Rentista de capital (deducir gastos asociados)</label>
+<div id="sim-gastos-box" style="display: {{ old('es_rentista') ? 'block' : 'none' }}; margin-bottom: 0.75rem;">
+    <x-ui.money-input name="gastos" id="sim-gastos" label="Gastos asociados deducibles" help="Gastos de reparaciones, mantenimiento o administración a restar del ingreso bruto." :allow-zero="true" value="0" />
+</div>
 <label class="ui-check"><input name="es_voluntario" type="checkbox" value="1" @checked(old('es_voluntario'))> Cotización voluntaria</label>
 <x-ui.module-status /><x-ui.button type="submit" variant="secondary">Simular aportes</x-ui.button></form></x-ui.card>
 </div>

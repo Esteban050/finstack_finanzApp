@@ -716,9 +716,13 @@
                                 $pctU = ($difU / $costoBaseUnit) * 100;
                                 $ganU = $difU * $unidadesActuales;
                             @endphp
-                            <span style="color: {{ $pctU >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 700;">
-                                {{ $pctU >= 0 ? '▲ Ganancia:' : '▼ Pérdida:' }} {{ $pctU >= 0 ? '+' : '' }}{{ number_format($pctU, 2) }}% 
-                                (${{ number_format($ganU, 2) }} {{ $inversion->moneda }})
+                            <span style="color: {{ $pctU > 0 ? '#16a34a' : ($pctU < 0 ? '#dc2626' : '#64748b') }}; font-weight: 700;">
+                                @if(abs($pctU) < 0.0001)
+                                    — Sin variación (0.00%) respecto al costo base
+                                @else
+                                    {{ $pctU > 0 ? '▲ Ganancia:' : '▼ Pérdida:' }} {{ $pctU > 0 ? '+' : '' }}{{ number_format($pctU, 2) }}% 
+                                    ({{ $pctU > 0 ? '+' : '' }}${{ number_format($ganU, 2) }} {{ $inversion->moneda }})
+                                @endif
                             </span>
                         @endif
                     </div>
@@ -932,15 +936,20 @@ function calcularImpactoValoracion(nuevoPrecio) {
         const gananciaUnit = p - costoUnit;
         const gananciaTotal = gananciaUnit * unidades;
         const pct = ((p - costoUnit) / costoUnit) * 100;
-        const signo = pct >= 0 ? '+' : '';
-        const color = pct >= 0 ? '#16a34a' : '#dc2626';
 
         let avisoBajo = '';
         if (p < (costoUnit * 0.05) && p > 0) {
             avisoBajo = `<div style="font-size: 0.8rem; color: #b45309; margin-top: 0.25rem; font-weight: normal;">ℹ️ Has digitado $ ${p.toLocaleString('es-CO')} ${moneda}. Si vas a escribir un precio en miles (ej. 50.000), continúa digitando los números.</div>`;
         }
 
-        varEl.innerHTML = `<div><span style="color: ${color}; font-weight: 700;">${pct >= 0 ? '▲ Ganancia:' : '▼ Pérdida:'} ${signo}${pct.toFixed(2)}% ($ ${gananciaTotal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda})</span>${avisoBajo}</div>`;
+        if (Math.abs(pct) < 0.0001) {
+            varEl.innerHTML = `<div><span style="color: #64748b; font-weight: 700;">— Sin variación (0.00%) respecto al costo base</span></div>`;
+        } else {
+            const signo = pct > 0 ? '+' : '';
+            const color = pct > 0 ? '#16a34a' : '#dc2626';
+            const etiqueta = pct > 0 ? '▲ Ganancia:' : '▼ Pérdida:';
+            varEl.innerHTML = `<div><span style="color: ${color}; font-weight: 700;">${etiqueta} ${signo}${pct.toFixed(2)}% (${signo}$ ${gananciaTotal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda})</span>${avisoBajo}</div>`;
+        }
     } else {
         varEl.innerHTML = '';
     }
@@ -986,7 +995,7 @@ function desformatearMiles(val) {
     let str = String(val).trim().replace(/[$ \u00a0COP]/g, '');
     if (!str) return '';
 
-    // Si contiene coma: la coma es el separador decimal
+    // Si contiene coma: la coma es el separador decimal en formato colombiano (ej. "10,50" o "1.234,56")
     if (str.includes(',')) {
         const partes = str.split(',');
         const entero = partes[0].replace(/\D/g, '') || '0';
@@ -994,7 +1003,12 @@ function desformatearMiles(val) {
         return decimal ? entero + '.' + decimal : entero;
     }
 
-    // Sin coma: todos los puntos son separadores de miles visuales
+    // Si viene como número decimal en notación estándar JS que empieza por 0 (ej. "0.85" o "0.005")
+    if (/^0\.\d+$/.test(str)) {
+        return str;
+    }
+
+    // Sin coma: en formato colombiano todos los puntos son separadores de miles visuales (ej. "3.500", "51.400")
     return str.replace(/\D/g, '');
 }
 
@@ -1334,7 +1348,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     if (valPrecioUnit) {
         enlazarMascaraNumero(valPrecioUnit, function() {
-            calcularImpactoValoracion(desformatearMiles(valPrecioUnit.value));
+            calcularImpactoValoracion(valPrecioUnit.value);
         });
     }
     if (valValor) {

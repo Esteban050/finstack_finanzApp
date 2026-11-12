@@ -31,7 +31,7 @@ class DemoDeclaracionRentaSeeder extends Seeder
         $usuarios = Usuario::all();
 
         if ($usuarios->isEmpty()) {
-            $this->command->warn('No hay usuarios en la base de datos.');
+            $this->command?->warn('No hay usuarios en la base de datos.');
             return;
         }
 
@@ -54,7 +54,7 @@ class DemoDeclaracionRentaSeeder extends Seeder
         $catPadreFinanciera = Categoria::where('nombre', 'Obligaciones financieras')->first() ?? $catTarjetas;
 
         foreach ($usuarios as $usuario) {
-            $this->command->info("Poblando datos de prueba para el usuario: {$usuario->correo}");
+            $this->command?->info("Poblando datos de prueba para el usuario: {$usuario->correo}");
 
             // 1. Perfil Tributario
             $perfil = PerfilTributario::firstOrNew(['usuario_id' => $usuario->id]);
@@ -458,7 +458,7 @@ class DemoDeclaracionRentaSeeder extends Seeder
             $evaluacionService->evaluar($usuario, 2025);
             $estimacionService->estimar($usuario, 2025);
 
-            $this->command->info("✓ Usuario {$usuario->correo} configurado exitosamente con escenario de renta 2025.");
+            $this->command?->info("✓ Usuario {$usuario->correo} configurado exitosamente con escenario de renta 2025.");
         }
     }
 }
