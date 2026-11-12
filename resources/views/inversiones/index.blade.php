@@ -235,7 +235,7 @@
             <fieldset id="section-cdt" @disabled($selectedTipo !== 'CDT') style="{{ $selectedTipo === 'CDT' ? '' : 'display: none;' }} border: 1px solid var(--color-border, #ccc); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                 <legend style="font-weight: 600; color: var(--color-primary);">Parámetros CDT / CDAT (ReteFuente 4% automática)</legend>
                 <div class="income-two-fields">
-                    <x-ui.field name="tasa_ea" label="Tasa pactada (% E.A. o Nominal)" help="Porcentaje anual. Admite hasta 8 decimales (ej. 11.9000277) para cuadrar con liquidaciones bancarias al centavo.">
+                    <x-ui.field name="tasa_ea" id="tasa_ea_cdt" label="Tasa pactada (% E.A. o Nominal)" help="Porcentaje anual. Admite hasta 8 decimales (ej. 11.9000277) para cuadrar con liquidaciones bancarias al centavo.">
                         <input id="tasa_ea_cdt" name="tasa_ea" type="number" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 11.90 o 11.9000277" oninput="calcularProyeccionCdt()">
                     </x-ui.field>
 
@@ -280,7 +280,7 @@
             <fieldset id="section-cuenta" @disabled($selectedTipo !== 'CUENTA_ALTO_RENDIMIENTO') style="{{ $selectedTipo === 'CUENTA_ALTO_RENDIMIENTO' ? '' : 'display: none;' }} border: 1px solid var(--color-border, #ccc); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                 <legend style="font-weight: 600; color: var(--color-primary);">Parámetros Cuenta de Alto Rendimiento (ReteFuente 7% en abono)</legend>
                 <div class="income-two-fields">
-                    <x-ui.field name="tasa_ea" label="Tasa Fija (% E.A.)" help="Sección 9.2: Tasa EA fija para cálculo constante (admite hasta 8 decimales)">
+                    <x-ui.field name="tasa_ea" id="tasa_ea_cuenta" label="Tasa Fija (% E.A.)" help="Sección 9.2: Tasa EA fija para cálculo constante (admite hasta 8 decimales)">
                         <input id="tasa_ea_cuenta" name="tasa_ea" type="number" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 12.0000">
                     </x-ui.field>
 
@@ -410,7 +410,7 @@
                         <input name="ingreso_laboral_promedio_6m" type="number" step="0.01" min="0" value="{{ old('ingreso_laboral_promedio_6m', $perfilTributario?->ingreso_laboral_promedio_6m ?? '') }}" placeholder="Ej: 8000000">
                     </x-ui.field>
 
-                    <x-ui.field name="plazo_dias" label="Plazo estimado de permanencia (Días)">
+                    <x-ui.field name="plazo_dias" id="plazo_dias_cesantias" label="Plazo estimado de permanencia (Días)">
                         <input id="plazo_dias_cesantias" name="plazo_dias" type="number" min="1" value="{{ old('plazo_dias', 365) }}">
                     </x-ui.field>
                 </div>

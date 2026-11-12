@@ -23,6 +23,14 @@ export function safeMessage(value, fallback = 'No fue posible completar la opera
 export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 export function validResourcePath(path) {
     const parts = path.split('/').filter(Boolean);
+    if (parts[0] === 'creditos') {
+        if (parts.length < 2) return true;
+        if (['calcular','calcular-monto','comparar','endeudamiento'].includes(parts[1])) return parts.length === 2;
+        if (!isUuid(parts[1])) return false;
+        if (parts.length === 2) return true;
+        if (['estado-cuenta','paz-y-salvo','planes'].includes(parts[2])) return parts.length === 3;
+        return parts[2] === 'pagos' && (parts.length === 3 || (parts.length === 4 && parts[3] === 'simular') || (parts.length === 5 && isUuid(parts[3]) && parts[4] === 'reversar'));
+    }
     if (parts[0] === 'tasas-cambio') return ['trm', 'convertir'].includes(parts[1]);
     if (parts[0] === 'inversiones') {
         if (parts.length < 2 || parts[1] === 'portafolio') return true;
@@ -41,7 +49,10 @@ export function contractPayload(path, method, values) {
     const income = ['fuente_id','fecha_recepcion','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
     const expense = ['fecha','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'categoria_id','subcategoria_id','medio_pago','naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
     let allowed;
-    if (path.startsWith('/seguridad-social')) {
+    if (path.startsWith('/creditos')) {
+        allowed = method === 'GET' ? ['page','por_pagina','fecha'] : path.endsWith('/reversar') ? ['motivo'] : path.includes('/pagos') ? ['fecha','valor','medio','referencia','aplicacion_excedente','reducir'] : ['banco','proposito','tipo_credito','monto','tasa','tipo_tasa','capitalizacion','tasa_mora','plazo_meses','numero_cuotas','periodicidad','sistema_amortizacion','fecha_inicio','fecha_primer_pago','seguro_porc_mensual','cargo_fijo','valor_inmueble','es_vis'];
+    }
+    else if (path.startsWith('/seguridad-social')) {
         allowed = path.includes('/pagos') ? (path.endsWith('/soporte') ? ['soporte'] : ['periodo','fecha_pago','numero_planilla','es_correccion','salud','pension','fsp','arl','intereses_mora','medio_pago','soporte']) : path.endsWith('/aplicar') ? ['ingreso_id'] : path.includes('/asalariado') ? ['salario','retencion_fuente','periodo'] : ['periodo','ingreso_base','es_voluntario'];
     }
     else if (path.startsWith('/inversiones')) {
