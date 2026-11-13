@@ -334,7 +334,7 @@ class SeguridadSocialService
      */
     public static function calcularRentistaCapital(
         string $ingresosBrutos,
-        string $gastos = '0',
+        string $gastos,
         ParametroNormativo $parametro,
         ?PerfilTributario $perfil,
         ?string $porcentajePresuncion = null
