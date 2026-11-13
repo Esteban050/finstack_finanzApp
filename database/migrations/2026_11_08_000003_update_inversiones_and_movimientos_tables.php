@@ -36,6 +36,7 @@ return new class extends Migration
         DB::table('inversiones')->where('tipo', 'ETF')->update(['tipo' => 'ACCION_ETF']);
         DB::table('inversiones')->where('tipo', 'FONDO_INVERSION_COLECTIVA')->update(['tipo' => 'FIC']);
         DB::table('inversiones')->where('tipo', 'FONDO_VOLUNTARIO_PENSION')->update(['tipo' => 'FPV']);
+        DB::table('inversiones')->where('tipo', 'OTRO')->update(['tipo' => 'FIC']);
 
         DB::statement("ALTER TABLE inversiones ADD CONSTRAINT chk_inversion_tipo CHECK (tipo IN ('CDT', 'ACCION_ETF', 'FIC', 'CUENTA_ALTO_RENDIMIENTO', 'FPV', 'CESANTIAS'))");
         DB::statement("ALTER TABLE inversiones ADD CONSTRAINT chk_inversion_estado CHECK (estado IN ('ACTIVA', 'CERRADA', 'VENCIDA', 'LIQUIDADA'))");

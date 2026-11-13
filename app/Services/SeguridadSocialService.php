@@ -157,12 +157,9 @@ class SeguridadSocialService
             ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $finMes->toDateString()])
             ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario());
 
-        if ($esRentista) {
-            // Rentistas de capital: busca rentas de capital prioritariamente o rentas de trabajo
-            $query->whereIn('clasificacion_tributaria', ['RENTAS_CAPITAL', 'RENTAS_TRABAJO']);
-        } else {
-            $query->where('clasificacion_tributaria', 'RENTAS_TRABAJO');
-        }
+        // El botón debe encontrar ambos tipos de ingreso del periodo. El modo
+        // seleccionado sigue determinando cómo se calcula el IBC y los aportes.
+        $query->whereIn('clasificacion_tributaria', ['RENTAS_CAPITAL', 'RENTAS_TRABAJO']);
 
         $ingresos = $query->with('fuente:id,nombre')
             ->orderBy('fecha_recepcion')
@@ -175,7 +172,7 @@ class SeguridadSocialService
         if (! $tieneIngresos) {
             $msg = $esRentista
                 ? "No se encontraron ingresos de rentas de capital o trabajo asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente."
-                : "No se encontraron ingresos de honorarios o servicios (rentas de trabajo) asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.";
+                : "No se encontraron ingresos de rentas de trabajo o de capital asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.";
 
             return [
                 'periodo' => $periodo,
@@ -239,6 +236,10 @@ class SeguridadSocialService
                 'fsp' => $calculo['fsp'],
                 'arl' => $calculo['arl'],
                 'total' => $calculo['total'],
+                'porcentaje_salud' => $calculo['parametros_usados']['tarifa_salud'] ?? null,
+                'porcentaje_pension' => $calculo['parametros_usados']['tarifa_pension'] ?? null,
+                'porcentaje_fsp' => $calculo['parametros_usados']['tarifa_fsp'] ?? null,
+                'porcentaje_arl' => $calculo['parametros_usados']['tarifa_arl'] ?? null,
                 'avisos' => $calculo['avisos'] ?? [],
             ],
             'liquidacion' => $liquidacion ? [

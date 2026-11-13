@@ -177,6 +177,7 @@ class PagoSeguridadSocialController extends Controller
             array_merge($this->reglas(), ['soporte' => ['nullable', 'file']]),
             $this->mensajes()
         );
+        $validated = $this->calcularAportesDesdePorcentajes($validated);
         $this->validarTotal($validated);
         $this->validarPeriodoLibre($validated);
 
@@ -262,6 +263,7 @@ class PagoSeguridadSocialController extends Controller
     {
         $pago = $this->pagoPropio($id);
         $validated = $request->validate($this->reglas(), $this->mensajes());
+        $validated = $this->calcularAportesDesdePorcentajes($validated);
         $this->validarTotal($validated);
         $this->validarPeriodoLibre($validated, $pago->id);
 
@@ -567,8 +569,13 @@ class PagoSeguridadSocialController extends Controller
             'fecha_pago' => $validated['fecha_pago'],
             'numero_planilla' => $validated['numero_planilla'] ?? null,
             'es_correccion' => (bool) ($validated['es_correccion'] ?? false),
-            'salud' => (string) $validated['salud'],
-            'pension' => (string) $validated['pension'],
+            'ibc' => $validated['ibc'] ?? null,
+            'porcentaje_salud' => $validated['porcentaje_salud'] ?? null,
+            'porcentaje_pension' => $validated['porcentaje_pension'] ?? null,
+            'porcentaje_fsp' => $validated['porcentaje_fsp'] ?? null,
+            'porcentaje_arl' => $validated['porcentaje_arl'] ?? null,
+            'salud' => (string) ($validated['salud'] ?? '0'),
+            'pension' => (string) ($validated['pension'] ?? '0'),
             'fsp' => (string) ($validated['fsp'] ?? '0'),
             'arl' => (string) ($validated['arl'] ?? '0'),
             'intereses_mora' => (string) ($validated['intereses_mora'] ?? '0'),
@@ -592,6 +599,20 @@ class PagoSeguridadSocialController extends Controller
                     : 'El pago debe tener un valor mayor que cero.',
             ]);
         }
+    }
+
+    private function calcularAportesDesdePorcentajes(array $validated): array
+    {
+        if (($validated['ibc'] ?? null) === null) {
+            return $validated;
+        }
+
+        foreach (['salud', 'pension', 'fsp', 'arl'] as $concepto) {
+            $porcentaje = (string) ($validated['porcentaje_'.$concepto] ?? '0');
+            $validated[$concepto] = bcdiv(bcmul((string) $validated['ibc'], $porcentaje, 6), '100', 2);
+        }
+
+        return $validated;
     }
 
     /**
@@ -692,8 +713,13 @@ class PagoSeguridadSocialController extends Controller
             'fecha_pago' => ['required', 'date', 'before_or_equal:today'],
             'numero_planilla' => ['nullable', 'string', 'max:20'],
             'es_correccion' => ['nullable', 'boolean'],
-            'salud' => ['required', ...$monto],
-            'pension' => ['required', ...$monto],
+            'ibc' => ['nullable', ...$monto],
+            'porcentaje_salud' => ['nullable', 'numeric', 'between:0,100'],
+            'porcentaje_pension' => ['nullable', 'numeric', 'between:0,100'],
+            'porcentaje_fsp' => ['nullable', 'numeric', 'between:0,100'],
+            'porcentaje_arl' => ['nullable', 'numeric', 'between:0,100'],
+            'salud' => ['nullable', ...$monto],
+            'pension' => ['nullable', ...$monto],
             'fsp' => ['nullable', ...$monto],
             'arl' => ['nullable', ...$monto],
             'intereses_mora' => ['nullable', ...$monto],
@@ -711,6 +737,11 @@ class PagoSeguridadSocialController extends Controller
             'fecha_pago.before_or_equal' => 'La fecha de pago no puede ser posterior a hoy.',
             'numero_planilla.max' => 'El número de planilla admite máximo 20 caracteres.',
             'es_correccion.boolean' => 'La marca de planilla de corrección debe ser verdadero o falso.',
+            'ibc.numeric' => 'El IBC debe ser un número válido.',
+            'porcentaje_salud.between' => 'El porcentaje de salud debe estar entre 0 y 100.',
+            'porcentaje_pension.between' => 'El porcentaje de pensión debe estar entre 0 y 100.',
+            'porcentaje_fsp.between' => 'El porcentaje de FSP debe estar entre 0 y 100.',
+            'porcentaje_arl.between' => 'El porcentaje de ARL debe estar entre 0 y 100.',
             'medio_pago.in' => 'El medio de pago no es válido.',
             'soporte.required' => 'Adjunte el archivo de soporte (PDF, JPG o PNG).',
             'soporte.file' => 'El soporte debe ser un archivo PDF, JPG o PNG.',
