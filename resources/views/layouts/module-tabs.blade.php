@@ -11,13 +11,6 @@
             ['gastos.index', 'Movimientos', request()->routeIs('gastos.index', 'gastos.create', 'gastos.edit')],
             ['gastos.recurrentes.index', 'Recurrentes', request()->routeIs('gastos.recurrentes.*')],
         ];
-    } elseif (request()->routeIs('seguridad-social.*')) {
-        $tabs = [
-            ['seguridad-social.index', 'Vencimientos y Alertas', request()->routeIs('seguridad-social.index')],
-            ['seguridad-social.liquidaciones.index', 'Liquidación Independiente', request()->routeIs('seguridad-social.liquidaciones.*')],
-            ['seguridad-social.asalariado.index', 'Aportes Asalariado', request()->routeIs('seguridad-social.asalariado.*')],
-            ['seguridad-social.pagos.index', 'Pagos PILA (Egresos)', request()->routeIs('seguridad-social.pagos.*')],
-        ];
     } elseif (request()->routeIs('inversiones.*')) {
         $tabs = [
             ['inversiones.index', 'Mis Inversiones', request()->routeIs('inversiones.index', 'inversiones.show')],

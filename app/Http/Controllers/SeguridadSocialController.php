@@ -111,6 +111,23 @@ class SeguridadSocialController extends Controller
         $totalPagos = PagoSeguridadSocial::count();
         $resumenAnual = SeguridadSocialService::resumenAnual($usuario->id, $anioActual);
 
+        // Pagos recientes con su gasto asociado
+        $pagosRecientes = PagoSeguridadSocial::where('usuario_id', $usuario->id)
+            ->with('gasto')
+            ->orderByDesc('periodo')
+            ->orderByDesc('fecha_pago')
+            ->take(10)
+            ->get();
+
+        // Ingresos de rentas de trabajo de fuente tipo Salario (para asalariados)
+        $ingresosSalario = Ingreso::where('usuario_id', $usuario->id)
+            ->confirmados()
+            ->where('clasificacion_tributaria', 'RENTAS_TRABAJO')
+            ->whereHas('fuente.tipoFuente', SeguridadSocialService::deFuenteSalario())
+            ->orderByDesc('fecha_recepcion')
+            ->take(10)
+            ->get();
+
         if ($request->expectsJson()) {
             return response()->json([
                 'mensaje' => 'Resumen de seguridad social.',
@@ -128,6 +145,7 @@ class SeguridadSocialController extends Controller
                     'es_voluntario' => $esVoluntario,
                     'parametro' => $parametro,
                     'resumen_anual' => $resumenAnual,
+                    'pagos_recientes' => $pagosRecientes,
                 ],
             ]);
         }
@@ -149,8 +167,98 @@ class SeguridadSocialController extends Controller
             'parametro',
             'totalLiquidaciones',
             'totalPagos',
-            'resumenAnual'
+            'resumenAnual',
+            'pagosRecientes',
+            'ingresosSalario'
         ));
+    }
+
+    /**
+     * Cálculo interactivo unificado para Asalariado, Independiente o Rentista de capital.
+     */
+    public function calcularUnificado(Request $request): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'tipo_cotizante' => ['required', 'string', 'in:ASALARIADO,INDEPENDIENTE,RENTISTA_CAPITAL'],
+            'periodo' => $this->reglaPeriodo(),
+            'salario' => ['nullable'],
+            'retencion_fuente' => ['nullable'],
+            'monto_contrato' => ['nullable'],
+            'porcentaje_presuncion' => ['nullable'],
+            'clase_riesgo_arl' => ['nullable', 'integer', 'between:0,5'],
+        ], [
+            'tipo_cotizante.required' => 'Debes seleccionar el tipo de cotizante.',
+            'tipo_cotizante.in' => 'El tipo de cotizante seleccionado no es válido.',
+            'periodo.required' => 'El periodo de cotización es obligatorio.',
+            'periodo.regex' => 'El periodo debe tener el formato AAAA-MM.',
+        ]);
+
+        $tipo = strtoupper((string) $validated['tipo_cotizante']);
+        $periodo = $validated['periodo'] ?? CarbonImmutable::today()->format('Y-m');
+        $inicioMes = SeguridadSocialService::inicioDelPeriodo($periodo);
+        $parametro = SeguridadSocialService::parametrosDe($inicioMes->year);
+        $usuario = Auth::user();
+        $perfil = SeguridadSocialService::perfilDelPeriodo($usuario->id, $inicioMes) ?? $usuario->perfilTributarioActivo;
+
+        if ($request->has('clase_riesgo_arl') && $perfil) {
+            $perfil = clone $perfil;
+            $clase = (int) $request->input('clase_riesgo_arl');
+            $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+        }
+
+        if ($tipo === 'ASALARIADO') {
+            $salarioLimpio = PagoSeguridadSocialController::limpiarMonto((string) $request->input('salario'));
+            if (bccomp($salarioLimpio, '0', 2) <= 0) {
+                throw ValidationException::withMessages([
+                    'salario' => 'Indica un salario mensual mayor a cero.',
+                ]);
+            }
+            $retencionLimpia = $request->filled('retencion_fuente')
+                ? PagoSeguridadSocialController::limpiarMonto((string) $request->input('retencion_fuente'))
+                : null;
+
+            $esIntegral = (bool) ($perfil?->es_salario_integral ?? false);
+            $calculo = SeguridadSocialService::calcularAsalariado($salarioLimpio, $esIntegral, $parametro, $retencionLimpia);
+        } elseif ($tipo === 'INDEPENDIENTE') {
+            $montoLimpio = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingreso_base')));
+            if (bccomp($montoLimpio, '0', 2) <= 0) {
+                throw ValidationException::withMessages([
+                    'monto_contrato' => 'Indica un monto de contrato o ingreso mensual mayor a cero.',
+                ]);
+            }
+
+            $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
+        } else { // RENTISTA_CAPITAL
+            $montoLimpio = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingresos_brutos')));
+            if (bccomp($montoLimpio, '0', 2) <= 0) {
+                throw ValidationException::withMessages([
+                    'monto_contrato' => 'Indica un monto de contrato o ingresos de capital mayor a cero.',
+                ]);
+            }
+
+            $porcentajePresuncion = $request->input('porcentaje_presuncion') ?: SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA;
+            $calculo = SeguridadSocialService::calcularRentistaCapital(
+                $montoLimpio,
+                '0',
+                $parametro,
+                $perfil,
+                (string) $porcentajePresuncion
+            );
+        }
+
+        $calculo['periodo'] = $periodo;
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensaje' => 'Aportes de seguridad social calculados con éxito.',
+                'data' => $calculo,
+            ]);
+        }
+
+        return redirect()->route('seguridad-social.index')
+            ->with('status', 'Aportes calculados exitosamente.')
+            ->with('calculo_reciente', $calculo)
+            ->with('tipo_cotizante_seleccionado', $tipo);
     }
 
     /**

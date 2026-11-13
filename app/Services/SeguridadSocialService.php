@@ -28,6 +28,11 @@ class SeguridadSocialService
 
     public const OCUPACION_RENTISTA = 'Rentista de capital';
 
+    /**
+     * Porcentaje legal/UGPP de presunción de costos para Rentistas de capital (28,08%).
+     */
+    public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA = '28.08';
+
     /** RF-033: ocupaciones del perfil (RF-008) que cotizan como independientes. */
     public const OCUPACIONES_INDEPENDIENTE = [
         'Independiente por cuenta propia',
@@ -40,8 +45,8 @@ class SeguridadSocialService
     /** RN-033.6 */
     public const OCUPACION_PENSIONADO = 'Pensionado';
 
-    /** RN-033.5: cada aporte se redondea al múltiplo de $ 100 superior (Decreto 1990 de 2016). */
-    private const MULTIPLO_APORTE = 100;
+    /** Cálculo exacto al peso (sin redondeo a múltiplos de $ 100). */
+    private const MULTIPLO_APORTE = 1;
 
     /**
      * RN-035.3: categoría del catálogo (RF-015) del gasto que crea un pago PILA,
@@ -290,8 +295,15 @@ class SeguridadSocialService
         ];
 
         return [
+            'tipo_cotizante' => 'INDEPENDIENTE',
+            'monto_contrato' => bcadd($ingresoBase, '0', 2),
             'ingreso_base' => bcadd($ingresoBase, '0', 2),
             'ibc' => $ibc,
+            'porcentaje_salud' => (string) $parametro->tarifa_salud_indep,
+            'porcentaje_pension' => $pensionado ? '0.00' : (string) $parametro->tarifa_pension_indep,
+            'porcentaje_fsp' => $tarifaFsp,
+            'porcentaje_arl' => $tarifaArl ?? '0.00',
+            'aplica_fsp' => bccomp($tarifaFsp, '0', 2) > 0,
             ...$aportes,
             // RN-033.5: total = suma de los aportes redondeados.
             'total' => array_reduce($aportes, fn ($total, $aporte) => bcadd($total, $aporte, 2), '0.00'),
@@ -313,18 +325,30 @@ class SeguridadSocialService
      * Cálculo de aportes a seguridad social para Rentista de Capital.
      *
      * A diferencia del contratista o independiente por prestación de servicios, el
-     * rentista de capital puede deducir los gastos procedentes o asociados de su actividad
-     * (por ejemplo reparaciones, administración o mantenimiento) antes de aplicar el 40 % de IBC.
+     * rentista de capital deduce la presunción de costos (28,08%) o gastos procedentes
+     * antes de calcular el IBC (40% de la base neta).
      *
-     * Base neta = max(0, Ingresos brutos − Gastos asociados)
+     * Base neta = max(0, Ingresos brutos − Presunción de costos / Gastos)
      * IBC = 40 % de la base neta, acotado entre 1 y 25 SMMLV al peso superior.
      */
-    public static function calcularRentistaCapital(string $ingresosBrutos, string $gastos, ParametroNormativo $parametro, ?PerfilTributario $perfil): array
-    {
+    public static function calcularRentistaCapital(
+        string $ingresosBrutos,
+        string $gastos = '0',
+        ParametroNormativo $parametro,
+        ?PerfilTributario $perfil,
+        ?string $porcentajePresuncion = null
+    ): array {
         $brutos = bcadd($ingresosBrutos, '0', 2);
-        $gastosLimpios = bcadd($gastos ?: '0', '0', 2);
+        $usarPresuncion = $porcentajePresuncion !== null;
 
-        $baseNeta = bcsub($brutos, $gastosLimpios, 2);
+        if ($usarPresuncion) {
+            $deduccionCostos = self::porcentaje($brutos, $porcentajePresuncion);
+            $deduccionCostos = self::redondearArriba($deduccionCostos, 1);
+        } else {
+            $deduccionCostos = bcadd($gastos ?: '0', '0', 2);
+        }
+
+        $baseNeta = bcsub($brutos, $deduccionCostos, 2);
         if (bccomp($baseNeta, '0', 2) < 0) {
             $baseNeta = '0.00';
         }
@@ -334,21 +358,31 @@ class SeguridadSocialService
 
         return [
             'tipo_cotizante' => 'RENTISTA_CAPITAL',
+            'monto_contrato' => $brutos,
             'ingresos_brutos' => $brutos,
-            'gastos_asociados' => $gastosLimpios,
+            'porcentaje_presuncion_costos' => $usarPresuncion ? $porcentajePresuncion : null,
+            'presuncion_costos' => $usarPresuncion ? $deduccionCostos : '0.00',
+            'gastos_asociados' => $deduccionCostos,
             'ingreso_neto' => $baseNeta,
             'ingreso_base' => $baseNeta,
             'ibc' => $calculo['ibc'],
+            'porcentaje_salud' => $calculo['porcentaje_salud'],
             'salud' => $calculo['salud'],
+            'porcentaje_pension' => $calculo['porcentaje_pension'],
             'pension' => $calculo['pension'],
+            'porcentaje_fsp' => $calculo['porcentaje_fsp'],
             'fsp' => $calculo['fsp'],
+            'porcentaje_arl' => $calculo['porcentaje_arl'],
             'arl' => $calculo['arl'],
             'total' => $calculo['total'],
+            'aplica_fsp' => $calculo['aplica_fsp'],
             'avisos' => bccomp($baseNeta, $smmlv, 2) < 0 ? [self::AVISO_BAJO_SMMLV] : [],
             'parametros_usados' => array_merge($calculo['parametros_usados'], [
                 'tipo_cotizante' => 'Rentista de capital',
                 'ingresos_brutos' => $brutos,
-                'gastos_asociados' => $gastosLimpios,
+                'porcentaje_presuncion_costos' => $usarPresuncion ? $porcentajePresuncion : null,
+                'presuncion_costos' => $usarPresuncion ? $deduccionCostos : '0.00',
+                'gastos_asociados' => $deduccionCostos,
                 'ingreso_neto' => $baseNeta,
             ]),
             'aviso_legal' => self::AVISO_LEGAL,
@@ -390,9 +424,14 @@ class SeguridadSocialService
         $retencion = bcadd($retencion ?? '0', '0', 2);
 
         return [
+            'tipo_cotizante' => 'ASALARIADO',
             'salario' => bcadd($salario, '0', 2),
             'es_salario_integral' => $esIntegral,
             'ibc' => $ibc,
+            'porcentaje_salud' => (string) $parametro->tarifa_salud_emp,
+            'porcentaje_pension' => (string) $parametro->tarifa_pension_emp,
+            'porcentaje_fsp' => $tarifaFsp,
+            'aplica_fsp' => bccomp($tarifaFsp, '0', 2) > 0,
             ...$aportes,
             'total_aportes' => $total,
             // CA-034.1: "neto sin retención".

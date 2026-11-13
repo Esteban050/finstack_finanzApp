@@ -305,4 +305,30 @@ class SeguridadSocialRentistaTest extends TestCase
         $this->assertSame('640000.00', $resultado['calculo']['pension']);
         $this->assertSame('1140000.00', $resultado['calculo']['total']);
     }
+
+    public function test_calcular_rentista_capital_con_presuncion_costos_28_08(): void
+    {
+        $ingreso = '10000000.00';
+
+        $resultado = SeguridadSocialService::calcularRentistaCapital(
+            $ingreso,
+            '0',
+            $this->parametro,
+            $this->perfil,
+            SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA
+        );
+
+        $this->assertSame('RENTISTA_CAPITAL', $resultado['tipo_cotizante']);
+        $this->assertSame('10000000.00', $resultado['monto_contrato']);
+        $this->assertSame('28.08', $resultado['porcentaje_presuncion_costos']);
+        $this->assertSame('2808000.00', $resultado['presuncion_costos']);
+        $this->assertSame('7192000.00', $resultado['ingreso_neto']);
+        $this->assertSame('2876800.00', $resultado['ibc']);
+        $this->assertSame('12.50', $resultado['porcentaje_salud']);
+        $this->assertSame('359600.00', $resultado['salud']);
+        $this->assertSame('16.00', $resultado['porcentaje_pension']);
+        $this->assertSame('460288.00', $resultado['pension']);
+        $this->assertSame('0.00', $resultado['fsp']);
+        $this->assertSame('819888.00', $resultado['total']);
+    }
 }

@@ -147,6 +147,9 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         // Vista principal de Seguridad Social (RF-036 / Vencimientos y detección de fuentes)
         Route::get('/', [SeguridadSocialController::class, 'index'])->name('index');
 
+        // Nuevo cálculo interactivo unificado (Asalariado, Independiente, Rentista de capital)
+        Route::post('/calcular', [SeguridadSocialController::class, 'calcularUnificado'])->name('calcular');
+
         // RF-033: liquidación del independiente o contratista (RN-033.7)
         Route::get('/liquidaciones', [SeguridadSocialController::class, 'liquidaciones'])->name('liquidaciones.index');
         Route::post('/liquidaciones', [SeguridadSocialController::class, 'liquidar'])->name('liquidaciones.store');

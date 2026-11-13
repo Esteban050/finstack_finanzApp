@@ -4,6 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { debtClassification, creditPayload, paymentPayload, recordPayload, planSummary, ratePercent, abonoComparison } from '../credits/rules.js';
 import { contractPayload, validResourcePath } from '../api/index.js';
 
+const phpBin = process.platform === 'win32'
+    ? (process.env.PHP_BINARY || 'C:\\Users\\esteb\\.config\\herd\\bin\\php85\\php.exe')
+    : 'php';
+
 test('créditos: semáforo distingue fronteras y ausencia de ingresos',()=>{
     assert.equal(debtClassification(null).tone,'neutral');
     assert.equal(debtClassification('30.00').tone,'success');
@@ -44,7 +48,7 @@ test('créditos: editar preserva las condiciones reales y el resumen usa importe
     assert.deepEqual(planSummary({cuota:'2',total_intereses:'17'}),[['Primera cuota','$\u00a02'],['Total de intereses','$\u00a017']]);
 });
 test('créditos: servicio real reproduce francés, alemán, tasa cero y saldo final exacto sin BD',()=>{
-    const data=JSON.parse(execFileSync('php',['-r',String.raw`
+    const data=JSON.parse(execFileSync(phpBin,['-r',String.raw`
 require 'vendor/autoload.php';
 $app=require 'bootstrap/app.php';$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 Illuminate\Support\Facades\DB::connection()->beforeExecuting(function(){throw new RuntimeException('No se permite consultar la BD en esta prueba.');});
@@ -56,7 +60,7 @@ echo json_encode(['frances'=>App\Services\CreditoService::calcular($base),'alema
     assert.equal(data.frances.tabla[0].fecha,'2026-02-28');assert.equal(data.aleman.tabla.at(-1).saldo_final,'0');assert.equal(data.aleman.total_capital,'10000000');assert.equal(data.cero.total_intereses,'0');assert.equal(data.cero.tabla.at(-1).saldo_final,'0');assert.match(data.conversion,/^19\.56/);
 });
 test('créditos: Blade real compila con CSRF y componentes compartidos sin consultar la BD',()=>{
-    const html=execFileSync('php',['-r',String.raw`
+    const html=execFileSync(phpBin,['-r',String.raw`
 require 'vendor/autoload.php';$app=require 'bootstrap/app.php';$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 Illuminate\Support\Facades\DB::connection()->beforeExecuting(function(){throw new RuntimeException('No se permite consultar la BD en esta prueba.');});
 $app['request']->setLaravelSession($app['session']->driver());$app['view']->share('errors',new Illuminate\Support\ViewErrorBag());
@@ -64,7 +68,7 @@ $source=file_get_contents(resource_path('views/creditos/index.blade.php'));
 $source=preg_replace('/@extends\([^\n]*\)\s*|@section\(\x27title\x27[^\n]*\)\s*|@section\(\x27content\x27\)\s*|@endsection/','',$source);
 echo Illuminate\Support\Facades\Blade::render($source,['creditoId'=>null],true);
 `],{encoding:'utf8',maxBuffer:2e6});
-    assert.match(html,/data-credit-app/);assert.match(html,/name="_token"/);assert.match(html,/name="seguro_porc_mensual"/);assert.doesNotMatch(html,/<\/?x-|\{\{|<svg[^>]*onload/);
+    assert.match(html,/data-credit-app/);assert.match(html,/name="_token"/);assert.doesNotMatch(html,/name="seguro_porc_mensual"/);assert.doesNotMatch(html,/name="cargo_fijo"/);assert.match(html,/name="tasa_mora"/);assert.doesNotMatch(html,/<\/?x-|\{\{|<svg[^>]*onload/);
     const ids=[...html.replace(/<template[\s\S]*?<\/template>/g,'').matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);assert.equal(ids.length,new Set(ids).size);
 });
 

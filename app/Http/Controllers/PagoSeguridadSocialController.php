@@ -232,8 +232,14 @@ class PagoSeguridadSocialController extends Controller
             ], 201);
         }
 
-        return redirect()->route('seguridad-social.pagos.index')
-            ->with('status', 'Pago PILA registrado con éxito. Se creó automáticamente el gasto (egreso) en "Seguridad social" (RN-035.3).');
+        $destino = $request->input('redirect_to');
+        if (! in_array($destino, ['seguridad-social.index', 'seguridad-social.pagos.index'], true)) {
+            $destino = 'seguridad-social.pagos.index';
+        }
+
+        return redirect()->route($destino)
+            ->with('status', 'Pago PILA registrado con éxito. Se creó automáticamente el gasto (egreso) en "Seguridad social" (RN-035.3).')
+            ->with('gasto_creado_id', $pago->gasto_id);
     }
 
     /**
