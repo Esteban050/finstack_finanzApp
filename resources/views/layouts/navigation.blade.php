@@ -24,9 +24,6 @@
             @case('profile.show')<x-icon name="ui-usuario" :size="20" />@break
         @endswitch
         {{ $label }}
-        @if($route === 'renta.index')
-            <span style="font-size:0.6875rem;font-weight:700;margin-left:auto;padding:1px 6px;border-radius:4px;background:var(--accent-secondary);color:var(--accent-secondary-contrast);letter-spacing:0.02em;">Nuevo</span>
-        @endif
     </a>
 @endforeach
 </nav>

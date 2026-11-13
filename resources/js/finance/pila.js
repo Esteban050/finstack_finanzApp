@@ -175,6 +175,21 @@ export function mountPilaAutofill() {
                     if (detailsEl) detailsEl.hidden = false;
 
                     if (result.calculo) {
+                        const calculatedFields = {
+                            ibc: result.calculo.ibc,
+                            porcentaje_salud: result.calculo.porcentaje_salud,
+                            porcentaje_pension: result.calculo.porcentaje_pension,
+                            porcentaje_fsp: result.calculo.porcentaje_fsp,
+                            porcentaje_arl: result.calculo.porcentaje_arl,
+                        };
+                        for (const [field, rawValue] of Object.entries(calculatedFields)) {
+                            const input = document.getElementById(`${targetPrefix}-${field.replace('porcentaje_', 'porcentaje-')}`);
+                            if (input && rawValue !== null && rawValue !== undefined) {
+                                input.value = String(rawValue);
+                                input.dispatchEvent(new Event('input', { bubbles: true }));
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
                         const concepts = ['salud', 'pension', 'fsp', 'arl', 'intereses_mora'];
                         for (const concept of concepts) {
                             const rawValue = result.calculo[concept] ?? '0';

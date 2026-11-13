@@ -26,7 +26,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
         ];
 
         foreach ($fuentesIngreso as $padreNombre => $subcategorias) {
-            $catPadre = Categoria::firstOrCreate(
+            $catPadre = $this->obtenerOCrear(
                 [
                     'nombre' => $padreNombre,
                     'tipo' => 'INGRESO',
@@ -41,7 +41,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
             );
 
             foreach ($subcategorias as $subNombre) {
-                Categoria::firstOrCreate(
+                $this->obtenerOCrear(
                     [
                         'nombre' => $subNombre,
                         'tipo' => 'INGRESO',
@@ -78,7 +78,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
         ];
 
         foreach ($gastos as $padreNombre => $subcategorias) {
-            $catPadre = Categoria::firstOrCreate(
+            $catPadre = $this->obtenerOCrear(
                 [
                     'nombre' => $padreNombre,
                     'tipo' => 'GASTO',
@@ -95,7 +95,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
             );
 
             foreach ($subcategorias as $subNombre) {
-                Categoria::firstOrCreate(
+                $this->obtenerOCrear(
                     [
                         'nombre' => $subNombre,
                         'tipo' => 'GASTO',
@@ -110,5 +110,17 @@ class CategoriaPredeterminadaSeeder extends Seeder
                 );
             }
         }
+    }
+
+    private function obtenerOCrear(array $atributos, array $valores): Categoria
+    {
+        $categoria = Categoria::query()
+            ->whereRaw('LOWER(nombre) = LOWER(?)', [$atributos['nombre']])
+            ->where('tipo', $atributos['tipo'])
+            ->where('usuario_id', $atributos['usuario_id'])
+            ->where('categoria_padre_id', $atributos['categoria_padre_id'])
+            ->first();
+
+        return $categoria ?? Categoria::create(array_merge($atributos, $valores));
     }
 }

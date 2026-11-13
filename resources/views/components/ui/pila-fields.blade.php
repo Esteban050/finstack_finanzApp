@@ -66,4 +66,8 @@
         </div>
     </div>
 </div>
-<h3>Valores pagados por concepto</h3><div class="income-two-fields">@foreach(['salud'=>'Salud','pension'=>'Pensión','fsp'=>'Fondo de Solidaridad Pensional','arl'=>'Riesgos laborales','intereses_mora'=>'Intereses de mora'] as $key=>$label)<x-ui.money-input :name="$key" :id="$prefix.'-'.$key" :label="$label" :allow-zero="true" :required="in_array($key,['salud','pension'],true)" :value="(string) ($payment[$key] ?? '0')" />@endforeach</div>
+<h3>Porcentajes y valores calculados</h3>
+<x-ui.field name="ibc" :id="$prefix.'-ibc'" label="IBC base de cálculo" help="El porcentaje de cada concepto se aplica sobre este valor."><input id="{{ $prefix }}-ibc" name="ibc" type="number" min="0" step="0.01" value="{{ old('ibc', $payment['ibc'] ?? '') }}"></x-ui.field>
+<div class="income-two-fields">@foreach(['salud'=>'Salud','pension'=>'Pensión','fsp'=>'Fondo de Solidaridad Pensional','arl'=>'Riesgos laborales'] as $key=>$label)<x-ui.field :name="'porcentaje_'.$key" :id="$prefix.'-porcentaje-'.$key" :label="$label.' (%)'"><input id="{{ $prefix }}-porcentaje-{{ $key }}" name="porcentaje_{{ $key }}" type="number" min="0" max="100" step="0.01" value="{{ old('porcentaje_'.$key, $payment['porcentaje_'.$key] ?? '') }}"></x-ui.field>@endforeach</div>
+<p class="ui-help">Los valores de salud, pensión, FSP y ARL se calculan automáticamente al guardar con base en el IBC y el porcentaje indicado.</p>
+<h3>Otros valores pagados</h3><div class="income-two-fields"><x-ui.money-input name="intereses_mora" :id="$prefix.'-intereses_mora'" label="Intereses de mora" :allow-zero="true" :required="false" :value="(string) ($payment['intereses_mora'] ?? '0')" /></div>
