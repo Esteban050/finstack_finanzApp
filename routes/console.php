@@ -2,9 +2,13 @@
 
 use App\Models\BitacoraAuditoria;
 use App\Models\Usuario;
+use App\Services\AlertaService;
 use App\Services\AlertaSeguridadSocialService;
 use App\Services\InversionService;
+use App\Services\NotificacionService;
+use App\Services\PresupuestoService;
 use App\Services\RecurrenciaService;
+use App\Services\ResumenCorreoService;
 use App\Services\SoporteArchivoService;
 use App\Services\TrmService;
 use Carbon\CarbonImmutable;
@@ -119,6 +123,38 @@ Artisan::command('scfp:marcar-inversiones-vencidas', function () {
     $this->info("Se marcaron {$total} inversiones como vencidas (RN-037.5).");
 })->purpose('Marcar como vencidas las inversiones cuya fecha de vencimiento ya pasó');
 
+// RN-055.1: generar el presupuesto del mes de quienes lo repiten y fijar la
+// base de los creados por adelantado (RN-055.4). Idempotente: corre a diario.
+Artisan::command('scfp:generar-presupuestos', function () {
+    $resultado = PresupuestoService::procesarInicioDeMes(CarbonImmutable::today());
+
+    $this->info("Se generaron {$resultado['generados']} presupuestos del mes y se fijó la base de {$resultado['bases_fijadas']} (RN-055.1).");
+})->purpose('Generar el presupuesto del mes desde el anterior cuando se repite');
+
+// RF-057: evaluar todas las reglas de alerta de los usuarios activos. Dispara
+// las que cambian con los días aunque no haya gastos nuevos ("Vas a pasarte",
+// gasto proyectado, endeudamiento, vencimientos y el cierre del mes anterior).
+// Las que dependen del gasto también salen al guardarlo (GastoObserver).
+Artisan::command('scfp:evaluar-alertas', function () {
+    $emitidas = AlertaService::evaluarTodos(CarbonImmutable::today());
+
+    $this->info("Se emitieron {$emitidas} alertas (RF-057).");
+})->purpose('Evaluar las reglas de alerta de los usuarios');
+
+// RN-059.3: resumen por correo, los lunes (semanal) y el día 1 (mensual).
+Artisan::command('scfp:enviar-resumenes', function () {
+    $enviados = ResumenCorreoService::enviarPendientes(CarbonImmutable::today());
+
+    $this->info("Se enviaron {$enviados} resúmenes por correo (RN-059.3).");
+})->purpose('Enviar los resúmenes periódicos por correo');
+
+// RF-058: las notificaciones archivadas se borran a los 180 días.
+Artisan::command('scfp:purgar-notificaciones', function () {
+    $borradas = NotificacionService::purgarArchivadas(CarbonImmutable::now());
+
+    $this->info("Se borraron {$borradas} notificaciones archivadas hace más de ".config('scfp.alertas.dias_archivadas').' días (RF-058).');
+})->purpose('Borrar las notificaciones archivadas antiguas');
+
 // Programación de tareas automáticas diarias
 Schedule::command('scfp:purgar-pendientes')->daily();
 Schedule::command('scfp:purgar-supresiones')->daily();
@@ -132,6 +168,17 @@ Schedule::command('scfp:sincronizar-trm')->hourlyAt(0)->between('08:00', '13:00'
 
 // RF-036: una vez al día, por la mañana.
 Schedule::command('scfp:alertas-seguridad-social')->dailyAt('07:00');
+
+// RN-055.1: después de las recurrencias (00:05), para que el traslado de saldo
+// vea los gastos recurrentes del último día del mes anterior.
+Schedule::command('scfp:generar-presupuestos')->dailyAt('00:15');
+
+// RF-057: por la mañana, con las recurrencias y el presupuesto del día listos.
+Schedule::command('scfp:evaluar-alertas')->dailyAt('06:30');
+Schedule::command('scfp:purgar-notificaciones')->daily();
+
+// RN-059.3: "Semanal (lunes 07:00)"; el mensual sale el día 1 a la misma hora.
+Schedule::command('scfp:enviar-resumenes')->dailyAt('07:00');
 
 // RN-037.5: al empezar el día siguiente al vencimiento.
 Schedule::command('scfp:marcar-inversiones-vencidas')->dailyAt('00:10');

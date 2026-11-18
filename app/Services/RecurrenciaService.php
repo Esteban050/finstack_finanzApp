@@ -78,6 +78,41 @@ class RecurrenciaService
     }
 
     /**
+     * Fechas de las ocurrencias aún no generadas de la plantilla que caen
+     * entre $desde y $hasta (inclusive), respetando fecha_fin y
+     * max_ocurrencias. Las ocurrencias atrasadas (anteriores a $desde) no se
+     * devuelven. Lo usan la proyección del presupuesto (RF-056) y las alertas
+     * (RF-057) para saber qué recurrentes faltan en un periodo.
+     *
+     * @return array<int, CarbonImmutable>
+     */
+    public static function ocurrenciasPendientes(PlantillaRecurrencia $plantilla, CarbonImmutable $desde, CarbonImmutable $hasta): array
+    {
+        $inicio = CarbonImmutable::parse($plantilla->fecha_inicio);
+        $fechaFin = $plantilla->fecha_fin ? CarbonImmutable::parse($plantilla->fecha_fin) : null;
+        $fechas = [];
+
+        // Tope de vueltas por si una plantilla semanal quedó muy atrás.
+        for ($indice = $plantilla->ocurrencias_generadas, $vueltas = 0; $vueltas < 1000; $indice++, $vueltas++) {
+            if ($plantilla->max_ocurrencias !== null && $indice >= $plantilla->max_ocurrencias) {
+                break;
+            }
+
+            $fecha = self::calcularOcurrencia($inicio, $plantilla->periodicidad, $indice);
+
+            if ($fecha->greaterThan($hasta) || ($fechaFin !== null && $fecha->greaterThan($fechaFin))) {
+                break;
+            }
+
+            if ($fecha->greaterThanOrEqualTo($desde)) {
+                $fechas[] = $fecha;
+            }
+        }
+
+        return $fechas;
+    }
+
+    /**
      * CA-022.2: Al reanudar una recurrencia pausada el calendario no retrocede.
      * Las ocurrencias cuya fecha pasó durante la pausa no se generan: ese ingreso
      * no ocurrió, y crearlo con fecha retroactiva falsearía los totales del

@@ -7,6 +7,7 @@ use App\Models\TokenSeguridad;
 use App\Models\Usuario;
 use App\Services\AuthSecurityService;
 use App\Services\BitacoraService;
+use App\Services\NotificacionService;
 use App\Services\SecurityTokenService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -283,6 +284,11 @@ class UserProfileController extends Controller
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning("No se pudo enviar correo de supresión: {$e->getMessage()}");
         }
+
+        // RN-059.4: queda en el centro de notificaciones; el correo ya salió arriba.
+        NotificacionService::seguridadCuenta($usuario->id, 'SOLICITUD_SUPRESION', [
+            'supresion_programada' => $fechaProgramada->toIso8601String(),
+        ], enviarCorreo: false);
 
         AuthSecurityService::cerrarTodasLasSesiones($usuario);
         Auth::logout();

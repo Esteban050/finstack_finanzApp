@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BitacoraAuditoria;
 use App\Models\CalendarioTributario;
+use App\Models\Notificacion;
 use App\Models\PagoSeguridadSocial;
 use App\Models\PerfilTributario;
 use App\Models\Usuario;
@@ -45,6 +46,9 @@ class AlertaSeguridadSocialService
     public const ESTADO_VENCIDO = 'VENCIDO';
 
     public const ACCION_ALERTA = 'ALERTA_SEGURIDAD_SOCIAL';
+
+    /** RF-058: tipo de la notificación en el centro de notificaciones. */
+    public const TIPO_NOTIFICACION = 'SEGURIDAD_SOCIAL';
     public const ACCION_SIN_CALENDARIO = 'AVISO_ADMIN_SIN_CALENDARIO_SEGURIDAD_SOCIAL';
 
     /** RN-036.2: advertencia de la alerta "Vencido". */
@@ -281,6 +285,29 @@ class AlertaSeguridadSocialService
                 "SCFP - Tu pago de seguridad social vence el {$fecha}",
                 "Hola {$usuario->nombres},\n\nEl {$fecha} vence el plazo para pagar tus aportes a seguridad social del periodo {$periodo}. Aún no tienes un pago registrado para ese periodo.\n\nSi ya pagaste, registra el pago en el módulo de seguridad social.",
             ];
+
+        // RF-058: la alerta también queda en el centro de notificaciones, aunque
+        // el correo falle (el día siguiente se reintenta y la clave no la repite).
+        try {
+            NotificacionService::emitir(
+                usuarioId: $usuario->id,
+                tipo: self::TIPO_NOTIFICACION,
+                clave: "SEGURIDAD_SOCIAL:{$periodo}:{$alerta['tipo']}:{$alerta['dias']}",
+                prioridad: $alerta['tipo'] === self::VENCIDO ? Notificacion::CRITICA : Notificacion::ADVERTENCIA,
+                datos: [
+                    'periodo' => $periodo,
+                    'fecha_limite' => $limite->toDateString(),
+                    'alerta' => $alerta['tipo'],
+                    'dias' => $alerta['dias'],
+                ],
+                referenciaTipo: 'SEGURIDAD_SOCIAL'
+            );
+        } catch (\Throwable $e) {
+            Log::warning("No se pudo registrar la notificación de seguridad social (RF-058): {$e->getMessage()}", [
+                'usuario_id' => $usuario->id,
+                'periodo' => $periodo,
+            ]);
+        }
 
         try {
             Mail::raw($cuerpo, fn ($mensaje) => $mensaje->to($usuario->correo)->subject($asunto));

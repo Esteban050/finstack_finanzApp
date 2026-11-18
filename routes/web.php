@@ -17,9 +17,12 @@ use App\Http\Controllers\IngresoController;
 use App\Http\Controllers\IngresoRecurrenteController;
 use App\Http\Controllers\InversionController;
 use App\Http\Controllers\MovimientoInversionController;
+use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\PagoCreditoController;
 use App\Http\Controllers\PagoSeguridadSocialController;
 use App\Http\Controllers\PoliticaTratamientoController;
+use App\Http\Controllers\PresupuestoController;
+use App\Http\Controllers\ReglaAlertaController;
 use App\Http\Controllers\RentabilidadController;
 use App\Http\Controllers\ReporteInversionController;
 use App\Http\Controllers\SeguridadSocialController;
@@ -279,6 +282,38 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::post('/{id}/pagos', [PagoCreditoController::class, 'store'])->whereUuid('id')->name('pagos.store');
         Route::post('/{id}/pagos/{pagoId}/reversar', [PagoCreditoController::class, 'reversar'])->whereUuid(['id', 'pagoId'])->name('pagos.reversar');
     });
+
+    /*
+    | MOD-09 — Presupuestos (característica G). Solo JSON.
+    */
+    Route::prefix('presupuestos')->name('presupuestos.')->where(['mes' => '\d{4}-(0[1-9]|1[0-2])'])->group(function () {
+        // RF-056: ejecución del mes (?mes=AAAA-MM, por defecto el actual)
+        Route::get('/', [PresupuestoController::class, 'show'])->name('show');
+        // RF-055 / RN-055.3: gastado, promedio y sugerido por categoría
+        Route::get('/{mes}/base', [PresupuestoController::class, 'base'])->name('base');
+        // RF-056: detalle de una línea con su serie diaria
+        Route::get('/{mes}/lineas/{lineaId}', [PresupuestoController::class, 'linea'])->whereUuid('lineaId')->name('linea');
+        // RF-055: crear o reemplazar, y eliminar
+        Route::put('/{mes}', [PresupuestoController::class, 'guardar'])->name('guardar');
+        Route::delete('/{mes}', [PresupuestoController::class, 'destroy'])->name('destroy');
+    });
+
+    // MOD-09 — RF-058: centro de notificaciones (campana de la barra superior). Solo JSON.
+    Route::prefix('notificaciones')->name('notificaciones.')->group(function () {
+        Route::get('/', [NotificacionController::class, 'index'])->name('index');
+        // RN-058.4: número sin leer para la campana
+        Route::get('/contador', [NotificacionController::class, 'contador'])->name('contador');
+        Route::post('/marcar-todas-leidas', [NotificacionController::class, 'marcarTodasLeidas'])->name('marcar-todas-leidas');
+        // RN-058.3: estados No leída / Leída / Archivada
+        Route::patch('/{id}/leida', [NotificacionController::class, 'leida'])->whereUuid('id')->name('leida');
+        Route::patch('/{id}/no-leida', [NotificacionController::class, 'noLeida'])->whereUuid('id')->name('no-leida');
+        Route::patch('/{id}/archivar', [NotificacionController::class, 'archivar'])->whereUuid('id')->name('archivar');
+    });
+
+    // MOD-09 — RF-057 / RF-059: reglas de alerta (Mi perfil › Alertas y notificaciones). Solo JSON.
+    Route::get('/perfil/alertas', [ReglaAlertaController::class, 'index'])->name('perfil.alertas.index');
+    Route::put('/perfil/alertas', [ReglaAlertaController::class, 'update'])->name('perfil.alertas.update');
+    Route::post('/perfil/alertas/restablecer', [ReglaAlertaController::class, 'restablecer'])->name('perfil.alertas.restablecer');
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

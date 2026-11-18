@@ -44,6 +44,12 @@ class AuthSecurityService
 
             // RN-004.3: Enviar correo al titular informando el bloqueo, hora e IP
             self::enviarNotificacionBloqueo($usuario);
+
+            // RN-059.4: también en el centro de notificaciones (el correo ya salió).
+            NotificacionService::seguridadCuenta($usuario->id, 'BLOQUEO_TEMPORAL', [
+                'bloqueado_hasta' => $bloqueadoHasta->toIso8601String(),
+                'ip' => Request::ip(),
+            ], enviarCorreo: false);
         }
     }
 

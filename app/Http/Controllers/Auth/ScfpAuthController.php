@@ -10,6 +10,7 @@ use App\Models\Usuario;
 use App\Rules\PasswordPolicyRule;
 use App\Services\AuthSecurityService;
 use App\Services\BitacoraService;
+use App\Services\NotificacionService;
 use App\Services\SecurityTokenService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -388,6 +389,9 @@ class ScfpAuthController extends Controller
             usuarioId: $usuario->id
         );
 
+        // RN-059.4: la seguridad de la cuenta siempre se avisa, también por correo.
+        NotificacionService::seguridadCuenta($usuario->id, 'RESTABLECIMIENTO_CONTRASENA', ['ip' => $request->ip()]);
+
         return redirect()->route('login')->with('status', 'Contraseña restablecida con éxito. Inicia sesión con tu nueva contraseña.');
     }
 
@@ -431,6 +435,9 @@ class ScfpAuthController extends Controller
             entidadId: $usuario->id,
             usuarioId: $usuario->id
         );
+
+        // RN-059.4: la seguridad de la cuenta siempre se avisa, también por correo.
+        NotificacionService::seguridadCuenta($usuario->id, 'CAMBIO_CONTRASENA', ['ip' => $request->ip()]);
 
         return back()->with('status', 'Contraseña actualizada');
     }

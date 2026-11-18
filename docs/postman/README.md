@@ -1,8 +1,9 @@
 # Postman — MOD-03 Gestión de ingresos
 
-> Hay **seis colecciones** en esta carpeta. Esta primera parte documenta la de
+> Hay **siete colecciones** en esta carpeta. Esta primera parte documenta la de
 > MOD-03; las de MOD-04 (gastos), RF-017 (TRM), MOD-05 (seguridad social),
-> MOD-06 (inversiones) y MOD-08 (créditos) están al final del archivo.
+> MOD-06 (inversiones), MOD-08 (créditos) y MOD-09 (presupuestos) están al final
+> del archivo.
 
 Verificación de los RF-020 a RF-024 por HTTP. **33 peticiones**, cada una con
 aserciones referenciadas al criterio de aceptación o la regla de negocio que
@@ -16,6 +17,7 @@ comprueba.
 | `SCFP-MOD-05.postman_collection.json` | La colección de MOD-05 (seguridad social) |
 | `SCFP-MOD-06.postman_collection.json` | La colección de MOD-06 (inversiones y rentabilidad) |
 | `SCFP-MOD-08.postman_collection.json` | La colección de MOD-08 (créditos y simulación de pagos) |
+| `SCFP-MOD-09.postman_collection.json` | La colección de MOD-09 (presupuestos) |
 | `SCFP-Local.postman_environment.json` | Entorno local (URL y credenciales) de MOD-03; las demás colecciones traen sus propias variables |
 
 > **Sesión de una corrida anterior (todas las colecciones).** La app de Postman
@@ -741,3 +743,81 @@ Comprobado el 10/11/2026: **la colección completa se ejecutó con Postman CLI**
 contra `http://localhost:8000`: **62 peticiones, 71 aserciones, 0 fallos**.
 Tras agregar la carpeta 70 (10/11/2026, con Newman): **67 peticiones, 84
 aserciones, 0 fallos**.
+
+
+# Postman — MOD-09 Presupuestos
+
+Verificación del presupuesto mensual por categoría (RF-055), de su ejecución
+con la proyección al cierre (RF-056), de las reglas de alerta (RF-057, RF-059)
+y del centro de notificaciones (RF-058), según las pantallas 01 a 05 del mockup
+`docs/Mockups_Modulos_G_H_SCFP.html`. **44 peticiones en 7 carpetas.**
+
+## Antes de importar
+
+**1. Crear las tablas de MOD-09, una sola vez**, con `--path` (nunca
+`migrate:fresh`):
+
+```bash
+php artisan migrate --path=database/migrations/2026_11_18_000001_create_presupuestos_tables.php
+php artisan migrate --path=database/migrations/2026_11_18_000002_create_notificaciones_tables.php
+php artisan migrate --path=database/migrations/2026_11_18_000003_create_preferencias_notificacion_table.php
+```
+
+**2. Preparar las cuentas de demostración, antes de cada corrida.**
+
+```bash
+php artisan db:seed --class="Database\Seeders\Test\Mod09DemoSeeder"
+```
+
+Crea dos cuentas ACTIVA, sin MFA, con la política vigente aceptada y la
+contraseña `Scfp#Demo2026`. Las fechas son relativas al día en que se corre el
+seeder (M = mes actual):
+
+| Cuenta | Datos |
+| :---- | :---- |
+| `mod09@scfp.test` | Sin presupuestos. Ingresos de $ 6.000.000 en M-3, M-2 y M-1. En cada uno de esos meses: Mercado $ 300.000 el día 1 y Restaurantes $ 640.000 el día 28 (categoría «Alimentación demo»). En M-1, Taxi $ 200.000 («Transporte demo»). En M, Mercado $ 1.000.000 el día 1 |
+| `mod09.otro@scfp.test` | Presupuesto del mes actual con una línea de UUID fijo `…0009-000000000001` y una notificación `…0009-000000000002` (RNG-01) |
+
+El seeder también borra las notificaciones, las reglas de alerta y las
+preferencias del resumen de las dos cuentas. Al guardar el gasto del mes actual
+se evalúan las alertas, así que la cuenta ya arranca con la de «gastas más de lo
+que ganas» (el mes no tiene ingresos), que verifica la 60.7.
+
+## Ejecutar
+
+**Con el Collection Runner, en orden.** La colección usa sus propias variables
+(`correo_mod09`, `password_mod09`, `linea_ajena_id`, `notificacion_ajena_id`) y calcula `mes_actual` y
+`mes_anterior` antes de cada petición, así que no necesita el entorno.
+
+## Qué verifica cada carpeta
+
+| Carpeta | Peticiones | Cubre |
+| :---- | :---- | :---- |
+| 00 · Autenticación | 3 | Login por el formulario real, cierre de la sesión anterior |
+| 10 · RF-055 Configurar | 9 | Sin presupuesto (404), base con promedio y sugerido (RN-055.3, RN-055.4), una línea por categoría (CA-055.2), padre e hija (RN-055.2), monto > 0, % hasta 100, mes cerrado, crear con una línea en pesos y otra en % y editar con el aviso de línea bajo el promedio |
+| 20 · RF-056 Ejecución | 4 | Gastado, disponible y % por línea (RN-056.1), proyección histórica, totales, gasto fuera del presupuesto, detalle con la serie diaria y los últimos gastos, mes sin presupuesto, formato del mes |
+| 30 · Eliminación y acceso | 4 | Línea de otra cuenta (RNG-01), mes cerrado no se elimina, eliminar el del mes y que no se regenere |
+| 40 · RF-057 Reglas de alerta | 5 | Valores sugeridos (RN-057.1), umbral fuera de rango, más de 3 umbrales, guardar solo lo enviado y restablecer |
+| 50 · RF-058 Centro de notificaciones | 9 | Las alertas del 80 % (ADVERTENCIA) y del 100 % (CRITICA) que dejó la carpeta 10 con sus cifras (RN-057.5, RN-058.3), contador (RN-058.4), leída, archivada, filtro por estado, marcar todas, notificación de otra cuenta (RNG-01) |
+| 60 · Reglas financieras, seguridad y resumen | 10 | Las 14 reglas y el resumen apagado (RN-059.3), la seguridad no se desactiva (RN-059.4, CA-059.2), el tope mensual exige monto, un gasto por `/gastos` que pasa el tope y su alerta CRITICA, «gastas más de lo que ganas», resumen semanal con bloques y restablecer |
+
+## Datos
+
+- **Antes de repetir la colección hay que volver a correr el seeder**: las
+  alertas de la carpeta 10 salen una vez por umbral y mes (RN-057.2), así que en
+  una segunda corrida la carpeta 50 no las encontraría como nuevas.
+- Las carpetas 40 y 60 terminan restableciendo las reglas, así que no dejan
+  cambios. La 60.5 registra un gasto de $ 50.000 con la fecha del día.
+- El envío del resumen por correo (lunes y día 1) no se prueba por HTTP: lo
+  cubren las pruebas de `tests/Feature/Dominio/Mod09/ResumenCorreoTest.php`.
+- El gasto habitual de Alimentación es $ 640.000 si la colección se corre antes
+  del día 28 y $ 0 desde ese día: la aserción lo calcula con `dia_corte`.
+
+## Estado de verificación
+
+Comprobado el 18/11/2026 con Newman contra `http://localhost:8000`: **21
+peticiones (20 más el cierre de sesión), 31 aserciones, 0 fallos**. Con las
+carpetas 40 y 50 (mismo día): **35 peticiones (34 más el cierre de sesión), 47
+aserciones, 0 fallos**. Con la carpeta 60 (mismo día): **45 peticiones (44 más
+el cierre de sesión), 59 aserciones, 0 fallos**.
+

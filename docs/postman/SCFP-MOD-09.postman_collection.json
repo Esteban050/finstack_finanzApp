@@ -1,0 +1,2465 @@
+{
+    "info": {
+        "_postman_id": "6e1f2a7b-3c8d-4f9e-8a42-1d6f8e3c5a09",
+        "name": "SCFP · MOD-09 Presupuestos",
+        "description": "Peticiones de verificación de MOD-09: configurar el presupuesto mensual por categoría (RF-055), su ejecución con la proyección al cierre (RF-056), las reglas de alerta (RF-057, RF-059) y el centro de notificaciones (RF-058).\n\nAntes de cada corrida: php artisan db:seed --class=\"Database\\Seeders\\Test\\Mod09DemoSeeder\". Los datos del seeder son relativos al día en que se ejecuta, y la colección calcula el mes actual y el anterior antes de cada petición.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Mes actual y anterior en AAAA-MM, con la fecha local (America/Bogota).",
+                    "const hoy = new Date();",
+                    "const aaaamm = d => d.getFullYear() + \"-\" + String(d.getMonth() + 1).padStart(2, \"0\");",
+                    "pm.collectionVariables.set(\"mes_actual\", aaaamm(hoy));",
+                    "pm.collectionVariables.set(\"mes_anterior\", aaaamm(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)));",
+                    "pm.collectionVariables.set(\"fecha_hoy\", aaaamm(hoy) + \"-\" + String(hoy.getDate()).padStart(2, \"0\"));"
+                ]
+            }
+        }
+    ],
+    "item": [
+        {
+            "name": "00 · Autenticación",
+            "item": [
+                {
+                    "name": "00.1 GET /login · obtener token CSRF",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "// Postman guarda las cookies entre corridas: si quedó abierta la sesión de otra",
+                                    "// cuenta, /login (middleware guest) redirige al dashboard y el login no cambia",
+                                    "// de cuenta. Se cierra esa sesión primero.",
+                                    "const base = pm.variables.get('base_url');",
+                                    "pm.sendRequest(base + '/dashboard', function (err, res) {",
+                                    "    // Solo una página autenticada trae el formulario de cierre de sesión: sin",
+                                    "    // sesión, /dashboard redirige a /login y un POST /logout cambiaría la URL de",
+                                    "    // destino del login (url.intended).",
+                                    "    const html = !err && res.code === 200 ? res.text() : '';",
+                                    "    const m = /action=\"[^\"]*\\/logout\"/.test(html) && html.match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                                    "    if (!m) { return; }",
+                                    "    pm.sendRequest({",
+                                    "        url: base + '/logout',",
+                                    "        method: 'POST',",
+                                    "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                                    "        body: { mode: 'urlencoded', urlencoded: [{ key: '_token', value: m[1] }] }",
+                                    "    }, function () {});",
+                                    "});"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Formulario de login disponible (RF-003)', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const m = pm.response.text().match(/name=\"_token\"[^>]*value=\"([^\"]+)\"/);",
+                                    "",
+                                    "pm.test('Token CSRF presente en el formulario', function () {",
+                                    "    pm.expect(m, 'no se encontró el input _token').to.not.be.null;",
+                                    "});",
+                                    "",
+                                    "if (m) {",
+                                    "    pm.collectionVariables.set('csrf', m[1]);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "login"
+                            ]
+                        }
+                    },
+                    "protocolProfileBehavior": {
+                        "followRedirects": false
+                    }
+                },
+                {
+                    "name": "00.2 POST /login · iniciar sesión",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-003.5 · redirige a /dashboard', function () {",
+                                    "    pm.response.to.have.status(302);",
+                                    "    pm.expect(pm.response.headers.get('Location')).to.include('/dashboard');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/x-www-form-urlencoded"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "login"
+                            ]
+                        },
+                        "body": {
+                            "mode": "urlencoded",
+                            "urlencoded": [
+                                {
+                                    "key": "_token",
+                                    "value": "{{csrf}}"
+                                },
+                                {
+                                    "key": "correo",
+                                    "value": "{{correo_mod09}}"
+                                },
+                                {
+                                    "key": "password",
+                                    "value": "{{password_mod09}}"
+                                }
+                            ]
+                        }
+                    },
+                    "protocolProfileBehavior": {
+                        "followRedirects": false
+                    }
+                },
+                {
+                    "name": "00.3 GET /dashboard · refrescar token tras regenerar sesión",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Sesión activa', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const m = pm.response.text().match(/<meta name=\"csrf-token\" content=\"([^\"]+)\"/);",
+                                    "",
+                                    "pm.test('Token CSRF renovado disponible', function () {",
+                                    "    pm.expect(m, 'no se encontró el meta csrf-token').to.not.be.null;",
+                                    "});",
+                                    "",
+                                    "if (m) {",
+                                    "    pm.collectionVariables.set('csrf', m[1]);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/dashboard",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "dashboard"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "10 · RF-055 Configurar el presupuesto",
+            "item": [
+                {
+                    "name": "10.1 GET /presupuestos · sin presupuesto del mes (RF-056)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-056 · sin presupuesto del mes responde 404', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "    pm.expect(pm.response.json().mensaje).to.include('No hay presupuesto para ' + pm.collectionVariables.get('mes_actual'));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "10.2 GET /presupuestos/{mes}/base · promedio y sugerido (RN-055.3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-055.4 · ingreso promedio de los 3 meses anteriores', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.meses_promedio).to.have.lengthOf(3);",
+                                    "    pm.expect(d.ingreso_promedio).to.eql('6000000');",
+                                    "    pm.expect(d.gasto_promedio_total).to.eql('1006667');",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-055.3 · Alimentación: gastado el mes anterior, promedio y sugerido', function () {",
+                                    "    const c = pm.response.json().data.categorias.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000101');",
+                                    "    pm.expect(c.gastado_mes_anterior).to.eql('940000');",
+                                    "    pm.expect(c.promedio_3_meses).to.eql('940000');",
+                                    "    pm.expect(c.sugerido).to.eql('940000');",
+                                    "    const mercado = c.subcategorias.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000102');",
+                                    "    pm.expect(mercado.promedio_3_meses).to.eql('300000');",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-055.3 · el sugerido sube al múltiplo de $ 10.000 (66.667 → 70.000)', function () {",
+                                    "    const c = pm.response.json().data.categorias.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000106');",
+                                    "    pm.expect(c.promedio_3_meses).to.eql('66667');",
+                                    "    pm.expect(c.sugerido).to.eql('70000');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}/base",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}",
+                                "base"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "10.3 PUT /presupuestos/{mes} · dos líneas de la misma categoría (CA-055.2)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('CA-055.2 · la segunda línea de la misma categoría se rechaza', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('lineas.1.categoria_id');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"1200000\"\n    },\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"300000\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.4 PUT /presupuestos/{mes} · categoría y su subcategoría (RN-055.2)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-055.2 · la subcategoría no convive con su categoría padre', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('lineas.1.categoria_id');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"1200000\"\n    },\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000102\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"300000\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.5 PUT /presupuestos/{mes} · monto en 0 (CA-055.2)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('CA-055.2 · el monto asignado debe ser mayor que $ 0', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors['lineas.0.monto_asignado'][0]).to.include('mayor que $ 0');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"0\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.6 PUT /presupuestos/{mes} · porcentaje mayor que 100",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · el % del ingreso va de 0 a 100', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('lineas.0.porcentaje_ingreso');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000104\",\n      \"modo_asignacion\": \"PORC_INGRESO\",\n      \"porcentaje_ingreso\": \"120\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.7 PUT /presupuestos/{mes} · mes cerrado",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · solo se configura el mes actual o los siguientes', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('mes');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_anterior}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_anterior}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"1200000\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.8 PUT /presupuestos/{mes} · crear con una línea en pesos y otra en % (RF-055)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · crea el presupuesto del mes', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j.mensaje).to.eql('Presupuesto creado.');",
+                                    "    pm.expect(j.data.mes).to.eql(pm.collectionVariables.get('mes_actual'));",
+                                    "    pm.expect(j.data.ingreso_base).to.eql('6000000');",
+                                    "    pm.expect(j.data.advertencias).to.eql([]);",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-055.4 · la línea en % = 10 % × $ 6.000.000', function () {",
+                                    "    const l = pm.response.json().data.lineas.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000104');",
+                                    "    pm.expect(l.modo_asignacion).to.eql('PORC_INGRESO');",
+                                    "    pm.expect(l.porcentaje_ingreso).to.eql('10.00');",
+                                    "    pm.expect(l.monto_asignado).to.eql('600000');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"1200000\"\n    },\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000104\",\n      \"modo_asignacion\": \"PORC_INGRESO\",\n      \"porcentaje_ingreso\": \"10\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "10.9 PUT /presupuestos/{mes} · editar por debajo del promedio",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · editar reemplaza las líneas y responde 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j.mensaje).to.eql('Presupuesto actualizado.');",
+                                    "    pm.expect(j.data.totales.monto_asignado).to.eql('1300000');",
+                                    "    const l = j.data.lineas.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000101');",
+                                    "    pm.collectionVariables.set('linea_alimentacion_id', l.linea_id);",
+                                    "});",
+                                    "",
+                                    "pm.test('Aviso · la línea queda más de 15 % por debajo de su promedio', function () {",
+                                    "    pm.expect(pm.response.json().data.advertencias).to.eql([{",
+                                    "        codigo: 'LINEA_BAJO_PROMEDIO',",
+                                    "        categoria_id: '90000000-0000-0000-0009-000000000101',",
+                                    "        monto_asignado: '700000',",
+                                    "        promedio_3_meses: '940000',",
+                                    "        diferencia: '240000',",
+                                    "        diferencia_porc: '25.53'",
+                                    "    }]);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"repetir_cada_mes\": true,\n  \"trasladar_saldo\": false,\n  \"lineas\": [\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n      \"modo_asignacion\": \"PESOS\",\n      \"monto_asignado\": \"700000\"\n    },\n    {\n      \"categoria_id\": \"90000000-0000-0000-0009-000000000104\",\n      \"modo_asignacion\": \"PORC_INGRESO\",\n      \"porcentaje_ingreso\": \"10\"\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "20 · RF-056 Ejecución y proyección",
+            "item": [
+                {
+                    "name": "20.1 GET /presupuestos · ejecución del mes (RF-056)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-056.1 · gastado, disponible y % de ejecución por línea', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const l = pm.response.json().data.lineas.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000101');",
+                                    "    pm.expect(l.monto_asignado).to.eql('700000');",
+                                    "    pm.expect(l.gastado).to.eql('1000000');",
+                                    "    pm.expect(l.cantidad_gastos).to.eql(1);",
+                                    "    pm.expect(l.disponible).to.eql('-300000');",
+                                    "    pm.expect(l.ejecucion_porc).to.eql('142.86');",
+                                    "});",
+                                    "",
+                                    "pm.test('RF-056 · proyección histórica: gastado + pendientes + habitual', function () {",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.metodo_proyeccion).to.eql('HISTORICO');",
+                                    "    pm.expect(d.meses_historia).to.eql(3);",
+                                    "    const l = d.lineas.find(x => x.categoria_id === '90000000-0000-0000-0009-000000000101');",
+                                    "    // Restaurantes gastó $ 640.000 el día 28 de cada mes anterior.",
+                                    "    const habitual = d.dia_corte < 28 ? '640000' : '0';",
+                                    "    pm.expect(l.pendientes_recurrentes).to.eql('0');",
+                                    "    pm.expect(l.gasto_habitual).to.eql(habitual);",
+                                    "    pm.expect(l.proyeccion).to.eql(String(1000000 + Number(habitual)));",
+                                    "});",
+                                    "",
+                                    "pm.test('RF-056 · totales del presupuesto', function () {",
+                                    "    const t = pm.response.json().data.totales;",
+                                    "    pm.expect(t.monto_asignado).to.eql('1300000');",
+                                    "    pm.expect(t.gastado).to.eql('1000000');",
+                                    "    pm.expect(t.disponible).to.eql('300000');",
+                                    "    pm.expect(t.ejecucion_porc).to.eql('76.92');",
+                                    "});",
+                                    "",
+                                    "pm.test('Sin estado ni colores: el backend entrega datos crudos', function () {",
+                                    "    const l = pm.response.json().data.lineas[0];",
+                                    "    pm.expect(l).to.not.have.property('estado');",
+                                    "});",
+                                    "",
+                                    "pm.test('Gasto fuera del presupuesto: Transporte del mes anterior', function () {",
+                                    "    const f = pm.response.json().data.fuera_del_presupuesto;",
+                                    "    pm.expect(f.mes).to.eql([]);",
+                                    "    pm.expect(f.mes_anterior).to.eql([{ categoria_id: '90000000-0000-0000-0009-000000000106', nombre: 'Transporte demo', monto: '200000', cantidad_gastos: 1 }]);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "20.2 GET /presupuestos/{mes}/lineas/{id} · ritmo de gasto (RF-056)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-056 · una serie por día del mes que termina en la proyección', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.serie).to.have.lengthOf(d.dias_mes);",
+                                    "    pm.expect(d.serie[0].real).to.eql('1000000');",
+                                    "    pm.expect(d.serie[d.dias_mes - 1].proyectado).to.eql(d.linea.proyeccion);",
+                                    "});",
+                                    "",
+                                    "pm.test('RF-056 · últimos gastos de la línea', function () {",
+                                    "    const g = pm.response.json().data.gastos_recientes;",
+                                    "    pm.expect(g).to.have.lengthOf(1);",
+                                    "    pm.expect(g[0].comercio_beneficiario).to.eql('Supermercado Ejemplo');",
+                                    "    pm.expect(g[0].monto_cop).to.eql('1000000');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}/lineas/{{linea_alimentacion_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}",
+                                "lineas",
+                                "{{linea_alimentacion_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "20.3 GET /presupuestos?mes= · mes anterior sin presupuesto",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-056 · un mes sin presupuesto responde 404', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos?mes={{mes_anterior}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos"
+                            ],
+                            "query": [
+                                {
+                                    "key": "mes",
+                                    "value": "{{mes_anterior}}"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "20.4 GET /presupuestos?mes= · formato inválido",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('El mes va en formato AAAA-MM', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('mes');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos?mes=2026-13",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos"
+                            ],
+                            "query": [
+                                {
+                                    "key": "mes",
+                                    "value": "2026-13"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "30 · Eliminación y acceso",
+            "item": [
+                {
+                    "name": "30.1 GET /presupuestos/{mes}/lineas/{id} · línea de otra cuenta (RNG-01)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RNG-01 · la línea de otra cuenta responde 404', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}/lineas/{{linea_ajena_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}",
+                                "lineas",
+                                "{{linea_ajena_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "30.2 DELETE /presupuestos/{mes} · mes cerrado",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · un mes cerrado no se elimina', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('mes');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_anterior}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_anterior}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "30.3 DELETE /presupuestos/{mes} · eliminar el del mes actual",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-055 · elimina el presupuesto del mes', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    pm.expect(pm.response.json().mensaje).to.eql('Presupuesto eliminado.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos/{{mes_actual}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos",
+                                "{{mes_actual}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "30.4 GET /presupuestos · ya no hay presupuesto",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-055.1 · sin presupuesto del mes anterior no se regenera', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/presupuestos",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "presupuestos"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "40 · RF-057 Reglas de alerta",
+            "item": [
+                {
+                    "name": "40.1 GET /perfil/alertas · valores sugeridos (RN-057.1)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-057.1 · las reglas del presupuesto con sus valores sugeridos', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const r = {};",
+                                    "    pm.response.json().data.reglas.forEach(x => r[x.tipo] = x);",
+                                    "    pm.expect(Object.keys(r).slice(0, 3)).to.eql(['UMBRAL_LINEA', 'PRESUPUESTO_TOTAL', 'PROYECCION_LINEA']);",
+                                    "    pm.expect(r.UMBRAL_LINEA.parametros.umbrales).to.eql([80, 100]);",
+                                    "    pm.expect(r.PRESUPUESTO_TOTAL.parametros.umbrales).to.eql([90, 100]);",
+                                    "    pm.expect(r.PROYECCION_LINEA.parametros.umbral).to.eql(110);",
+                                    "    pm.expect(r.UMBRAL_LINEA.personalizada).to.eql(false);",
+                                    "    pm.expect(r.UMBRAL_LINEA.enviar_correo).to.eql(false);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "40.2 PUT /perfil/alertas · umbral fuera de rango (RN-057.1)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-057.1 · los umbrales van de 50 % a 150 %', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('reglas.0.parametros.umbrales');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"UMBRAL_LINEA\",\n      \"parametros\": {\n        \"umbrales\": [\n          40,\n          100\n        ]\n      }\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "40.3 PUT /perfil/alertas · más de 3 umbrales (RN-057.1)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-057.1 · hasta 3 umbrales por línea', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('reglas.0.parametros.umbrales');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"UMBRAL_LINEA\",\n      \"parametros\": {\n        \"umbrales\": [\n          60,\n          80,\n          100,\n          120\n        ]\n      }\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "40.4 PUT /perfil/alertas · guardar umbrales propios",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · guarda solo lo enviado y ordena los umbrales', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const r = {};",
+                                    "    pm.response.json().data.reglas.forEach(x => r[x.tipo] = x);",
+                                    "    pm.expect(r.UMBRAL_LINEA.parametros.umbrales).to.eql([70, 90, 120]);",
+                                    "    pm.expect(r.UMBRAL_LINEA.personalizada).to.eql(true);",
+                                    "    pm.expect(r.PROYECCION_LINEA.activa).to.eql(false);",
+                                    "    pm.expect(r.PRESUPUESTO_TOTAL.personalizada).to.eql(false);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"UMBRAL_LINEA\",\n      \"parametros\": {\n        \"umbrales\": [\n          120,\n          70,\n          90\n        ]\n      }\n    },\n    {\n      \"tipo\": \"PROYECCION_LINEA\",\n      \"activa\": false\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "40.5 POST /perfil/alertas/restablecer · volver a los sugeridos",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · restablece los valores sugeridos', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const r = {};",
+                                    "    pm.response.json().data.reglas.forEach(x => r[x.tipo] = x);",
+                                    "    pm.expect(r.UMBRAL_LINEA.parametros.umbrales).to.eql([80, 100]);",
+                                    "    pm.expect(r.PROYECCION_LINEA.activa).to.eql(true);",
+                                    "    pm.expect(r.UMBRAL_LINEA.personalizada).to.eql(false);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas/restablecer",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas",
+                                "restablecer"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "50 · RF-058 Centro de notificaciones",
+            "item": [
+                {
+                    "name": "50.1 GET /notificaciones · alertas que dejó la carpeta 10 (RF-057)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "// La 10.8 dejó Alimentación en 83,33 % (umbral 80) y la 10.9 en 142,86 % (umbral 100).",
+                                    "const n = pm.response.json().data.notificaciones;",
+                                    "const u80 = n.find(x => x.datos.umbral === 80);",
+                                    "const u100 = n.find(x => x.datos.umbral === 100);",
+                                    "",
+                                    "pm.test('RN-057.1 · una alerta por cada umbral cruzado', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    pm.expect(n).to.have.lengthOf(2);",
+                                    "    pm.expect(u80, 'falta la del 80 %').to.not.be.undefined;",
+                                    "    pm.expect(u100, 'falta la del 100 %').to.not.be.undefined;",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-058.3 · el umbral ≥ 100 % es CRITICA; el de 80 %, ADVERTENCIA', function () {",
+                                    "    pm.expect(u80.prioridad).to.eql('ADVERTENCIA');",
+                                    "    pm.expect(u100.prioridad).to.eql('CRITICA');",
+                                    "    pm.expect(u100.estado).to.eql('NO_LEIDA');",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-057.5 · la alerta trae la línea, el % alcanzado, lo asignado y lo gastado', function () {",
+                                    "    pm.expect(u80.datos.categoria_id).to.eql('90000000-0000-0000-0009-000000000101');",
+                                    "    pm.expect(u80.datos.ejecucion_porc).to.eql('83.33');",
+                                    "    pm.expect(u80.datos.asignado).to.eql('1200000');",
+                                    "    pm.expect(u80.datos.gastado).to.eql('1000000');",
+                                    "    pm.expect(u100.datos.ejecucion_porc).to.eql('142.86');",
+                                    "    pm.expect(u100.referencia_tipo).to.eql('PRESUPUESTO');",
+                                    "});",
+                                    "",
+                                    "if (u80 && u100) {",
+                                    "    pm.collectionVariables.set('notificacion_80_id', u80.id);",
+                                    "    pm.collectionVariables.set('notificacion_100_id', u100.id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?tipo=UMBRAL_LINEA",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "tipo",
+                                    "value": "UMBRAL_LINEA"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.2 GET /notificaciones/contador · número sin leer (RN-058.4)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-058.4 · cuenta las no leídas', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    pm.expect(pm.response.json().data.no_leidas).to.be.at.least(2);",
+                                    "    pm.collectionVariables.set('no_leidas_antes', pm.response.json().data.no_leidas);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones/contador",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones",
+                                "contador"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.3 PATCH /notificaciones/{id}/leida · marcar como leída (RN-058.3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-058.3 · queda leída con su fecha y baja el contador', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.estado).to.eql('LEIDA');",
+                                    "    pm.expect(d.leida_en).to.be.a('string');",
+                                    "    pm.expect(d.no_leidas).to.eql(Number(pm.collectionVariables.get('no_leidas_antes')) - 1);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones/{{notificacion_80_id}}/leida",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones",
+                                "{{notificacion_80_id}}",
+                                "leida"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.4 PATCH /notificaciones/{id}/archivar · archivar (RN-058.3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-058.3 · queda archivada con su fecha', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.estado).to.eql('ARCHIVADA');",
+                                    "    pm.expect(d.archivada_en).to.be.a('string');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones/{{notificacion_100_id}}/archivar",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones",
+                                "{{notificacion_100_id}}",
+                                "archivar"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.5 GET /notificaciones · la bandeja no muestra las archivadas",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-058 · por defecto, no leídas y leídas', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const ids = pm.response.json().data.notificaciones.map(x => x.id);",
+                                    "    pm.expect(ids).to.include(pm.collectionVariables.get('notificacion_80_id'));",
+                                    "    pm.expect(ids).to.not.include(pm.collectionVariables.get('notificacion_100_id'));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?tipo=UMBRAL_LINEA",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "tipo",
+                                    "value": "UMBRAL_LINEA"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.6 GET /notificaciones?estado=ARCHIVADA · filtro por estado",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-058 · las archivadas se piden con el filtro', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const n = pm.response.json().data.notificaciones;",
+                                    "    pm.expect(n.map(x => x.id)).to.include(pm.collectionVariables.get('notificacion_100_id'));",
+                                    "    n.forEach(x => pm.expect(x.estado).to.eql('ARCHIVADA'));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?estado=ARCHIVADA",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "estado",
+                                    "value": "ARCHIVADA"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.7 POST /notificaciones/marcar-todas-leidas",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-058 · marca todas y el contador queda en 0', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    pm.expect(pm.response.json().data.no_leidas).to.eql(0);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones/marcar-todas-leidas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones",
+                                "marcar-todas-leidas"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.8 PATCH /notificaciones/{id}/leida · notificación de otra cuenta (RNG-01)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RNG-01 · la notificación de otra cuenta responde 404', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones/{{notificacion_ajena_id}}/leida",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones",
+                                "{{notificacion_ajena_id}}",
+                                "leida"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "50.9 GET /notificaciones?estado= · estado inválido",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-058.3 · el estado debe ser NO_LEIDA, LEIDA o ARCHIVADA', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('estado');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?estado=BORRADA",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "estado",
+                                    "value": "BORRADA"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "60 · RF-057 Reglas financieras, seguridad y resumen por correo",
+            "item": [
+                {
+                    "name": "60.1 GET /perfil/alertas · todas las reglas y el resumen (RN-059.3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · catorce reglas con sus valores sugeridos', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const r = {};",
+                                    "    pm.response.json().data.reglas.forEach(x => r[x.tipo] = x);",
+                                    "    pm.expect(Object.keys(r)).to.eql([",
+                                    "        'UMBRAL_LINEA', 'PRESUPUESTO_TOTAL', 'PROYECCION_LINEA',",
+                                    "        'INGRESOS_VS_GASTOS', 'GASTO_PROYECTADO_ALTO', 'LIMITE_GASTO_MENSUAL',",
+                                    "        'GASTO_INUSUAL', 'GASTOS_HORMIGA', 'GASTO_DISCRECIONAL_ALTO',",
+                                    "        'TOPE_DIAN_TARJETA', 'TOPE_DIAN_COMPRAS', 'ENDEUDAMIENTO', 'VENCIMIENTOS', 'SEGURIDAD_CUENTA'",
+                                    "    ]);",
+                                    "    pm.expect(r.LIMITE_GASTO_MENSUAL.activa).to.eql(false);",
+                                    "    pm.expect(r.GASTOS_HORMIGA.parametros).to.eql({ monto_max: 20000, tope: 300000 });",
+                                    "    pm.expect(r.TOPE_DIAN_TARJETA.parametros.umbral).to.eql(80);",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-059.4 · la seguridad de la cuenta es fija y va por correo', function () {",
+                                    "    const s = pm.response.json().data.reglas.find(x => x.tipo === 'SEGURIDAD_CUENTA');",
+                                    "    pm.expect(s.editable).to.eql(false);",
+                                    "    pm.expect(s.enviar_correo).to.eql(true);",
+                                    "});",
+                                    "",
+                                    "pm.test('RN-059.3 · el resumen por correo está apagado por defecto', function () {",
+                                    "    const r = pm.response.json().data.resumen;",
+                                    "    pm.expect(r.frecuencia).to.eql('NINGUNA');",
+                                    "    pm.expect(r.bloques).to.eql(['INGRESOS_GASTOS', 'PRESUPUESTO', 'ALERTAS', 'VENCIMIENTOS']);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "60.2 PUT /perfil/alertas · desactivar la seguridad (CA-059.2)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('CA-059.2 · las alertas de seguridad no se desactivan', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('reglas.0.tipo');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"SEGURIDAD_CUENTA\",\n      \"activa\": false\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.3 PUT /perfil/alertas · tope mensual sin monto",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · activar el tope mensual exige el monto', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('reglas.0.parametros.monto');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"LIMITE_GASTO_MENSUAL\",\n      \"activa\": true\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.4 PUT /perfil/alertas · tope mensual de $ 900.000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · activa el tope mensual con su monto', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const l = pm.response.json().data.reglas.find(x => x.tipo === 'LIMITE_GASTO_MENSUAL');",
+                                    "    pm.expect(l.activa).to.eql(true);",
+                                    "    pm.expect(l.parametros.monto).to.eql('900000');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reglas\": [\n    {\n      \"tipo\": \"LIMITE_GASTO_MENSUAL\",\n      \"activa\": true,\n      \"parametros\": {\n        \"monto\": \"900000\"\n      }\n    }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.5 POST /gastos · un gasto que pasa el tope (RN-025.4)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-025 · registra el gasto', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/gastos",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "gastos"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"categoria_id\": \"90000000-0000-0000-0009-000000000101\",\n  \"subcategoria_id\": \"90000000-0000-0000-0009-000000000102\",\n  \"fecha\": \"{{fecha_hoy}}\",\n  \"moneda\": \"COP\",\n  \"monto_original\": \"50000.00\",\n  \"medio_pago\": \"EFECTIVO\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.6 GET /notificaciones?tipo=LIMITE_GASTO_MENSUAL · la alerta del tope",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · el gasto del mes ($ 1.050.000) pasa el tope de $ 900.000', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const n = pm.response.json().data.notificaciones;",
+                                    "    pm.expect(n).to.have.lengthOf(1);",
+                                    "    pm.expect(n[0].prioridad).to.eql('CRITICA');",
+                                    "    pm.expect(n[0].datos.monto).to.eql('900000');",
+                                    "    pm.expect(n[0].datos.gastado).to.eql('1050000');",
+                                    "    pm.expect(n[0].datos.diferencia).to.eql('150000');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?tipo=LIMITE_GASTO_MENSUAL",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "tipo",
+                                    "value": "LIMITE_GASTO_MENSUAL"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "60.7 GET /notificaciones?tipo=INGRESOS_VS_GASTOS · gastas más de lo que ganas",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "// El mes actual del seeder no tiene ingresos: el gasto ya supera lo recibido.",
+                                    "// La 50.7 la dejó leída.",
+                                    "pm.test('RF-057 · alerta CRITICA del mes en curso con sus cifras', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const n = pm.response.json().data.notificaciones.find(x => x.datos.cierre === false);",
+                                    "    pm.expect(n, 'falta la del mes en curso').to.not.be.undefined;",
+                                    "    pm.expect(n.prioridad).to.eql('CRITICA');",
+                                    "    pm.expect(n.datos.mes).to.eql(pm.collectionVariables.get('mes_actual'));",
+                                    "    pm.expect(n.datos.ingresos_recibidos).to.eql('0');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/notificaciones?tipo=INGRESOS_VS_GASTOS&estado=LEIDA",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "notificaciones"
+                            ],
+                            "query": [
+                                {
+                                    "key": "tipo",
+                                    "value": "INGRESOS_VS_GASTOS"
+                                },
+                                {
+                                    "key": "estado",
+                                    "value": "LEIDA"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "60.8 PUT /perfil/alertas · resumen semanal con dos bloques (RN-059.3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-059.3 · guarda la frecuencia y los bloques en el orden del catálogo', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const r = pm.response.json().data.resumen;",
+                                    "    pm.expect(r.frecuencia).to.eql('SEMANAL');",
+                                    "    pm.expect(r.bloques).to.eql(['ALERTAS', 'VENCIMIENTOS']);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"resumen\": {\n    \"frecuencia\": \"SEMANAL\",\n    \"bloques\": [\n      \"VENCIMIENTOS\",\n      \"ALERTAS\"\n    ]\n  }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.9 PUT /perfil/alertas · bloque inválido",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RN-059.3 · solo los cuatro bloques del resumen', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('resumen.bloques.0');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"resumen\": {\n    \"bloques\": [\n      \"SALDOS\"\n    ]\n  }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "60.10 POST /perfil/alertas/restablecer · todo a los valores sugeridos",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('RF-057 · el tope vuelve a inactivo y el resumen se apaga', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d.reglas.find(x => x.tipo === 'LIMITE_GASTO_MENSUAL').activa).to.eql(false);",
+                                    "    pm.expect(d.resumen.frecuencia).to.eql('NINGUNA');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-CSRF-TOKEN",
+                                "value": "{{csrf}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/perfil/alertas/restablecer",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "perfil",
+                                "alertas",
+                                "restablecer"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        },
+        {
+            "key": "correo_mod09",
+            "value": "mod09@scfp.test",
+            "type": "string"
+        },
+        {
+            "key": "password_mod09",
+            "value": "Scfp#Demo2026",
+            "type": "string"
+        },
+        {
+            "key": "linea_ajena_id",
+            "value": "90000000-0000-0000-0009-000000000001",
+            "type": "string"
+        },
+        {
+            "key": "notificacion_ajena_id",
+            "value": "90000000-0000-0000-0009-000000000002",
+            "type": "string"
+        },
+        {
+            "key": "notificacion_80_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "notificacion_100_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "no_leidas_antes",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "fecha_hoy",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "csrf",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "mes_actual",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "mes_anterior",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "linea_alimentacion_id",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

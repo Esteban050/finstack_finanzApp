@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Casts\PgsqlArrayCast;
 use App\Models\Scopes\DelUsuarioAutenticado;
+use App\Observers\GastoObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -16,8 +18,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * RF-025: Gasto registrado por el Usuario, clasificado en las seis dimensiones
  * de RF-026 (categoría/subcategoría, naturaleza, necesidad, medio de pago,
  * relevancia tributaria y etiquetas libres).
+ *
+ * RF-057: GastoObserver evalúa las alertas del presupuesto al cambiar un gasto.
  */
 #[ScopedBy([DelUsuarioAutenticado::class])]
+#[ObservedBy([GastoObserver::class])]
 class Gasto extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;

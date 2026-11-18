@@ -371,6 +371,28 @@ CREATE TABLE public.inversiones (
 
 
 --
+-- Name: lineas_presupuesto; Type: TABLE; Schema: public; Owner: -
+-- RF-055 / CA-055.2 / RN-055.5. Creada por la migración 2026_11_18_000001_create_presupuestos_tables.
+--
+
+CREATE TABLE public.lineas_presupuesto (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    presupuesto_id uuid NOT NULL,
+    categoria_id uuid NOT NULL,
+    modo_asignacion character varying(15) NOT NULL,
+    porcentaje_ingreso numeric(5,2),
+    monto_asignado numeric(18,2) NOT NULL,
+    saldo_trasladado numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_linea_presupuesto_modo CHECK (((modo_asignacion)::text = ANY ((ARRAY['PESOS'::character varying, 'PORC_INGRESO'::character varying])::text[]))),
+    CONSTRAINT chk_linea_presupuesto_monto CHECK (((monto_asignado > (0)::numeric) AND (monto_asignado <= 999999999999.99))),
+    CONSTRAINT chk_linea_presupuesto_porcentaje CHECK (((((modo_asignacion)::text = 'PESOS'::text) AND (porcentaje_ingreso IS NULL)) OR (((modo_asignacion)::text = 'PORC_INGRESO'::text) AND (porcentaje_ingreso > (0)::numeric) AND (porcentaje_ingreso <= (100)::numeric)))),
+    CONSTRAINT chk_linea_presupuesto_saldo CHECK ((saldo_trasladado >= (0)::numeric))
+);
+
+
+--
 -- Name: liquidaciones_seguridad_social; Type: TABLE; Schema: public; Owner: -
 -- RF-033 RN-033.7. Creada por la migración 2026_10_28_000001_create_seguridad_social_tables.
 --
@@ -422,6 +444,31 @@ CREATE TABLE public.movimientos_inversion (
     CONSTRAINT chk_movimiento_tasa CHECK ((tasa_cambio_usada > (0)::numeric)),
     CONSTRAINT chk_movimiento_tipo CHECK (((tipo)::text = ANY ((ARRAY['APORTE'::character varying, 'RETIRO_PARCIAL'::character varying, 'RENDIMIENTO'::character varying, 'COMISION'::character varying, 'RETENCION'::character varying, 'LIQUIDACION_TOTAL'::character varying])::text[]))),
     CONSTRAINT chk_movimiento_unidades CHECK (((unidades IS NULL) OR (unidades > (0)::numeric)))
+);
+
+
+--
+-- Name: notificaciones; Type: TABLE; Schema: public; Owner: -
+-- RF-058 / RN-057.2 / RN-058.3. Creada por la migración 2026_11_18_000002_create_notificaciones_tables.
+--
+
+CREATE TABLE public.notificaciones (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    tipo character varying(40) NOT NULL,
+    prioridad character varying(15) NOT NULL,
+    estado character varying(15) DEFAULT 'NO_LEIDA'::character varying NOT NULL,
+    clave character varying(200) NOT NULL,
+    datos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    referencia_tipo character varying(40),
+    referencia_id uuid,
+    leida_en timestamp(0) with time zone,
+    archivada_en timestamp(0) with time zone,
+    correo_enviado_en timestamp(0) with time zone,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_notificacion_estado CHECK (((estado)::text = ANY ((ARRAY['NO_LEIDA'::character varying, 'LEIDA'::character varying, 'ARCHIVADA'::character varying])::text[]))),
+    CONSTRAINT chk_notificacion_prioridad CHECK (((prioridad)::text = ANY ((ARRAY['INFORMATIVA'::character varying, 'ADVERTENCIA'::character varying, 'CRITICA'::character varying])::text[])))
 );
 
 
@@ -594,6 +641,60 @@ CREATE TABLE public.plantillas_recurrencia (
     CONSTRAINT plantillas_recurrencia_ocurrencias_generadas_check CHECK ((ocurrencias_generadas >= 0)),
     CONSTRAINT plantillas_recurrencia_periodicidad_check CHECK (((periodicidad)::text = ANY ((ARRAY['SEMANAL'::character varying, 'QUINCENAL'::character varying, 'MENSUAL'::character varying, 'BIMESTRAL'::character varying, 'TRIMESTRAL'::character varying, 'SEMESTRAL'::character varying, 'ANUAL'::character varying])::text[]))),
     CONSTRAINT plantillas_recurrencia_tipo_movimiento_check CHECK (((tipo_movimiento)::text = ANY ((ARRAY['INGRESO'::character varying, 'GASTO'::character varying])::text[])))
+);
+
+
+--
+-- Name: preferencias_notificacion; Type: TABLE; Schema: public; Owner: -
+-- RN-059.3. Creada por la migración 2026_11_18_000003_create_preferencias_notificacion_table.
+--
+
+CREATE TABLE public.preferencias_notificacion (
+    usuario_id uuid NOT NULL,
+    frecuencia_resumen character varying(10) DEFAULT 'NINGUNA'::character varying NOT NULL,
+    ultimo_resumen character varying(30),
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    bloques_resumen character varying(20)[] DEFAULT ARRAY['INGRESOS_GASTOS'::character varying, 'PRESUPUESTO'::character varying, 'ALERTAS'::character varying, 'VENCIMIENTOS'::character varying] NOT NULL,
+    CONSTRAINT chk_preferencia_bloques CHECK ((bloques_resumen <@ ARRAY['INGRESOS_GASTOS'::character varying, 'PRESUPUESTO'::character varying, 'ALERTAS'::character varying, 'VENCIMIENTOS'::character varying])),
+    CONSTRAINT chk_preferencia_frecuencia CHECK (((frecuencia_resumen)::text = ANY ((ARRAY['NINGUNA'::character varying, 'SEMANAL'::character varying, 'MENSUAL'::character varying])::text[])))
+);
+
+
+--
+-- Name: presupuestos; Type: TABLE; Schema: public; Owner: -
+-- RF-055 / RN-055.1 / RN-055.4. Creada por la migración 2026_11_18_000001_create_presupuestos_tables.
+--
+
+CREATE TABLE public.presupuestos (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    mes date NOT NULL,
+    repetir_cada_mes boolean DEFAULT true NOT NULL,
+    trasladar_saldo boolean DEFAULT false NOT NULL,
+    ingreso_base numeric(18,2) DEFAULT '0'::numeric NOT NULL,
+    base_fijada boolean DEFAULT false NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_presupuesto_ingreso_base CHECK ((ingreso_base >= (0)::numeric)),
+    CONSTRAINT chk_presupuesto_mes_dia_1 CHECK ((EXTRACT(day FROM mes) = (1)::numeric))
+);
+
+
+--
+-- Name: reglas_alerta; Type: TABLE; Schema: public; Owner: -
+-- RF-057 / RF-059 / RN-057.1. Creada por la migración 2026_11_18_000002_create_notificaciones_tables.
+--
+
+CREATE TABLE public.reglas_alerta (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usuario_id uuid NOT NULL,
+    tipo character varying(40) NOT NULL,
+    activa boolean DEFAULT true NOT NULL,
+    enviar_correo boolean DEFAULT false NOT NULL,
+    parametros jsonb DEFAULT '{}'::jsonb NOT NULL,
+    creado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    actualizado_en timestamp(0) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
@@ -859,6 +960,22 @@ ALTER TABLE ONLY public.imputaciones_pago_credito
 
 
 --
+-- Name: notificaciones notificaciones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notificaciones
+    ADD CONSTRAINT notificaciones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notificaciones uq_notificaciones_usuario_clave; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notificaciones
+    ADD CONSTRAINT uq_notificaciones_usuario_clave UNIQUE (usuario_id, clave);
+
+
+--
 -- Name: pagos_credito pagos_credito_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -931,6 +1048,22 @@ ALTER TABLE ONLY public.inversiones
 
 
 --
+-- Name: lineas_presupuesto lineas_presupuesto_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lineas_presupuesto
+    ADD CONSTRAINT lineas_presupuesto_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: lineas_presupuesto uq_lineas_presupuesto_categoria; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lineas_presupuesto
+    ADD CONSTRAINT uq_lineas_presupuesto_categoria UNIQUE (presupuesto_id, categoria_id);
+
+
+--
 -- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -984,6 +1117,46 @@ ALTER TABLE ONLY public.perfiles_tributarios
 
 ALTER TABLE ONLY public.plantillas_recurrencia
     ADD CONSTRAINT plantillas_recurrencia_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: preferencias_notificacion preferencias_notificacion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.preferencias_notificacion
+    ADD CONSTRAINT preferencias_notificacion_pkey PRIMARY KEY (usuario_id);
+
+
+--
+-- Name: presupuestos presupuestos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.presupuestos
+    ADD CONSTRAINT presupuestos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: presupuestos uq_presupuestos_usuario_mes; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.presupuestos
+    ADD CONSTRAINT uq_presupuestos_usuario_mes UNIQUE (usuario_id, mes);
+
+
+--
+-- Name: reglas_alerta reglas_alerta_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reglas_alerta
+    ADD CONSTRAINT reglas_alerta_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: reglas_alerta uq_reglas_alerta_usuario_tipo; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reglas_alerta
+    ADD CONSTRAINT uq_reglas_alerta_usuario_tipo UNIQUE (usuario_id, tipo);
 
 
 --
@@ -1247,6 +1420,13 @@ CREATE INDEX ix_movimientos_inversion_fecha ON public.movimientos_inversion USIN
 
 
 --
+-- Name: ix_notificaciones_bandeja; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_notificaciones_bandeja ON public.notificaciones USING btree (usuario_id, estado, creado_en);
+
+
+--
 -- Name: uq_categorias_nombre_nivel; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1398,6 +1578,14 @@ ALTER TABLE ONLY public.imputaciones_pago_credito
 
 
 --
+-- Name: notificaciones notificaciones_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notificaciones
+    ADD CONSTRAINT notificaciones_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
 -- Name: pagos_credito pagos_credito_credito_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1526,6 +1714,22 @@ ALTER TABLE ONLY public.inversiones
 
 
 --
+-- Name: lineas_presupuesto lineas_presupuesto_categoria_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lineas_presupuesto
+    ADD CONSTRAINT lineas_presupuesto_categoria_id_foreign FOREIGN KEY (categoria_id) REFERENCES public.categorias(id) ON DELETE CASCADE;
+
+
+--
+-- Name: lineas_presupuesto lineas_presupuesto_presupuesto_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lineas_presupuesto
+    ADD CONSTRAINT lineas_presupuesto_presupuesto_id_foreign FOREIGN KEY (presupuesto_id) REFERENCES public.presupuestos(id) ON DELETE CASCADE;
+
+
+--
 -- Name: liquidaciones_seguridad_social liquidaciones_seguridad_social_parametro_normativo_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1603,6 +1807,30 @@ ALTER TABLE ONLY public.perfiles_tributarios
 
 ALTER TABLE ONLY public.plantillas_recurrencia
     ADD CONSTRAINT plantillas_recurrencia_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: preferencias_notificacion preferencias_notificacion_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.preferencias_notificacion
+    ADD CONSTRAINT preferencias_notificacion_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: presupuestos presupuestos_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.presupuestos
+    ADD CONSTRAINT presupuestos_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: reglas_alerta reglas_alerta_usuario_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reglas_alerta
+    ADD CONSTRAINT reglas_alerta_usuario_id_foreign FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON DELETE CASCADE;
 
 
 --
