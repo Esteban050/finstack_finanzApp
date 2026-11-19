@@ -137,10 +137,24 @@
     min-height: 18px;
     padding: 0;
 }
+.investment-page .income-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: end;
+}
+.investment-page .income-filters > .ui-inline {
+    align-self: end;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
 .investment-page .investment-dividend-row { grid-column: 1 / -1; }
 .social-page .finance-grid > *, .social-page .ui-card { min-width: 0; }
 .social-page .ui-field { margin-bottom: 1.5rem; }
-@media(max-width:767px) { .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); } .investment-page .ui-field label { min-height: 0; } }
+@media(max-width:767px) {
+    .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); }
+    .investment-page .ui-field label { min-height: 0; }
+    .investment-page .income-filters { grid-template-columns:minmax(0,1fr); }
+    .investment-page .income-filters > .ui-inline { justify-self: start; }
+}
 
 .investment-page [style*="background: #"], .investment-page [style*="background:#"] { background:var(--ui-surface) !important; border-color:var(--ui-border-strong) !important; }
 .investment-page [style*="color: #"], .investment-page [style*="color:#"] { color:var(--ui-text) !important; }
