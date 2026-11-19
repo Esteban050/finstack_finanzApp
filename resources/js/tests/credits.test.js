@@ -4,9 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { debtClassification, creditPayload, paymentPayload, recordPayload, planSummary, ratePercent, abonoComparison } from '../credits/rules.js';
 import { contractPayload, validResourcePath } from '../api/index.js';
 
-const phpBin = process.platform === 'win32'
-    ? (process.env.PHP_BINARY || 'C:\\Users\\esteb\\.config\\herd\\bin\\php85\\php.exe')
-    : 'php';
+const phpBin = process.env.PHP_BINARY || 'php';
 
 test('créditos: semáforo distingue fronteras y ausencia de ingresos',()=>{
     assert.equal(debtClassification(null).tone,'neutral');

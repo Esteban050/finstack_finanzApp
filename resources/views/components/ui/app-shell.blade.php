@@ -12,6 +12,7 @@
     <header class="ui-topbar">
         @auth<x-ui.button variant="ghost" class="ui-menu-toggle" data-open-drawer aria-label="Abrir menú" aria-controls="navigation-drawer" aria-expanded="false"><x-icon name="ui-menu" /></x-ui.button>@endauth
         <span class="ui-topbar-title">{{ $title }}</span>
+        @auth<a class="ui-notification-link" href="{{ route('notificaciones.index') }}" aria-label="Abrir notificaciones"><x-icon name="ui-notificaciones" :size="20" /><span class="notification-label">Notificaciones</span><span class="ui-notification-count" data-notification-counter="{{ route('notificaciones.contador') }}"></span></a>@endauth
         <x-ui.theme-switch />
     </header>
     <main id="main-content" class="ui-content" tabindex="-1">

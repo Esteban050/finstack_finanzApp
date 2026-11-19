@@ -6,6 +6,7 @@
 @import './auth.css';
 @import './finance.css';
 @import './credits.css';
+@import './planning.css';
 @import './renta.css';
 
 @tailwind base;

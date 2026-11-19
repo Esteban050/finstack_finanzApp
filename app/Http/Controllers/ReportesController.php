@@ -11,6 +11,7 @@ use App\Services\Reportes\GastosDimensionService;
 use App\Services\Reportes\IndicadoresSaludService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -40,8 +41,11 @@ class ReportesController extends Controller
     /**
      * Consulta JSON de los 7 indicadores de salud financiera.
      */
-    public function indicadores(Request $request): JsonResponse
+    public function indicadores(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('reportes.index', ['workspacePage' => 'indicators']);
+        }
         $usuario = auth()->user();
         $mes = $request->query('mes'); // Formato YYYY-MM opcional
 
@@ -85,8 +89,11 @@ class ReportesController extends Controller
     /**
      * Consulta JSON del flujo de caja agrupado y sus gráficos.
      */
-    public function flujoCaja(Request $request): JsonResponse
+    public function flujoCaja(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('reportes.index', ['workspacePage' => 'cash']);
+        }
         $usuario = auth()->user();
         $fechaDesde = $request->query('fecha_desde');
         $fechaHasta = $request->query('fecha_hasta');
@@ -154,8 +161,11 @@ class ReportesController extends Controller
     /**
      * Consulta JSON de la matriz de gastos cruzada y top 10 comercios.
      */
-    public function gastosDimension(Request $request): JsonResponse
+    public function gastosDimension(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('reportes.index', ['workspacePage' => 'matrix']);
+        }
         $usuario = auth()->user();
         $dimFila = $request->query('dimension_fila', 'categoria');
         $dimCol = $request->query('dimension_columna', 'medio_pago');
@@ -207,8 +217,11 @@ class ReportesController extends Controller
     /**
      * Consulta JSON del comparativo entre Periodo A y Periodo B.
      */
-    public function comparativo(Request $request): JsonResponse
+    public function comparativo(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('reportes.index', ['workspacePage' => 'compare']);
+        }
         $usuario = auth()->user();
         $desdeA = $request->query('desde_a');
         $hastaA = $request->query('hasta_a');

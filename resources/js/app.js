@@ -1,6 +1,7 @@
 
 
 import Alpine from 'alpinejs';
+import { mountPlanning } from './planning/workspace.js';
 import './ui/icons/index.js';
 import { renderIcon } from './ui/icons/Icon.js';
 import { registerFoundation, mountFoundation } from './ui/foundation.js';
@@ -9,6 +10,7 @@ import { mountMovements } from './ui/movements.js';
 import { mountExpenses } from './expenses/index.js';
 import { mountAuth } from './auth/index.js';
 import { mountFinance } from './finance/index.js';
+import { registerSocial } from './social/index.js';
 import { mountCredits } from './credits/index.js';
 import { mountCurrencySelector } from './ui/currency.js';
 
@@ -25,6 +27,7 @@ document.querySelectorAll('[data-icon-name]').forEach((host) => {
 window.Alpine = Alpine;
 
 registerFoundation(Alpine);
+registerSocial();
 Alpine.start();
 mountFoundation();
 mountIncome();
@@ -34,3 +37,5 @@ mountAuth();
 mountFinance();
 mountCredits();
 mountCurrencySelector();
+
+mountPlanning();

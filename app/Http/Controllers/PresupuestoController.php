@@ -7,6 +7,7 @@ use App\Services\AlertaService;
 use App\Services\PresupuestoService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -26,8 +27,11 @@ class PresupuestoController extends Controller
      * actual). El mes actual se genera desde el anterior si este pide
      * repetirse (RN-055.1).
      */
-    public function show(Request $request): JsonResponse
+    public function show(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('planning.index', ['workspacePage' => 'budgets']);
+        }
         $request->validate(
             ['mes' => ['nullable', 'date_format:Y-m']],
             ['mes.date_format' => 'El mes va en formato AAAA-MM.']
@@ -56,8 +60,11 @@ class PresupuestoController extends Controller
      * RF-056: detalle de una línea, con la serie diaria del gasto acumulado y
      * sus últimos gastos.
      */
-    public function linea(string $mes, string $lineaId): JsonResponse
+    public function linea(string $mes, string $lineaId, Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('planning.index', ['workspacePage' => 'budgets', 'budgetMonth' => $mes, 'budgetLineId' => $lineaId]);
+        }
         $presupuesto = PresupuestoService::delMes(Auth::id(), PresupuestoService::parsearMes($mes));
         $linea = $presupuesto
             ? LineaPresupuesto::where('presupuesto_id', $presupuesto->id)->find($lineaId)

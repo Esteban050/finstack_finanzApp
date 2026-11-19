@@ -53,6 +53,8 @@ function updateFormats(root = document) {
     });
 }
 export function mountFinance() {
+    window.FinanzMoney = { decimal, formatMoney };
+
     Chart.defaults.font.size=13;
     Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;
     updateFormats();

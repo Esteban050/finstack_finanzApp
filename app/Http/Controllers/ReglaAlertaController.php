@@ -6,6 +6,7 @@ use App\Models\PreferenciaNotificacion;
 use App\Services\ReglaAlertaService;
 use App\Services\ResumenCorreoService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -17,8 +18,11 @@ use Illuminate\Validation\Rule;
 class ReglaAlertaController extends Controller
 {
     /** RF-057 / RN-059.3: reglas vigentes y preferencias del resumen. */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('planning.index', ['workspacePage' => 'alerts']);
+        }
         return response()->json([
             'mensaje' => 'Reglas de alerta consultadas.',
             'data' => $this->respuesta(),

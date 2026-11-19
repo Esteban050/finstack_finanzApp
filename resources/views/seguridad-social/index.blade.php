@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page" x-data="seguridadSocialApp()">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
+<p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
             <h1>Seguridad social</h1>
@@ -67,7 +68,7 @@
 
                 {{-- Campo Periodo Común --}}
                 <x-ui.field name="periodo" label="Periodo a cotizar" :required="true" help="Mes y año de la cotización o liquidación.">
-                    <input id="periodo" name="periodo" type="month" x-model="periodo" required max="{{ now()->format('Y-m') }}">
+                    <input id="periodo" name="periodo" type="month" x-model="periodo" @change="calcularEnVivo()" required max="{{ now()->format('Y-m') }}">
                 </x-ui.field>
 
                 {{-- ==================== CAMPOS ASALARIADO ==================== --}}
@@ -193,7 +194,7 @@
                     <div style="display: grid; gap: 1.25rem;">
                         {{-- AVISOS LEGALES / SMMLV --}}
                         <div x-show="avisoBajoSmmlv" class="ui-notice" style="border-left: 3px solid var(--ui-warning); font-size: var(--ui-text-small);">
-                            <p style="margin: 0;">Con ingresos inferiores a 1 SMMLV no existe obligación legal de cotizar; el cálculo se realiza sobre la base mínima legal de 1 SMMLV ($ <span x-text="formatMoney(smmlv)"></span>).</p>
+                            <p style="margin: 0;">Con ingresos inferiores a 1 SMMLV no existe obligación legal de cotizar; el cálculo se realiza sobre la base mínima legal de 1 SMMLV (<span x-text="formatMoney(smmlv)"></span>).</p>
                         </div>
 
                         {{-- RESUMEN DESTACADO --}}
@@ -306,7 +307,7 @@
                                     class="ui-button ui-button--primary" 
                                     style="padding: 0.875rem 1.25rem; font-size: 1rem; font-weight: 700; justify-content: center; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);"
                                     @click="abrirModalPago">
-                                    💳 Pagar seguridad social ($ <span x-text="formatMoney(resultados.totalPagar)"></span>)
+                                    💳 Pagar seguridad social (<span x-text="formatMoney(resultados.totalPagar)"></span>)
                                 </button>
                                 <p class="ui-help" style="margin: 0; text-align: center;">
                                     Al pagar, se registrará automáticamente como un <strong>gasto</strong> en la sección de Gastos (categoría Seguridad Social).
@@ -376,7 +377,7 @@
                         </div>
                         <div style="display: flex; justify-content: space-between; font-size: 1.125rem; font-weight: 700; color: var(--accent); padding-top: 0.5rem; border-top: 1px solid var(--ui-border);">
                             <span>Total a debitar y registrar:</span>
-                            <span>$ <span x-text="formatMoney(resultados.totalPagar)"></span></span>
+                            <span><span x-text="formatMoney(resultados.totalPagar)"></span></span>
                         </div>
                     </div>
 
@@ -518,288 +519,5 @@
 </div>
 
 {{-- SCRIPT REACTIVO DE LA CALCULADORA UNIFICADA --}}
-<script>
-function seguridadSocialApp() {
-    return {
-        tipoCotizante: '{{ session('tipo_cotizante_seleccionado', 'INDEPENDIENTE') }}',
-        periodo: '{{ old('periodo', session('calculo_reciente.periodo', $periodoActual)) }}',
-        smmlv: {{ (float) ($parametro->valor_smmlv ?? 1550000) }},
-        tarifaSaludIndep: {{ (float) ($parametro->tarifa_salud_indep ?? 12.5) }},
-        tarifaPensionIndep: {{ (float) ($parametro->tarifa_pension_indep ?? 16.0) }},
-        tarifaSaludEmp: {{ (float) ($parametro->tarifa_salud_emp ?? 4.0) }},
-        tarifaPensionEmp: {{ (float) ($parametro->tarifa_pension_emp ?? 4.0) }},
-        porcPresuncionRentista: {{ (float) \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }},
-        
-        salarioDisplay: '{{ session('calculo_reciente.salario', '') }}',
-        salarioCanonico: '{{ session('calculo_reciente.salario', '0') }}',
-        retencionDisplay: '{{ session('calculo_reciente.retencion_fuente', '') }}',
-        retencionCanonica: '{{ session('calculo_reciente.retencion_fuente', '0') }}',
 
-        montoContratoDisplay: '{{ session('calculo_reciente.monto_contrato', session('calculo_reciente.ingresos_brutos', '')) }}',
-        montoContratoCanonico: '{{ session('calculo_reciente.monto_contrato', session('calculo_reciente.ingresos_brutos', '0')) }}',
-        claseRiesgoArl: 0,
-
-        modalPagoAbierto: false,
-        tieneCalculo: {{ session('calculo_reciente') ? 'true' : 'false' }},
-        avisoBajoSmmlv: false,
-
-        resultados: {
-            salarioBruto: {{ (float) (session('calculo_reciente.salario', 0)) }},
-            salarioNeto: {{ (float) (session('calculo_reciente.salario_neto_estimado', 0)) }},
-            totalDescuentos: {{ (float) (session('calculo_reciente.total_aportes', 0)) }},
-            montoContrato: {{ (float) (session('calculo_reciente.monto_contrato', session('calculo_reciente.ingresos_brutos', 0))) }},
-            presuncionCostos: {{ (float) (session('calculo_reciente.presuncion_costos', 0)) }},
-            baseNeta: {{ (float) (session('calculo_reciente.ingreso_neto', 0)) }},
-            ibc: {{ (float) (session('calculo_reciente.ibc', 0)) }},
-            salud: {{ (float) (session('calculo_reciente.salud', 0)) }},
-            pension: {{ (float) (session('calculo_reciente.pension', 0)) }},
-            fsp: {{ (float) (session('calculo_reciente.fsp', 0)) }},
-            arl: {{ (float) (session('calculo_reciente.arl', 0)) }},
-            retencion: {{ (float) (session('calculo_reciente.retencion_fuente', 0)) }},
-            totalPagar: {{ (float) (session('calculo_reciente.total', 0)) }},
-        },
-
-        init() {
-            if (this.salarioCanonico && Number(this.salarioCanonico) > 0) {
-                this.salarioDisplay = this.formatNumber(Number(this.salarioCanonico));
-            }
-            if (this.montoContratoCanonico && Number(this.montoContratoCanonico) > 0) {
-                this.montoContratoDisplay = this.formatNumber(Number(this.montoContratoCanonico));
-            }
-            if (this.tieneCalculo) {
-                this.calcularEnVivo();
-            }
-        },
-
-        get tituloFormulario() {
-            if (this.tipoCotizante === 'ASALARIADO') return 'Liquidación para Asalariado (Nómina)';
-            if (this.tipoCotizante === 'RENTISTA_CAPITAL') return 'Liquidación para Rentista de capital';
-            return 'Liquidación para Independiente / Prestación de Servicios';
-        },
-
-        get aplicaFspAsalariado() {
-            const salario = Number(this.salarioCanonico) || 0;
-            return salario >= (4 * this.smmlv);
-        },
-
-        get tarifaFspDisplay() {
-            const salario = Number(this.salarioCanonico) || 0;
-            const sm = this.smmlv;
-            if (salario < 4 * sm) return '0,00 %';
-            if (salario < 16 * sm) return '1,00 %';
-            if (salario < 17 * sm) return '1,20 %';
-            if (salario < 18 * sm) return '1,40 %';
-            if (salario < 19 * sm) return '1,60 %';
-            if (salario < 20 * sm) return '1,80 %';
-            return '2,00 %';
-        },
-
-        get aplicaFspIndep() {
-            return this.resultados.ibc >= (4 * this.smmlv);
-        },
-
-        get tarifaFspIndepDisplay() {
-            const ibc = this.resultados.ibc || 0;
-            const sm = this.smmlv;
-            if (ibc < 4 * sm) return '0,00 %';
-            if (ibc < 16 * sm) return '1,00 %';
-            if (ibc < 17 * sm) return '1,20 %';
-            if (ibc < 18 * sm) return '1,40 %';
-            if (ibc < 19 * sm) return '1,60 %';
-            if (ibc < 20 * sm) return '1,80 %';
-            return '2,00 %';
-        },
-
-        get tarifaArlCalculada() {
-            const map = { 0: '0,00', 1: '0,522', 2: '1,044', 3: '2,436', 4: '4,350', 5: '6,960' };
-            return map[this.claseRiesgoArl] || '0,00';
-        },
-
-        get presuncionCostosCalculada() {
-            const monto = Number(this.montoContratoCanonico) || 0;
-            return Math.ceil(monto * (this.porcPresuncionRentista / 100));
-        },
-
-        get baseNetaRentistaCalculada() {
-            const monto = Number(this.montoContratoCanonico) || 0;
-            return Math.max(0, monto - this.presuncionCostosCalculada);
-        },
-
-        cambiarTipo(nuevoTipo) {
-            this.tipoCotizante = nuevoTipo;
-            this.calcularEnVivo();
-        },
-
-        limpiarCadena(valor) {
-            if (!valor) return '0';
-            return String(valor).replace(/[^\d]/g, '');
-        },
-
-        formatNumber(num) {
-            if (!num && num !== 0) return '';
-            return new Intl.NumberFormat('es-CO').format(num);
-        },
-
-        formatMoney(num) {
-            if (!num && num !== 0) return '0';
-            return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(num);
-        },
-
-        onSalarioInput(e) {
-            const raw = this.limpiarCadena(e.target.value);
-            this.salarioCanonico = raw;
-            this.salarioDisplay = raw ? this.formatNumber(Number(raw)) : '';
-            this.calcularEnVivo();
-        },
-
-        onRetencionInput(e) {
-            const raw = this.limpiarCadena(e.target.value);
-            this.retencionCanonica = raw;
-            this.retencionDisplay = raw ? this.formatNumber(Number(raw)) : '';
-            this.calcularEnVivo();
-        },
-
-        onMontoContratoInput(e) {
-            const raw = this.limpiarCadena(e.target.value);
-            this.montoContratoCanonico = raw;
-            this.montoContratoDisplay = raw ? this.formatNumber(Number(raw)) : '';
-            this.calcularEnVivo();
-        },
-
-        calcularEnVivo() {
-            const sm = this.smmlv;
-            const arlTarifas = { 0: 0, 1: 0.00522, 2: 0.01044, 3: 0.02436, 4: 0.0435, 5: 0.0696 };
-
-            if (this.tipoCotizante === 'ASALARIADO') {
-                const salario = Number(this.salarioCanonico) || 0;
-                if (salario <= 0) {
-                    this.tieneCalculo = false;
-                    return;
-                }
-                this.tieneCalculo = true;
-                this.avisoBajoSmmlv = false;
-
-                const ibc = Math.min(Math.max(salario, sm), 25 * sm);
-                const salud = Math.round(ibc * (this.tarifaSaludEmp / 100));
-                const pension = Math.round(ibc * (this.tarifaPensionEmp / 100));
-                
-                let fspPorc = 0;
-                if (salario >= 20 * sm) fspPorc = 0.02;
-                else if (salario >= 19 * sm) fspPorc = 0.016;
-                else if (salario >= 18 * sm) fspPorc = 0.014;
-                else if (salario >= 17 * sm) fspPorc = 0.012;
-                else if (salario >= 16 * sm) fspPorc = 0.01;
-                else if (salario >= 4 * sm) fspPorc = 0.01;
-
-                const fsp = Math.round(ibc * fspPorc);
-                const retencion = Number(this.retencionCanonica) || 0;
-                const totalDescuentos = salud + pension + fsp;
-                const salarioNeto = Math.max(0, salario - totalDescuentos - retencion);
-
-                this.resultados = {
-                    salarioBruto: salario,
-                    salarioNeto: salarioNeto,
-                    totalDescuentos: totalDescuentos,
-                    retencion: retencion,
-                    ibc: ibc,
-                    salud: salud,
-                    pension: pension,
-                    fsp: fsp,
-                    arl: 0,
-                    totalPagar: totalDescuentos
-                };
-            } else if (this.tipoCotizante === 'INDEPENDIENTE') {
-                const monto = Number(this.montoContratoCanonico) || 0;
-                if (monto <= 0) {
-                    this.tieneCalculo = false;
-                    return;
-                }
-                this.tieneCalculo = true;
-                this.avisoBajoSmmlv = monto < sm;
-
-                const ibcBase = monto * 0.40;
-                const ibc = Math.ceil(Math.min(Math.max(ibcBase, sm), 25 * sm));
-                const salud = Math.round(ibc * 0.125);
-                const pension = Math.round(ibc * 0.16);
-
-                let fspPorc = 0;
-                if (ibc >= 20 * sm) fspPorc = 0.02;
-                else if (ibc >= 19 * sm) fspPorc = 0.016;
-                else if (ibc >= 18 * sm) fspPorc = 0.014;
-                else if (ibc >= 17 * sm) fspPorc = 0.012;
-                else if (ibc >= 16 * sm) fspPorc = 0.01;
-                else if (ibc >= 4 * sm) fspPorc = 0.01;
-
-                const fsp = Math.round(ibc * fspPorc);
-                const arlFactor = arlTarifas[this.claseRiesgoArl] || 0;
-                const arl = Math.round(ibc * arlFactor);
-                const total = salud + pension + fsp + arl;
-
-                this.resultados = {
-                    montoContrato: monto,
-                    ibc: ibc,
-                    salud: salud,
-                    pension: pension,
-                    fsp: fsp,
-                    arl: arl,
-                    totalPagar: total
-                };
-            } else if (this.tipoCotizante === 'RENTISTA_CAPITAL') {
-                const monto = Number(this.montoContratoCanonico) || 0;
-                if (monto <= 0) {
-                    this.tieneCalculo = false;
-                    return;
-                }
-                this.tieneCalculo = true;
-
-                const presuncion = Math.ceil(monto * (this.porcPresuncionRentista / 100));
-                const baseNeta = Math.max(0, monto - presuncion);
-                this.avisoBajoSmmlv = baseNeta < sm;
-
-                const ibcBase = baseNeta * 0.40;
-                const ibc = Math.ceil(Math.min(Math.max(ibcBase, sm), 25 * sm));
-                const salud = Math.round(ibc * 0.125);
-                const pension = Math.round(ibc * 0.16);
-
-                let fspPorc = 0;
-                if (ibc >= 20 * sm) fspPorc = 0.02;
-                else if (ibc >= 19 * sm) fspPorc = 0.016;
-                else if (ibc >= 18 * sm) fspPorc = 0.014;
-                else if (ibc >= 17 * sm) fspPorc = 0.012;
-                else if (ibc >= 16 * sm) fspPorc = 0.01;
-                else if (ibc >= 4 * sm) fspPorc = 0.01;
-
-                const fsp = Math.round(ibc * fspPorc);
-                const arlFactor = arlTarifas[this.claseRiesgoArl] || 0;
-                const arl = Math.round(ibc * arlFactor);
-                const total = salud + pension + fsp + arl;
-
-                this.resultados = {
-                    montoContrato: monto,
-                    presuncionCostos: presuncion,
-                    baseNeta: baseNeta,
-                    ibc: ibc,
-                    salud: salud,
-                    pension: pension,
-                    fsp: fsp,
-                    arl: arl,
-                    totalPagar: total
-                };
-            }
-        },
-
-        onFormSubmit(e) {
-            // Permite al formulario hacer submit natural al backend para validación y persistencia
-        },
-
-        abrirModalPago() {
-            if (this.resultados.totalPagar <= 0) {
-                alert('Calcula primero los valores de seguridad social antes de proceder al pago.');
-                return;
-            }
-            this.modalPagoAbierto = true;
-        }
-    };
-}
-</script>
 @endsection

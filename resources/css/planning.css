@@ -1,0 +1,32 @@
+.planning-page [data-workspace-content], .planning-page form { display:grid; gap:1.5rem; min-width:0; }
+.planning-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr)); gap:1.5rem; min-width:0; }
+.planning-kpis { grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); }
+.planning-kpis .ui-card:first-child { border-top:3px solid var(--accent); }
+.planning-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr)); gap:1rem; align-items:end; padding:1.5rem; background:var(--ui-surface); border:1px solid var(--ui-border); border-radius:var(--ui-radius); }
+.planning-filters .ui-field { margin:0; }
+.planning-filters [data-form-status] { grid-column:1/-1; }
+.planning-page input:not([type=checkbox]), .planning-page select { min-width:0; min-height:48px; padding:.75rem; background:var(--ui-surface); color:var(--ui-text); border:1px solid var(--ui-border-strong); border-radius:var(--ui-radius); }
+.planning-page input[type=checkbox] { width:1.5rem; height:1.5rem; accent-color:var(--accent); }
+.planning-page input[type=checkbox]:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.planning-value { font-size:clamp(1.75rem,3vw,2.5rem); font-weight:650; font-variant-numeric:tabular-nums; margin:.5rem 0; }
+.planning-detail-link { display:inline-block; padding:.75rem 0; color:var(--accent); }
+.planning-page .ui-card { display:grid; align-content:start; gap:1rem; }
+.planning-page .ui-card h2 { margin:0; }
+.planning-page .ui-number { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.planning-page details { border-top:1px solid var(--ui-border); padding-top:1rem; }
+.planning-page summary { cursor:pointer; padding:.75rem 0; color:var(--accent); font-weight:600; }
+.planning-page progress { width:100%; height:.75rem; accent-color:var(--accent); }
+.planning-lines { display:grid; gap:1.5rem; }
+.planning-budget-line { display:grid; grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto; gap:1rem; align-items:center; padding-top:1rem; border-top:1px solid var(--ui-border); }
+.planning-budget-line .ui-field { margin:0; }
+.report-chart { position:relative; height:19rem; width:100%; min-width:0; }
+.ui-notification-link { display:inline-flex; align-items:center; gap:.5rem; min-height:44px; color:var(--ui-text); text-decoration:none; font-size:var(--ui-text-meta); }
+.ui-notification-count:empty { display:none; }
+.ui-notification-count { padding:.25rem .5rem; border:1px solid var(--ui-border-strong); border-radius:var(--ui-radius); }
+@media(max-width:1100px){.planning-budget-line { grid-template-columns:1fr 1fr; }.planning-budget-line > span { display:none; }.planning-budget-line > .ui-field:first-of-type { grid-column:1/-1; }}
+@media(max-width:767px){.planning-budget-line { grid-template-columns:minmax(0,1fr); }.planning-page .ui-number { white-space:normal; }.planning-page .ui-table td { word-break:normal; overflow-wrap:normal; }.report-chart { height:16rem; }.ui-notification-link .notification-label { display:none; }}
+
+/* La campana comparte el encabezado sin empujar el selector de tema fuera de móviles. */
+.ui-topbar { flex-wrap:wrap; }
+.ui-topbar-title { min-width:0; }
+.ui-topbar .ui-theme-switch { margin-left:auto; }
