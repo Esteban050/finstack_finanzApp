@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatMoney, formatQuantity, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+import { formatMoney, formatMoneyDraft, formatQuantity, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
 
 test('unidades y precios conservan ocho decimales con separadores de Colombia',()=>{
     assert.equal(formatQuantity('0.00000001'),'0,00000001');
@@ -41,4 +41,37 @@ test('entrada localizada estricta sin redondear silenciosamente', () => {
 test('pegado: símbolo COP y espacios normales/duros mantienen formato estricto',()=>{
     for(const value of ['$ 5.000.000','$\u00a05.000.000',' $ 5.000.000,50 ']) assert.equal(parseMoneyInput(value),value.includes(',50')?'5000000.50':'5000000.00');
     for(const value of ['$ 1.23','$ 5,000,000','$ 1e5']) assert.throws(()=>parseMoneyInput(value));
+});
+
+
+test('edición visual: agrupación de miles y millones sin alterar el decimal enviado',()=>{
+ for(const [raw,shown,canonical] of [['1234','1.234','1234.00'],['1234567',"1'234.567",'1234567.00'],['1234567,89',"1'234.567,89",'1234567.89'],['999999999999,99',"999.999'999.999,99",'999999999999.99'],['$ 5000000',"5'000.000",'5000000.00']]){
+  assert.equal(formatMoneyDraft(raw),shown);assert.equal(parseMoneyInput(shown),canonical);
+ }
+ for(const invalid of ['1.5','1e5','1..000','5,000,000']){assert.equal(formatMoneyDraft(invalid),invalid);assert.throws(()=>parseMoneyInput(formatMoneyDraft(invalid)));}
+ assert.equal(formatMoneyDraft('1234,'),'1.234,');assert.equal(formatMoneyDraft('1234,005'),'1.234,005');assert.throws(()=>parseMoneyInput(formatMoneyDraft('1234,005')));
+ assert.equal(formatMoneyDraft('1.2345',{regroup:true}),'12.345');
+});
+
+import { groupMoneyControl } from '../ui/money-format.js';
+
+test('edición incremental y borrado reagrupan; pegado inválido conserva la validación estricta',()=>{
+ const input={value:'',selectionStart:0,selectionEnd:0,matches:()=>false};
+ for(const digit of '1234567'){input.value+=digit;groupMoneyControl(input,input.value,{type:'input',inputType:'insertText'});}
+ assert.equal(input.value,"1'234.567");assert.equal(parseMoneyInput(input.value),'1234567.00');
+ input.value='12.345.67';groupMoneyControl(input,input.value,{type:'input',inputType:'deleteContentBackward'});assert.equal(input.value,"1'234.567");
+ input.value='1.5';groupMoneyControl(input,input.value,{type:'input',inputType:'insertFromPaste'});assert.equal(input.value,'1.5');assert.throws(()=>parseMoneyInput(input.value));
+});
+
+import { registerFoundation } from '../ui/foundation.js';
+
+test('MoneyInput compartido mantiene el valor canónico enviado y la retención exacta',()=>{
+ const factories={};registerFoundation({data:(name,factory)=>{factories[name]=factory;}});
+ const visible={value:"1'234.567,89",selectionStart:12,selectionEnd:12,matches:()=>false,required:true,setAttribute(){},setCustomValidity(message){this.error=message;}};
+ const hidden={value:''},error={textContent:'',hidden:true};
+ const field={dataset:{field:'monto_original'},querySelector:selector=>selector==='input[type=text]'?visible:error};
+ const root={dataset:{allowZero:'false'},closest:selector=>selector==='form'?{querySelector:()=>({value:'5000000.00'})}:field,querySelector:()=>hidden};
+ const state={...factories.moneyInput(),$root:root,$dispatch(){},display:visible.value};state.validate();
+ assert.equal(hidden.value,'1234567.89');assert.equal(state.invalid,false);
+ state.mode='percent';state.display='3';root.dataset.allowZero='true';state.validate();assert.equal(hidden.value,'150000.00');assert.equal(state.preview,'= $\u00a0150.000');
 });

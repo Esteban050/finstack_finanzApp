@@ -57,7 +57,7 @@ export function formatQuantity(amount) {
 }
 
 export function normalizeMoneyInput(value) {
-    return typeof value === 'string' ? value.replace(/[$\s\u00a0\u202f]/g, '') : value;
+    return typeof value === 'string' ? value.replace(/[$\s\u00a0\u202f]/g, '').replace(/[’']/g, '.') : value;
 }
 export function parseMoneyInput(value) {
     value = normalizeMoneyInput(value);
@@ -73,4 +73,18 @@ export function formatMoney(amount) {
     const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const fraction = cents !== '00' ? ',' + cents : '';
     return `${value.isNegative() && !value.isZero() ? '-' : ''}$\u00a0${grouped}${fraction}`;
+}
+
+// Separadores únicamente de presentación; el parser conserva el decimal canónico.
+export function formatMoneyDraft(value, { regroup = false } = {}) {
+    const raw = normalizeMoneyInput(String(value));
+    if (raw === '' || raw === '-') return raw;
+    if (!/^-?[\d.]+(?:,\d*)?$/.test(raw)) return String(value);
+    const [whole, fraction] = raw.split(',');
+    const sign = whole.startsWith('-') ? '-' : '';
+    if (!regroup && whole.includes('.') && !/^-?\d{1,3}(?:\.\d{3})+$/.test(whole)) return String(value);
+    const digits = whole.replace(/[-.]/g, '');
+    if (!digits) return String(value);
+    const groups = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.').split('.');
+    return sign + groups.map((group,index)=> (index === 0 ? '' : (groups.length-index)%2 === 0 ? "'" : '.') + group).join('') + (fraction === undefined ? '' : ',' + fraction);
 }

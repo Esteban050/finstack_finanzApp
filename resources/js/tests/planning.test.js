@@ -2,7 +2,7 @@ import { formatMonth } from '../utils/date.js';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetPayload, budgetState, pesos, notificationTarget } from '../planning/rules.js';
+import { budgetPayload, budgetState, sortBudgetLines, pesos, notificationTarget } from '../planning/rules.js';
 import { contractPayload, validResourcePath } from '../api/index.js';
 import { validateReportDates, reportDate, signedMoney, comparisonPercent } from '../reports/index.js';
 import { socialResult } from '../social/index.js';
@@ -49,3 +49,9 @@ test('H: los límites UTC serializados vuelven a la fecha de Bogotá sin correr 
 test('H: variaciones conservan signo y N/A, incluso cuando ambos periodos valen cero',()=>{assert.equal(signedMoney('200000'),'+ $ 200.000');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'N/A'}),'N/A');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'0,00%'}),'0,00%');assert.equal(comparisonPercent({variacion_porc:'20'}),'+ 20,00 %');});
 
 test('UI: el periodo se presenta con nombre de mes en Colombia y rechaza meses inválidos',()=>{assert.equal(formatMonth('2026-11'),'Noviembre de 2026');assert.equal(formatMonth('2027-01'),'Enero de 2027');for(const month of ['2026-00','2026-13','2026-1','2026-11-01',''])assert.throws(()=>formatMonth(month));});
+
+
+test('presupuesto: líneas ordenadas por ejecución sin modificar los datos del servidor',()=>{
+ const source=[{nombre:'Salud',ejecucion_porc:'84.44'},{nombre:'Alimentación',ejecucion_porc:'83.33'},{nombre:'Entretenimiento',ejecucion_porc:'109.00'},{nombre:'Obligaciones',ejecucion_porc:'99.09'}];
+ assert.deepEqual(sortBudgetLines(source).map(line=>line.nombre),['Entretenimiento','Obligaciones','Salud','Alimentación']);assert.equal(source[0].nombre,'Salud');
+});
