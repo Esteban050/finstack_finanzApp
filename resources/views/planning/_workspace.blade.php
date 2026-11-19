@@ -20,7 +20,7 @@
 @elseif($workspacePage === 'alerts')
 <nav class="planning-breadcrumb" aria-label="Ubicación"><a href="{{ route('profile.show') }}">Mi perfil</a><span aria-hidden="true">/</span><span>Alertas y notificaciones</span></nav>
 @endif
-<header class="income-page-header planning-page-header"><div class="planning-heading"><h1 data-workspace-title></h1><p data-workspace-description hidden></p></div><div class="ui-inline planning-heading-actions" data-workspace-actions></div></header>
+<header class="income-page-header planning-page-header"><div class="planning-heading"><h1 data-workspace-title></h1><p data-workspace-description hidden></p></div><div class="ui-inline planning-heading-actions" data-workspace-actions>@if($workspacePage === 'notifications')<a class="ui-button ui-button--ghost" href="{{ $workspaceRoutes['alerts'] }}">Configurar alertas</a>@endif</div></header>
 <div data-workspace-status role="alert" hidden></div><div data-workspace-loading><x-ui.skeleton :lines="4" /></div><div data-workspace-content></div>
 <noscript><p class="ui-notice">Activa JavaScript para consultar los datos y utilizar estos reportes.</p></noscript>
 </div>

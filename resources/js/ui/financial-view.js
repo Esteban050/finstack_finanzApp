@@ -35,6 +35,9 @@ export function pageHeading(c,title,description='') {
     subtitle.textContent=description;subtitle.hidden=!description;
     return c.root.querySelector('[data-workspace-actions]');
 }
-export function reportTable(caption,columns,rows,foot=[]) {
-    const wrap=table(caption,columns,rows,foot);wrap.classList.add('planning-data-table');return wrap;
+
+export function rankedBars(title,rows) {
+    const host=card(title),list=el('ul',null,'report-ranked-list');
+    for(const row of rows){const item=el('li'),label=row.href?link(row.label,row.href):el('span',row.label),bar=el('span',null,'report-ranked-bar'),fill=el('span');bar.setAttribute('aria-hidden','true');fill.style.width=decimal(String(row.percent??'0')).clamp(0,100).toString()+'%';bar.append(fill);item.append(label,bar,el('span',money(row.value),'ui-number'),el('span',percent(row.percent),'ui-help'));list.append(item);}
+    host.append(list);return host;
 }
