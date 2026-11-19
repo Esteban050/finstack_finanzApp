@@ -117,6 +117,7 @@
                 {{-- ==================== CAMPOS INDEPENDIENTE ==================== --}}
                 <template x-if="tipoCotizante === 'INDEPENDIENTE'">
                     <div style="display: grid; gap: 1rem;">
+                        <p class="ui-help">Se suman automáticamente todos los ingresos confirmados del mes clasificados como <strong>Rentas de trabajo</strong>. El campo manual se usa si no hay ingresos registrados.</p>
                         <x-ui.field name="monto_contrato" label="Monto del contrato / Honorarios del mes" :required="true" help="Ingreso bruto pactado por prestación de servicios u honorarios.">
                             <div class="ui-money">
                                 <input type="text" inputmode="decimal" x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 5.000.000" required>
@@ -160,6 +161,7 @@
                 {{-- ==================== CAMPOS RENTISTA DE CAPITAL ==================== --}}
                 <template x-if="tipoCotizante === 'RENTISTA_CAPITAL'">
                     <div style="display: grid; gap: 1rem;">
+                        <p class="ui-help">Se suman automáticamente todos los ingresos confirmados del mes clasificados como <strong>Rentas de capital</strong>. El campo manual se usa si no hay ingresos registrados.</p>
                         <x-ui.field name="monto_contrato" label="Monto de ingresos brutos / Contratos de capital" :required="true" help="Ingresos por arrendamientos, rendimientos o inversiones recibidos en el mes.">
                             <div class="ui-money">
                                 <input type="text" inputmode="decimal" x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 10.000.000" required>

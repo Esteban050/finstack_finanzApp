@@ -220,7 +220,11 @@ class SeguridadSocialController extends Controller
             $esIntegral = (bool) ($perfil?->es_salario_integral ?? false);
             $calculo = SeguridadSocialService::calcularAsalariado($salarioLimpio, $esIntegral, $parametro, $retencionLimpia);
         } elseif ($tipo === 'INDEPENDIENTE') {
-            $montoLimpio = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingreso_base')));
+            $ingresosMes = SeguridadSocialService::ingresosParaSeguridadSocial(
+                $usuario->id, $inicioMes, $tipo, (string) $parametro->valor_smmlv
+            );
+            $montoIngresos = $ingresosMes['cantidad'] > 0 ? $ingresosMes['total'] : null;
+            $montoLimpio = $montoIngresos ?? PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingreso_base')));
             if (bccomp($montoLimpio, '0', 2) <= 0) {
                 throw ValidationException::withMessages([
                     'monto_contrato' => 'Indica un monto de contrato o ingreso mensual mayor a cero.',
@@ -228,8 +232,14 @@ class SeguridadSocialController extends Controller
             }
 
             $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
+            $calculo['ingresos_mes'] = $ingresosMes;
+            $calculo['obligacion_por_ingresos'] = $ingresosMes['supera_smmlv'];
         } else { // RENTISTA_CAPITAL
-            $montoLimpio = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingresos_brutos')));
+            $ingresosMes = SeguridadSocialService::ingresosParaSeguridadSocial(
+                $usuario->id, $inicioMes, $tipo, (string) $parametro->valor_smmlv
+            );
+            $montoIngresos = $ingresosMes['cantidad'] > 0 ? $ingresosMes['total'] : null;
+            $montoLimpio = $montoIngresos ?? PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingresos_brutos')));
             if (bccomp($montoLimpio, '0', 2) <= 0) {
                 throw ValidationException::withMessages([
                     'monto_contrato' => 'Indica un monto de contrato o ingresos de capital mayor a cero.',
@@ -244,6 +254,8 @@ class SeguridadSocialController extends Controller
                 $perfil,
                 (string) $porcentajePresuncion
             );
+            $calculo['ingresos_mes'] = $ingresosMes;
+            $calculo['obligacion_por_ingresos'] = $ingresosMes['supera_smmlv'];
         }
 
         $calculo['periodo'] = $periodo;

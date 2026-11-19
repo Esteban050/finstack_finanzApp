@@ -131,6 +131,47 @@ class SeguridadSocialService
     }
 
     /**
+     * Ingresos confirmados del mes que corresponden a la modalidad elegida.
+     * Independiente/contratista usa rentas de trabajo y rentista de capital usa
+     * únicamente rentas de capital; nunca se mezclan ambas cédulas.
+     */
+    public static function ingresosParaSeguridadSocial(
+        string $usuarioId,
+        CarbonImmutable $inicioMes,
+        string $tipoCotizante,
+        string $smmlv
+    ): array {
+        $clasificacion = strtoupper($tipoCotizante) === 'RENTISTA_CAPITAL'
+            ? 'RENTAS_CAPITAL'
+            : 'RENTAS_TRABAJO';
+
+        $ingresos = Ingreso::query()
+            ->where('usuario_id', $usuarioId)
+            ->confirmados()
+            ->where('clasificacion_tributaria', $clasificacion)
+            ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $inicioMes->endOfMonth()->toDateString()])
+            ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario())
+            ->with('fuente:id,nombre')
+            ->orderBy('fecha_recepcion')
+            ->get();
+
+        $total = bcadd((string) $ingresos->sum('monto_bruto_cop'), '0', 2);
+
+        return [
+            'clasificacion' => $clasificacion,
+            'total' => $total,
+            'cantidad' => $ingresos->count(),
+            'supera_smmlv' => bccomp($total, (string) $smmlv, 2) === 1,
+            'ingresos' => $ingresos->map(fn ($ingreso) => [
+                'id' => $ingreso->id,
+                'fecha' => $ingreso->fecha_recepcion->format('d/m/Y'),
+                'fuente' => $ingreso->fuente?->nombre ?? 'Sin fuente',
+                'monto' => (string) $ingreso->monto_bruto_cop,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
      * Consulta los ingresos del periodo cotizado y calcula los aportes sugeridos
      * para el pago PILA, según sea prestación de servicios o rentista de capital.
      *
@@ -157,9 +198,8 @@ class SeguridadSocialService
             ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $finMes->toDateString()])
             ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario());
 
-        // El botón debe encontrar ambos tipos de ingreso del periodo. El modo
-        // seleccionado sigue determinando cómo se calcula el IBC y los aportes.
-        $query->whereIn('clasificacion_tributaria', ['RENTAS_CAPITAL', 'RENTAS_TRABAJO']);
+        $clasificacion = $esRentista ? 'RENTAS_CAPITAL' : 'RENTAS_TRABAJO';
+        $query->where('clasificacion_tributaria', $clasificacion);
 
         $ingresos = $query->with('fuente:id,nombre')
             ->orderBy('fecha_recepcion')
@@ -168,6 +208,8 @@ class SeguridadSocialService
         $suma = $ingresos->sum('monto_bruto_cop');
         $totalIngresos = bcadd((string) $suma, '0', 2);
         $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
+        $parametroPeriodo = self::parametrosDe($inicioMes->year);
+        $superaSmmlv = bccomp($totalIngresos, (string) $parametroPeriodo->valor_smmlv, 2) === 1;
 
         if (! $tieneIngresos) {
             $msg = $esRentista
@@ -181,6 +223,8 @@ class SeguridadSocialService
                 'cantidad_ingresos' => 0,
                 'total_ingresos' => '0.00',
                 'total_ingresos_brutos' => '0.00',
+                'smmlv' => (string) $parametroPeriodo->valor_smmlv,
+                'obligacion_por_ingresos' => false,
                 'gastos_asociados' => bcadd($gastos ?: '0', '0', 2),
                 'ingreso_neto' => '0.00',
                 'ingresos' => [],
@@ -190,7 +234,7 @@ class SeguridadSocialService
             ];
         }
 
-        $parametro = self::parametrosDe($inicioMes->year);
+        $parametro = $parametroPeriodo;
         $perfil = self::perfilDelPeriodo($usuarioId, $inicioMes);
 
         $liquidacion = LiquidacionSeguridadSocial::where('usuario_id', $usuarioId)
@@ -221,6 +265,8 @@ class SeguridadSocialService
             'cantidad_ingresos' => $ingresos->count(),
             'total_ingresos' => $totalIngresos,
             'total_ingresos_brutos' => $totalIngresos,
+            'smmlv' => (string) $parametro->valor_smmlv,
+            'obligacion_por_ingresos' => $superaSmmlv,
             'gastos_asociados' => $esRentista ? bcadd($gastos ?: '0', '0', 2) : '0.00',
             'ingreso_neto' => $esRentista ? ($calculo['ingreso_neto'] ?? $totalIngresos) : $totalIngresos,
             'ingresos' => $listaIngresos,

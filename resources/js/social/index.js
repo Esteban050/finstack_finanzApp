@@ -5,7 +5,7 @@ import { mapFieldErrors } from '../ui/foundation.js';
 
 export function socialResult(data) {
  const value=key=>String(data[key] ?? '0');
- return {salarioBruto:value('salario'),salarioNeto:value('salario_neto_estimado'),totalDescuentos:data.salario&&data.salario_neto_estimado?decimal(String(data.salario)).minus(String(data.salario_neto_estimado)).toFixed(2):value('total_aportes'),montoContrato:String(data.ingresos_brutos ?? data.monto_contrato ?? data.ingreso_base ?? '0'),presuncionCostos:value('presuncion_costos'),baseNeta:value('ingreso_neto'),ibc:value('ibc'),salud:value('salud'),pension:value('pension'),fsp:value('fsp'),arl:value('arl'),retencion:value('retencion_fuente'),totalPagar:String(data.total ?? data.total_aportes ?? '0')};
+ return {salarioBruto:value('salario'),salarioNeto:value('salario_neto_estimado'),totalDescuentos:data.salario&&data.salario_neto_estimado?decimal(String(data.salario)).minus(String(data.salario_neto_estimado)).toFixed(2):value('total_aportes'),montoContrato:String(data.ingresos_brutos ?? data.monto_contrato ?? data.ingreso_base ?? '0'),presuncionCostos:value('presuncion_costos'),baseNeta:value('ingreso_neto'),ibc:value('ibc'),salud:value('salud'),pension:value('pension'),fsp:value('fsp'),arl:value('arl'),retencion:value('retencion_fuente'),totalPagar:String(data.total ?? data.total_aportes ?? '0'),ingresosMes:data.ingresos_mes ?? null,obligacionPorIngresos:data.obligacion_por_ingresos ?? null};
 }
 export function registerSocial() {
  window.seguridadSocialApp=()=>({
