@@ -25,6 +25,8 @@ use App\Http\Controllers\PresupuestoController;
 use App\Http\Controllers\ReglaAlertaController;
 use App\Http\Controllers\RentabilidadController;
 use App\Http\Controllers\ReporteInversionController;
+use App\Http\Controllers\ReportesController;
+use App\Http\Controllers\ResumenController;
 use App\Http\Controllers\SeguridadSocialController;
 use App\Http\Controllers\SimulacionInversionController;
 use App\Http\Controllers\TasaCambioController;
@@ -43,11 +45,10 @@ Route::get('/', function () {
 
 // Rutas de Usuario Autenticado
 Route::middleware(['auth', 'politica.check'])->group(function () {
-    // RF-003 RN-003.5: Dashboard de Usuario
+    // RF-003 RN-003.5 / RF-065: Dashboard Principal (Resumen)
+    Route::get('/resumen', [ResumenController::class, 'index'])->name('resumen.index');
     Route::get('/dashboard', function () {
-        $usuario = auth()->user();
-        $perfil = $usuario->perfilTributarioActivo;
-        return view('dashboard', compact('usuario', 'perfil'));
+        return redirect()->route('resumen.index');
     })->name('dashboard');
 
     // RF-008: Perfil tributario y personal
@@ -243,6 +244,11 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::get('/{anio}/evaluacion', [DeclaracionRentaController::class, 'evaluacion'])->whereNumber('anio')->name('evaluacion');
         Route::get('/{anio}/estimacion', [DeclaracionRentaController::class, 'estimacion'])->whereNumber('anio')->name('estimacion');
         Route::get('/{anio}/vencimiento', [DeclaracionRentaController::class, 'vencimiento'])->whereNumber('anio')->name('vencimiento');
+        Route::get('/{anio}/calculadora', [DeclaracionRentaController::class, 'calculadora'])->whereNumber('anio')->name('calculadora');
+        Route::post('/{anio}/calculadora/calcular', [DeclaracionRentaController::class, 'calcularSimulacion'])->whereNumber('anio')->name('calculadora.calcular');
+        Route::get('/calculadora', function () {
+            return redirect()->route('renta.calculadora', ['anio' => 2025]);
+        });
         Route::post('/{anio}/marcar-presentada', [DeclaracionRentaController::class, 'marcarPresentada'])->whereNumber('anio')->name('marcarPresentada');
         Route::get('/{anio}/pdf', [DeclaracionRentaController::class, 'descargarPdf'])->whereNumber('anio')->name('pdf');
     });
@@ -314,6 +320,28 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     Route::get('/perfil/alertas', [ReglaAlertaController::class, 'index'])->name('perfil.alertas.index');
     Route::put('/perfil/alertas', [ReglaAlertaController::class, 'update'])->name('perfil.alertas.update');
     Route::post('/perfil/alertas/restablecer', [ReglaAlertaController::class, 'restablecer'])->name('perfil.alertas.restablecer');
+
+    /*
+    | MOD-11 — Reportes y Dashboards Dinámicos (característica H: RF-065 a RF-070)
+    */
+    Route::prefix('reportes')->name('reportes.')->group(function () {
+        // HU-H03: Indicadores de salud financiera (Pantalla 07)
+        Route::get('/indicadores', [ReportesController::class, 'indicadores'])->name('indicadores');
+        Route::get('/indicadores/pdf', [ReportesController::class, 'exportarIndicadoresPdf'])->name('indicadores.pdf');
+
+        // HU-H04: Flujo de caja (Pantalla 08)
+        Route::get('/flujo-de-caja', [ReportesController::class, 'flujoCaja'])->name('flujo-de-caja');
+        Route::get('/flujo-de-caja/exportar/xlsx', [ReportesController::class, 'exportarFlujoCajaXlsx'])->name('flujo-de-caja.exportar.xlsx');
+        Route::get('/flujo-de-caja/exportar/pdf', [ReportesController::class, 'exportarFlujoCajaPdf'])->name('flujo-de-caja.exportar.pdf');
+
+        // HU-H05: Gastos por dimensión y top de comercios (Pantalla 09)
+        Route::get('/gastos', [ReportesController::class, 'gastosDimension'])->name('gastos');
+        Route::get('/gastos/exportar/xlsx', [ReportesController::class, 'exportarGastosDimensionXlsx'])->name('gastos.exportar.xlsx');
+
+        // HU-H06: Comparativo entre periodos (Pantalla 10)
+        Route::get('/comparativo', [ReportesController::class, 'comparativo'])->name('comparativo');
+        Route::get('/comparativo/exportar/xlsx', [ReportesController::class, 'exportarComparativoXlsx'])->name('comparativo.exportar.xlsx');
+    });
 });
 
 // RF-009: Política de tratamiento de datos personales (Pública sin autenticación)

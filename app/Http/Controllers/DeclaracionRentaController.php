@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\DeclaracionRenta;
+use App\Services\Renta\CalculadoraRentaService;
 use App\Services\Renta\CalendarioVencimientoService;
 use App\Services\Renta\ConsolidadoRentaService;
 use App\Services\Renta\EstimacionRentaService;
 use App\Services\Renta\EvaluacionObligacionService;
 use App\Services\Renta\InformacionComplementariaService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -21,7 +23,8 @@ class DeclaracionRentaController extends Controller
         protected InformacionComplementariaService $complementariaService,
         protected EvaluacionObligacionService $evaluacionService,
         protected EstimacionRentaService $estimacionService,
-        protected CalendarioVencimientoService $vencimientoService
+        protected CalendarioVencimientoService $vencimientoService,
+        protected CalculadoraRentaService $calculadoraService
     ) {}
 
     /**
@@ -174,6 +177,44 @@ class DeclaracionRentaController extends Controller
             // Fallback a vista imprimible si hay algún problema con DomPDF
             return response()->view('renta.pdf.constancia', compact('usuario', 'anio', 'evaluacion', 'estimacion', 'declaracion', 'parametros'));
         }
+    }
+
+    /**
+     * Pantalla: Calculadora y simulador de Declaración de Renta
+     */
+    public function calculadora(Request $request, int $anio): View
+    {
+        $usuario = auth()->user();
+        $parametros = ConsolidadoRentaService::obtenerParametros($anio);
+
+        return view('renta.calculadora', compact('usuario', 'anio', 'parametros'));
+    }
+
+    /**
+     * Endpoint API/AJAX para ejecutar la simulación de cálculo
+     */
+    public function calcularSimulacion(Request $request, int $anio): JsonResponse
+    {
+        $validated = validator($request->all(), [
+            'patrimonio_bruto_cop' => ['nullable', 'numeric', 'min:0'],
+            'ingresos_brutos_cop' => ['nullable', 'numeric', 'min:0'],
+            'consumos_tarjeta_cop' => ['nullable', 'numeric', 'min:0'],
+            'compras_totales_cop' => ['nullable', 'numeric', 'min:0'],
+            'consignaciones_cop' => ['nullable', 'numeric', 'min:0'],
+            'ingresos_trabajo_cop' => ['nullable', 'numeric', 'min:0'],
+            'ingresos_capital_cop' => ['nullable', 'numeric', 'min:0'],
+            'ingresos_no_laborales_cop' => ['nullable', 'numeric', 'min:0'],
+            'cesantias_cop' => ['nullable', 'numeric', 'min:0'],
+            'salud_pension_cop' => ['nullable', 'numeric', 'min:0'],
+            'componente_inflacionario_cop' => ['nullable', 'numeric', 'min:0'],
+            'fpv_afc_cop' => ['nullable', 'numeric', 'min:0'],
+            'cesantias_exentas_cop' => ['nullable', 'numeric', 'min:0'],
+            'retenciones_fuente_cop' => ['nullable', 'numeric', 'min:0'],
+        ])->validate();
+
+        $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
+
+        return response()->json($resultado);
     }
 }
 

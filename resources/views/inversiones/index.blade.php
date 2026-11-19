@@ -260,11 +260,9 @@
                         </select>
                     </x-ui.field>
 
-                    <x-ui.field name="base_dias" label="Base de cálculo anual">
-                        <select name="base_dias" id="base_dias" onchange="calcularProyeccionCdt()">
-                            <option value="365" @selected(old('base_dias') == 365)>Base 365 días (Estándar bancario)</option>
-                            <option value="360" @selected(old('base_dias') == 360)>Base 360 días (Comercial)</option>
-                        </select>
+                    <x-ui.field name="base_dias" label="Base de cálculo anual" help="Estándar bancario colombiano para CDT (año civil de 365 días)">
+                        <input type="text" value="365 días (Estándar bancario)" readonly class="ui-input" style="background-color: var(--color-surface-subtle, #f9fafb); cursor: default;" aria-readonly="true">
+                        <input type="hidden" name="base_dias" id="base_dias" value="365">
                     </x-ui.field>
 
                     <div style="padding-top: 1.5rem;">

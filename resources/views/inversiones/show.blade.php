@@ -18,8 +18,8 @@
             'MENSUAL' => 30,
             'TRIMESTRAL' => 90,
             'SEMESTRAL' => 180,
-            'ANUAL' => 360,
-            default => (int) ($det['plazo_dias'] ?? 360),
+            'ANUAL' => 365,
+            default => (int) ($det['plazo_dias'] ?? 365),
         };
         $base = (int) ($det['base_dias'] ?? 365);
         $interesPeriodicoCdt = number_format($cap * (pow(1 + ($tasa / 100), $diasPeriodo / $base) - 1), 2, '.', '');

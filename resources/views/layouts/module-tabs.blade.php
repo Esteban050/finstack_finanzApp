@@ -25,6 +25,7 @@
             ['renta.consolidado', 'Consolidado y evaluación', request()->routeIs('renta.consolidado', 'renta.evaluacion'), ['anio' => $anioRenta]],
             ['renta.complementaria', 'Información complementaria', request()->routeIs('renta.complementaria'), ['anio' => $anioRenta]],
             ['renta.estimacion', 'Estimación del impuesto', request()->routeIs('renta.estimacion'), ['anio' => $anioRenta]],
+            ['renta.calculadora', 'Calculadora', request()->routeIs('renta.calculadora*'), ['anio' => $anioRenta]],
             ['renta.vencimiento', 'Vencimiento', request()->routeIs('renta.vencimiento'), ['anio' => $anioRenta]],
         ];
     }

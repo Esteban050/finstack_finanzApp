@@ -145,8 +145,9 @@ class CreditoService
      * RF-049 / Créditos 2.3, 2.4 y 2.7: tabla de amortización. Por cuota el
      * interés es saldo × i (al peso). En el francés el abono a capital es
      * cuota − interés; en el alemán el abono es fijo y la cuota, abono +
-     * interés. La última cuota abona todo el saldo que queda, así absorbe el
-     * redondeo acumulado y el saldo final es $ 0.
+     * interés. En el francés, la cuota se mantiene idéntica en todos los
+     * periodos y el interés de la última cuota absorbe el ajuste por redondeo
+     * para que el saldo final sea exactamente $ 0.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -179,6 +180,15 @@ class CreditoService
 
             if ($k === $numeroCuotas) {
                 $abono = $saldo;
+                if (! $aleman && bccomp($tasaPeriodica, '0', self::ESCALA) !== 0) {
+                    $cuota = $cuotaFija;
+                    $interesCalculado = bcsub($cuota, $abono, 0);
+                    if (bccomp($interesCalculado, '0', 0) >= 0) {
+                        $interes = $interesCalculado;
+                    } else {
+                        $cuota = bcadd($abono, $interes, 0);
+                    }
+                }
             } elseif ($aleman) {
                 $abono = $abonoFijo;
             } else {
@@ -186,7 +196,9 @@ class CreditoService
                 $abono = bcsub($cuotaFija, $interesRegular, 0);
             }
 
-            $cuota = bcadd($abono, $interes, 0);
+            if (! ($k === $numeroCuotas && ! $aleman && bccomp($tasaPeriodica, '0', self::ESCALA) !== 0 && isset($interesCalculado) && bccomp($interesCalculado, '0', 0) >= 0)) {
+                $cuota = bcadd($abono, $interes, 0);
+            }
             $saldoFinal = bcsub($saldo, $abono, 0);
             $seguro = self::seguroCuota($saldo, $opciones['seguro_porc_mensual'] ?? null, $periodicidad);
 

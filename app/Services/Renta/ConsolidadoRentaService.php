@@ -17,17 +17,25 @@ class ConsolidadoRentaService
      */
     public static function obtenerParametros(int $anioGravable): array
     {
-        $normativo = ParametroNormativo::where('anio_vigencia', $anioGravable)
-            ->where('es_activa', true)
-            ->orderByDesc('version')
-            ->first();
+        try {
+            $normativo = ParametroNormativo::where('anio_vigencia', $anioGravable)
+                ->where('es_activa', true)
+                ->orderByDesc('version')
+                ->first();
+        } catch (\Throwable) {
+            $normativo = null;
+        }
 
         // UVT oficial
         $uvt = $normativo ? (float) $normativo->valor_uvt : ($anioGravable === 2026 ? 52374.0 : 49799.0);
 
         // Componente inflacionario anual decretado
-        $compParam = ParametroTributario::where('clave', "COMPONENTE_INFLACIONARIO_{$anioGravable}")
-            ->first();
+        try {
+            $compParam = ParametroTributario::where('clave', "COMPONENTE_INFLACIONARIO_{$anioGravable}")
+                ->first();
+        } catch (\Throwable) {
+            $compParam = null;
+        }
 
         if ($compParam) {
             $pctInflacionario = (float) $compParam->valor_numerico / 100.0;

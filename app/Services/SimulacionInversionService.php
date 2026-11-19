@@ -48,7 +48,7 @@ class SimulacionInversionService
                 capital: (string) ($datos['capital'] ?? $datos['monto_inicial'] ?? '0'),
                 tasaValor: (string) ($datos['tasa_ea'] ?? $datos['tasa_valor'] ?? '0'),
                 tipoTasa: $datos['tipo_tasa'] ?? 'EA',
-                plazoDias: (int) ($datos['plazo_dias'] ?? 360),
+                plazoDias: (int) ($datos['plazo_dias'] ?? 365),
                 baseDias: (int) ($datos['base_dias'] ?? 365),
                 periodicidadPago: $datos['periodicidad_pago'] ?? 'VENCIMIENTO',
                 fecha: $datos['fecha'] ?? $hoy,
