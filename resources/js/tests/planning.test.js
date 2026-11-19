@@ -1,3 +1,4 @@
+import { formatMonth } from '../utils/date.js';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,7 +40,12 @@ $out['pdf']=view('reportes.pdf.indicadores',['usuario'=>$user,'reporte'=>['mes'=
 echo json_encode($out,JSON_THROW_ON_ERROR);
 `],{encoding:'utf8',maxBuffer:4e6}));
  assert.equal(Object.keys(output).length,9);for(const html of Object.values(output))assert.doesNotMatch(html,/<\/?x-|\{\{|@(?:if|foreach|include)\(/);assert.match(output.pdf,/Esenciales: 50 %/);assert.match(output.budgets,/data-financial-workspace/);
+ for(const page of ['indicators','cash','matrix','compare']){const nav=output[page].match(/<nav[^>]+aria-label="Secciones de reportes"[\s\S]*?<\/nav>/)?.[0];assert.ok(nav,page);assert.equal((nav.match(/<a /g)||[]).length,4);assert.doesNotMatch(nav,/Presupuestos|Notificaciones|Alertas y notificaciones/);}
+ assert.doesNotMatch(output.dashboard,/class="ui-tabs"/);assert.doesNotMatch(output.notifications,/class="ui-tabs"/);assert.match(output.notifications,/Configurar alertas/);assert.match(output.budgets,/aria-label="Secciones de presupuestos"/);assert.match(output.alerts,/aria-label="Ubicación"/);
+
 });
 
 test('H: los límites UTC serializados vuelven a la fecha de Bogotá sin correr el fin de mes',()=>{assert.equal(reportDate('2026-11-01T04:59:59.999999Z'),'2026-10-31');assert.equal(reportDate('2026-10-01T05:00:00.000000Z'),'2026-10-01');assert.equal(reportDate('2026-10-31'),'2026-10-31');});
 test('H: variaciones conservan signo y N/A, incluso cuando ambos periodos valen cero',()=>{assert.equal(signedMoney('200000'),'+ $ 200.000');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'N/A'}),'N/A');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'0,00%'}),'0,00%');assert.equal(comparisonPercent({variacion_porc:'20'}),'+ 20,00 %');});
+
+test('UI: el periodo se presenta con nombre de mes en Colombia y rechaza meses inválidos',()=>{assert.equal(formatMonth('2026-11'),'Noviembre de 2026');assert.equal(formatMonth('2027-01'),'Enero de 2027');for(const month of ['2026-00','2026-13','2026-1','2026-11-01',''])assert.throws(()=>formatMonth(month));});

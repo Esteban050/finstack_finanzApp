@@ -28,3 +28,10 @@ export function periodRange(period, today = todayBogota()) {
     if (period === 'ano') return {from:date(year,1,1),to:today};
     return {from:date(year,month,1),to:today};
 }
+
+export function formatMonth(value) {
+    if (typeof value !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw new RangeError('Mes inválido.');
+    formatDate(value + '-01');
+    const label = new Intl.DateTimeFormat('es-CO', { timeZone: TIME_ZONE, month: 'long', year: 'numeric' }).format(new Date(value + '-01T12:00:00Z'));
+    return label.charAt(0).toLocaleUpperCase('es-CO') + label.slice(1);
+}

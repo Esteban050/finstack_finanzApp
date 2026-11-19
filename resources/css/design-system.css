@@ -58,8 +58,8 @@
 .scfp-theme :is(input, select, textarea):disabled { background: var(--ui-raised); color: var(--ui-muted); border-style: dashed; }
 .scfp-theme :is(input, select, textarea):focus-visible { border-color: var(--accent); }
 .scfp-theme input[type=checkbox], .scfp-theme input[type=radio] { accent-color: var(--accent); width: 18px; height: 18px; }
-.ui-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--ui-sidebar-width); padding: 2.5rem 1.25rem; background: var(--ui-surface); border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; }
-.ui-brand { display: flex; align-items: center; gap: .75rem; font-size: 1.5rem; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }
+.ui-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--ui-sidebar-width); padding: 1.5rem 1.25rem; overflow: hidden; background: var(--ui-surface); border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; }
+.ui-brand { flex-shrink: 0; display: flex; align-items: center; gap: .75rem; font-size: 1.5rem; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }
 .ui-brand-mark { width: 36px; height: 36px; flex-shrink: 0; filter: var(--ui-brand-filter); }
 .ui-brand-name > span { display: block; margin-top: .375rem; color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 400; letter-spacing: 0; }
 .ui-icon-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .5rem; }
@@ -69,11 +69,11 @@
 .ui-icon-picker button { width: 100%; }
 .ui-icon-picker button { display: grid; place-items: center; min-height: 48px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
 .ui-icon-picker button[aria-pressed=true] { color: var(--accent); border: 2px solid var(--accent); background: var(--ui-raised); }
-.ui-navigation { display: grid; gap: .5rem; margin-top: 3rem; }
+.ui-navigation { display: grid; flex: 1; min-height: 0; align-content: start; gap: .5rem; margin-top: 1.5rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .ui-navigation a { display: flex; align-items: center; gap: .875rem; min-height: 48px; padding: .75rem; border-radius: var(--ui-radius); text-decoration: none; color: var(--ui-muted); border: 1px solid transparent; transition: background var(--ui-duration), color var(--ui-duration); }
 .ui-navigation a:hover { background: var(--ui-raised); color: var(--ui-text); }
 .ui-navigation a[aria-current] { color: var(--accent); background: var(--ui-raised); border-left: 3px solid var(--accent); padding-left: calc(.75rem - 2px); font-weight: 650; }
-.ui-sidebar-footer { margin-top: auto; padding-top: 2rem; border-top: 1px solid var(--ui-border); }
+.ui-sidebar-footer { flex-shrink: 0; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--ui-border); }
 .ui-main { margin-left: var(--ui-sidebar-width); min-width: 0; }
 .ui-topbar { display: flex; align-items: center; gap: 1rem; min-height: 80px; padding: 1.25rem clamp(1.5rem, 4vw, 3.5rem); border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); }
 .ui-topbar-title { color: var(--ui-muted); font-size: var(--ui-text-small); font-weight: 500; }
@@ -189,7 +189,12 @@ html:has(dialog[open]) { overflow: hidden; }
     .ui-sidebar { display: none; }
     .ui-main { margin-left: 0; }
     .ui-menu-toggle { display: inline-flex !important; }
-    .ui-topbar { padding: 1rem; min-height: 72px; }
+    .ui-topbar { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; gap: .5rem; padding: .75rem 1rem; min-height: 72px; }
+    .ui-topbar-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ui-topbar .ui-theme-switch { margin-left: 0; min-width: 0; }
+    .ui-topbar .ui-theme-switch > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .ui-topbar .ui-theme-switch select { min-width: 0; width: 6rem; min-height: 44px; }
+    .ui-topbar .ui-notification-link { min-width: 44px; justify-content: center; gap: .25rem; }
     .ui-content { padding: 1.5rem 1rem; }
     .ui-content .flex { flex-wrap: wrap; }
     .ui-table, .ui-table tbody, .ui-table tfoot, .ui-table tr, .ui-table td { display: block; width: 100%; }
