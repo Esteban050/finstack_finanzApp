@@ -773,7 +773,6 @@
             <div id="trx-field-monto">
                 <x-ui.field name="monto" label="Monto total bruto / operación" :required="true">
                     <input id="trx_monto" name="monto" type="text" inputmode="decimal" value="{{ old('monto') }}" required placeholder="Ej: 1.050.700,00" autocomplete="off">
-                    <div id="trx_monto_preview" class="ui-help" style="margin-top: 0.35rem; font-weight: 700; color: #16a34a; font-size: 0.95rem; display: none;"></div>
                 </x-ui.field>
             </div>
 
@@ -1072,20 +1071,6 @@ function enlazarMascaraNumero(input, onUpdate) {
     }
 }
 
-function actualizarPreviewMonto() {
-    const montoEl = document.getElementById('trx_monto');
-    const preview = document.getElementById('trx_monto_preview');
-    if (!montoEl || !preview) return;
-    const raw = montoEl.value;
-    if (!raw) {
-        preview.style.display = 'none';
-        return;
-    }
-    const fmt = formatearMiles(raw);
-    preview.innerHTML = `💵 <strong>Monto legible:</strong> $ ${fmt} {{ $inversion->moneda }}`;
-    preview.style.display = 'block';
-}
-
 function actualizarPreviewCampo(input, previewId, label = 'Valor') {
     if (!input) return;
     const preview = document.getElementById(previewId);
@@ -1130,7 +1115,6 @@ function adaptarFormularioTrx(tipo) {
         const p = parseFloat(desformatearMiles(precioEl.value)) || 0;
         if (u > 0 && p > 0) {
             montoEl.value = formatearMiles(u * p);
-            actualizarPreviewMonto();
         }
     }
 
@@ -1146,7 +1130,6 @@ function adaptarFormularioTrx(tipo) {
             if (montoLabel) montoLabel.innerText = 'Interés bruto a cobrar (COP) *';
             if (montoEl) {
                 montoEl.value = formatearMiles(Number('{{ $interesPeriodicoCdt }}') || 0);
-                actualizarPreviewMonto();
             }
             if (notaEl) notaEl.value = 'Cobro de intereses periódicos pactados';
         } else if (tipo === 'REDENCION') {
@@ -1155,14 +1138,12 @@ function adaptarFormularioTrx(tipo) {
                 if (montoLabel) montoLabel.innerText = 'Monto bruto total al vencimiento (Capital + Rendimientos) *';
                 if (montoEl) {
                     montoEl.value = formatearMiles(Number('{{ $totalLiquidacionCdt }}') || 0);
-                    actualizarPreviewMonto();
                 }
                 if (notaEl) notaEl.value = 'Redención total y liquidación de intereses al vencimiento';
             } else {
                 if (montoLabel) montoLabel.innerText = 'Capital a liquidar / redimir (COP) *';
                 if (montoEl) {
                     montoEl.value = formatearMiles(Number('{{ $det['capital'] ?? $inversion->monto_inicial }}') || 0);
-                    actualizarPreviewMonto();
                 }
                 if (notaEl) notaEl.value = 'Redención y liquidación final del CDT';
             }
@@ -1332,12 +1313,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const p = parseFloat(desformatearMiles(trxPrecio.value)) || 0;
         if (u > 0 && p > 0) {
             trxMonto.value = formatearMiles(u * p);
-            actualizarPreviewMonto();
         }
     }
 
     // 2. Enlazar máscaras numéricas con separadores de miles (.) y decimales (,)
-    enlazarMascaraNumero(trxMonto, actualizarPreviewMonto);
+    enlazarMascaraNumero(trxMonto);
     enlazarMascaraNumero(trxPrecio, function() {
         actualizarPreviewCampo(trxPrecio, 'trx_precio_preview', 'Precio');
         autoCalcularTrxMonto();
