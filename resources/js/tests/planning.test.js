@@ -1,8 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { budgetPayload, budgetState, pesos, notificationTarget } from '../planning/rules.js';
 import { contractPayload, validResourcePath } from '../api/index.js';
-import { validateReportDates } from '../reports/index.js';
+import { validateReportDates, reportDate, signedMoney, comparisonPercent } from '../reports/index.js';
 import { socialResult } from '../social/index.js';
 const parent='00000000-0000-4000-8000-000000000001',child='00000000-0000-4000-8000-000000000002',categories=[{id:parent,nombre:'QA-Padre'},{id:child,nombre:'QA-Hija',categoria_padre_id:parent}];
 test('G: payload decimal exacto, opcionales fuera del contrato y umbrales de ejecución',()=>{
@@ -26,3 +27,19 @@ test('H: fechas civiles, rango invertido y equivalencia de periodos',()=>{
 test('C: resultados visibles conservan los valores autoritativos y total de descuentos exacto',()=>{const r=socialResult({salario:'5000000.00',salario_neto_estimado:'4450000.00',total_aportes:'400000.00',retencion_fuente:'150000.00',salud:'200000.00'});assert.equal(r.totalDescuentos,'550000.00');assert.equal(r.salarioNeto,'4450000.00');assert.equal(r.salud,'200000.00');assert.equal(r.totalPagar,'400000.00');});
 
 test('G: acepta UUID del catálogo global igual que Laravel sin restringir versión',()=>{const id='40000000-0000-0000-0001-000000000002';const result=budgetPayload([{categoria_id:id,modo_asignacion:'PESOS',valor:'100'}],[{id,nombre:'Alimentación'}],'100',false,false);assert.deepEqual(result.errors,{});assert.equal(validResourcePath('/gastos/categorias/'+id),true);});
+
+test('G/H: las ocho configuraciones de vistas y el PDF con indicador compuesto compilan sin consultar la BD',()=>{
+ const output=JSON.parse(execFileSync(process.env.PHP_BINARY||'php',['-r',String.raw`
+require 'vendor/autoload.php';$app=require 'bootstrap/app.php';$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+Illuminate\Support\Facades\DB::connection()->beforeExecuting(function(){throw new RuntimeException('No consultar BD en fixtures.');});
+$app['request']->setLaravelSession($app['session']->driver());$app['view']->share('errors',new Illuminate\Support\ViewErrorBag());
+$out=[];foreach(['budgets','alerts','notifications','dashboard','indicators','cash','matrix','compare'] as $page)$out[$page]=view('planning._workspace',['workspacePage'=>$page])->render();
+$user=new App\Models\Usuario(['correo'=>'qa@example.test']);
+$out['pdf']=view('reportes.pdf.indicadores',['usuario'=>$user,'reporte'=>['mes'=>'2026-11','aviso_legal'=>'Ejemplo QA','indicadores'=>[['nombre'=>'Regla 50 / 30 / 20','valor'=>['esenciales'=>50,'discrecionales'=>30,'ahorro'=>20]]]]])->render();
+echo json_encode($out,JSON_THROW_ON_ERROR);
+`],{encoding:'utf8',maxBuffer:4e6}));
+ assert.equal(Object.keys(output).length,9);for(const html of Object.values(output))assert.doesNotMatch(html,/<\/?x-|\{\{|@(?:if|foreach|include)\(/);assert.match(output.pdf,/Esenciales: 50 %/);assert.match(output.budgets,/data-financial-workspace/);
+});
+
+test('H: los límites UTC serializados vuelven a la fecha de Bogotá sin correr el fin de mes',()=>{assert.equal(reportDate('2026-11-01T04:59:59.999999Z'),'2026-10-31');assert.equal(reportDate('2026-10-01T05:00:00.000000Z'),'2026-10-01');assert.equal(reportDate('2026-10-31'),'2026-10-31');});
+test('H: variaciones conservan signo y N/A, incluso cuando ambos periodos valen cero',()=>{assert.equal(signedMoney('200000'),'+ $ 200.000');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'N/A'}),'N/A');assert.equal(comparisonPercent({variacion_porc:null,variacion_porc_texto:'0,00%'}),'0,00%');assert.equal(comparisonPercent({variacion_porc:'20'}),'+ 20,00 %');});

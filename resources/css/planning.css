@@ -30,3 +30,11 @@
 .ui-topbar { flex-wrap:wrap; }
 .ui-topbar-title { min-width:0; }
 .ui-topbar .ui-theme-switch { margin-left:auto; }
+
+.planning-page .ui-card { container-type:inline-size; }
+.planning-value { font-size:clamp(1rem,calc(140cqi / var(--value-length, 16)),2.5rem); white-space:nowrap; overflow-wrap:normal; word-break:normal; }
+
+.planning-page meter { display:block; width:100%; height:1.5rem; accent-color:var(--accent); }
+
+.report-spending-increase { color:var(--ui-danger); }
+.report-spending-decrease { color:var(--ui-success); }
