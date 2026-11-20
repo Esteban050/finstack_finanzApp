@@ -121,3 +121,41 @@
 }
 
 @media (max-width: 1023px) { .finance-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Distribución compartida de los formularios actuales de inversión. */
+.investment-page fieldset { min-width: 0; border-color: var(--ui-border-strong) !important; border-radius: var(--ui-radius-lg) !important; padding: var(--ui-space-6) !important; margin-block: var(--ui-space-6) !important; }
+.investment-page legend { color: var(--ui-text) !important; padding-inline: .5rem; font-size: 1rem; }
+.investment-page .income-two-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1.5rem; }
+.investment-page .income-two-fields > * { min-width: 0; }
+.investment-page .ui-field label { min-height: 2.75rem; display: flex; align-items: end; }
+.investment-page .ui-field :is(input,select) { width: 100%; max-width: 100%; min-width: 0; }
+.investment-page .ui-field .ui-inline input[type="radio"] {
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    min-height: 18px;
+    padding: 0;
+}
+.investment-page .income-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: end;
+}
+.investment-page .income-filters > .ui-inline {
+    align-self: end;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+.investment-page .investment-dividend-row { grid-column: 1 / -1; }
+.social-page .finance-grid > *, .social-page .ui-card { min-width: 0; }
+.social-page .ui-field { margin-bottom: 1.5rem; }
+@media(max-width:767px) {
+    .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); }
+    .investment-page .ui-field label { min-height: 0; }
+    .investment-page .income-filters { grid-template-columns:minmax(0,1fr); }
+    .investment-page .income-filters > .ui-inline { justify-self: start; }
+}
+
+.investment-page [style*="background: #"], .investment-page [style*="background:#"] { background:var(--ui-surface) !important; border-color:var(--ui-border-strong) !important; }
+.investment-page [style*="color: #"], .investment-page [style*="color:#"] { color:var(--ui-text) !important; }
+.investment-page .ui-help[style] { color:var(--ui-muted) !important; }

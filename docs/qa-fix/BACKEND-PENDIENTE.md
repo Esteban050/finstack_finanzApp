@@ -231,3 +231,34 @@ No se modificó renta ni se certificó su flujo completo. Para comunicar al resp
 - Revisión adicional de detalle en claro/oscuro y anchos efectivos de 360/768/1280/1920: mediciones sin desbordamiento y sin texto inferior a 13 px dentro del módulo. La herramienta de tamaño no confirmó todas las combinaciones solicitadas en la misma vuelta; no se presenta como una matriz adicional completa de ocho. Las 48 comprobaciones previas conservan su registro anterior. No se declara compatibilidad exhaustiva ni un E2E automatizado persistente: fueron interacciones reales guiadas desde el navegador integrado.
 - Limpieza por UI: crédito QA eliminado lógicamente, anticipo reversado, gasto asociado eliminado lógicamente. Lectura final por ID: credito_eliminado=true, pagos_vigentes=0, gastos_activos=0. No se tocaron registros personales. Se conserva la auditoría de las bajas.
 - Verificación de cierre: npm test (70/70, cero omitidos), npm run lint (correcto con la deuda explícita indicada), npm run build, npm run check-icons, npm run check-styleguide, php -l CreditoController, git diff --check. No se ejecutaron suites PHP ni seeders. Archivos de Renta sin diferencias respecto a HEAD. Publicación en la rama fix/qa-front tras estas verificaciones.
+
+
+## Actualización G/H — 19/11/2026
+
+La descripción inicial de este documento corresponde a la auditoría de octubre. Esta entrega sí incorpora negociación HTML/JSON en cuatro controladores existentes, exclusivamente para servir las vistas; mantiene rutas, validaciones y cálculos de dominio. No modifica Declaración de renta: 15 archivos contrastados con SHA-256, sin diferencias.
+
+### Contratos aún no disponibles
+
+- **HU-H03, referencias configurables:** la meta de ahorro y la distribución 50/30/20 son constantes en `app/Services/Reportes/IndicadoresSaludService.php:26` y `:27`. Las rutas actuales de perfil/reportes no ofrecen su edición. El front muestra las referencias recibidas y no ofrece controles que aparenten guardarlas. Se requiere contrato de persistencia para permitir su configuración.
+- **HU-H01/RN-065.5:** `app/Services/Reportes/DashboardResumenService.php:294` entrega variaciones solo para ingresos, gastos, balance y tasa de ahorro. Para ejecución presupuestal, endeudamiento y portafolio no entrega valores anteriores ni variaciones. El front no inventa esas cifras; sus tarjetas muestran el dato actual y su enlace.
+- **RN-067.2 (referencia v1.0):** la respuesta de `app/Services/Reportes/GastosDimensionService.php:232` incluye promedio por gasto, conteo y total; no incluye promedio mensual. Se presenta lo disponible según HU-H05; añadir el promedio mensual requiere definir el cálculo en el contrato.
+- **Desviaciones documentales vigentes:** RF-v1.1 termina en RN-029. Para G/H se contrastaron el mockup, las historias H y los contratos implementados. G permite presupuesto mensual; H excluye patrimonio y flujo proyectado según sus historias. No se añadieron periodos o cálculos no admitidos por las APIs actuales.
+
+### Verificación y límites de esta entrega
+
+- Antes: build correcto; 70 pruebas JS, 67 pasan y 3 fallan (dos apuntaban al PHP de otro computador; una fixture no incluía los nuevos datos sociales). Lint fallaba en la vista heredada de inversiones.
+- Después: 79/79 pruebas pasan; build, check-icons y exclusión del styleguide en producción correctos. Las pruebas de presentación usan PHP con la conexión bloqueada; no se ejecutó PHPUnit, Pest ni artisan test.
+- Lint comprueba la sintaxis/seguridad de 64 archivos JS y se detiene después en `resources/views/inversiones/show.blade.php` por aritmética float heredada, ajena a esta entrega. Se corrigió la vista index de inversiones sin ampliar la lista de excepciones ni modificar los hashes del linter. El detalle heredado requiere una corrección separada.
+- Aplicadas únicamente las migraciones G del 18/11: presupuestos/líneas, reglas/notificaciones y preferencias. Lote 7. No se aplicaron migraciones de renta.
+- Navegador integrado real: ejecución y configuración de presupuesto, validación 0, corrección a porcentaje, persistencia, serie diaria, eliminación; límites de alertas y limpieza de errores, guardado/restablecimiento; lectura/no lectura/archivo y filtros de notificaciones; resumen, indicadores, flujo histórico, matriz y comparativo. Anchos usados: 360, 768, 1280 y 1920; temas claro y oscuro. Sin desbordamiento de página en las comprobaciones registradas. No representa una auditoría exhaustiva de toda la aplicación.
+- Corregida la plantilla del diagnóstico PDF que intentaba imprimir el objeto 50/30/20 como texto. Una prueba aislada ahora renderiza ese indicador sin consultar BD. **Descargas PDF/XLSX no aprobadas E2E:** el permiso de descargas del navegador fue rechazado y no se intentó eludirlo. El cliente comprueba firmas PDF/XLSX antes de guardar para no descargar HTML como un archivo financiero.
+- Revisiones manuales adicionales: mora deshabilitada; campos de dividendos alineados; cálculo social con valores del servidor (salario 5.000.000, retención 150.000, aportes 400.000, neto 4.450.000), independiente y rentista. No se registraron pagos reales.
+
+### Datos de prueba y limpieza
+
+- Cuenta de pruebas existente, sin cambiar perfil ni credenciales.
+- Categoría `QA-GH-20261119`: creada y eliminada desde la UI.
+- Presupuesto de noviembre con esa categoría, 19,50 %: creado, consultado y eliminado desde la UI; no repetía ni trasladaba saldos.
+- Dos avisos automáticos generados al evaluar el mes durante esta prueba: marcados/no marcados y finalmente archivados desde la UI. Permanecen archivados hasta la retención normal del servidor; no se purgó información directamente.
+- Reglas y preferencias: originalmente sin filas personalizadas; guardadas para probar el contrato y restablecidas desde la UI. No se habilitó correo ni se enviaron mensajes.
+- Ningún ingreso, gasto, inversión, crédito o pago real creado/modificado para estas pruebas. No se usó SQL de escritura ni seeders.

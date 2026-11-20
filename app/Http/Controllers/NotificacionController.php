@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Notificacion;
 use App\Services\NotificacionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -22,8 +23,11 @@ class NotificacionController extends Controller
      * RF-058: bandeja, de la más nueva a la más vieja. Sin filtro de estado
      * muestra las no leídas y las leídas (las archivadas se piden aparte).
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse|View
     {
+        if (!$request->expectsJson()) {
+            return view('planning.index', ['workspacePage' => 'notifications']);
+        }
         $validated = $request->validate([
             'estado' => ['nullable', Rule::in([Notificacion::NO_LEIDA, Notificacion::LEIDA, Notificacion::ARCHIVADA])],
             'prioridad' => ['nullable', Rule::in([Notificacion::INFORMATIVA, Notificacion::ADVERTENCIA, Notificacion::CRITICA])],

@@ -20,9 +20,11 @@ export function safeMessage(value, fallback = 'No fue posible completar la opera
     return typeof value === 'string' && value.length <= 400 && !/(SQL|SQLSTATE|select\s|trace|exception|stack|server|servidor|[A-Z]:\\|\/var\/|\/home\/|\.php\b|\bat\s+\w+\()/i.test(value) ? value : fallback;
 }
 
-export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+export const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export function validResourcePath(path) {
     const parts = path.split('/').filter(Boolean);
+    if (parts[0] === 'presupuestos') return parts.length === 1 || (/^\d{4}-(0[1-9]|1[0-2])$/.test(parts[1]) && (parts.length === 2 || (parts.length === 3 && parts[2] === 'base') || (parts.length === 4 && parts[2] === 'lineas' && isUuid(parts[3]))));
+    if (parts[0] === 'notificaciones') return parts.length === 1 || (parts.length === 2 && ['contador','marcar-todas-leidas'].includes(parts[1])) || (parts.length === 3 && isUuid(parts[1]) && ['leida','no-leida','archivar'].includes(parts[2]));
     if (parts[0] === 'creditos') {
         if (parts.length < 2) return true;
         if (['calcular','calcular-monto','comparar','endeudamiento'].includes(parts[1])) return parts.length === 2;
@@ -44,6 +46,10 @@ export function validResourcePath(path) {
     return ['crear', ...(parts[0] === 'gastos' ? ['indicadores','etiquetas','edicion-masiva'] : [])].includes(parts[1]) || isUuid(parts[1]);
 }
 export function contractPayload(path, method, values) {
+    const pick=(object,keys)=>Object.fromEntries(keys.filter(key=>Object.hasOwn(object||{},key)).map(key=>[key,object[key]]));
+    if(path.startsWith('/presupuestos')) {const result=pick(values,['repetir_cada_mes','trasladar_saldo','lineas']);if(Array.isArray(result.lineas))result.lineas=result.lineas.map(row=>pick(row,['categoria_id','modo_asignacion',...(row.modo_asignacion==='PESOS'?['monto_asignado']:['porcentaje_ingreso'])]));return result;}
+    if(path.startsWith('/notificaciones'))return {};
+    if(path.startsWith('/perfil/alertas')) {const result=pick(values,['reglas','resumen']);if(Array.isArray(result.reglas))result.reglas=result.reglas.filter(row=>row.tipo!=='SEGURIDAD_CUENTA').map(row=>{const item=pick(row,['tipo','activa','enviar_correo','parametros']);if(item.parametros)item.parametros=pick(item.parametros,['umbrales','umbral','monto','monto_max','tope','veces','dias_antes']);return item;});if(result.resumen)result.resumen=pick(result.resumen,['frecuencia','bloques']);return result;}
     const isUsd = values?.moneda === 'USD';
     const recurring = ['periodicidad','fecha_inicio','fecha_fin','max_ocurrencias','modo_confirmacion'];
     const income = ['fuente_id','fecha_recepcion','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria'];
@@ -53,7 +59,7 @@ export function contractPayload(path, method, values) {
         allowed = method === 'GET' ? ['page','por_pagina','fecha'] : path.endsWith('/reversar') ? ['motivo'] : path.includes('/pagos') ? ['fecha','valor','medio','referencia','aplicacion_excedente','reducir'] : ['banco','proposito','tipo_credito','monto','tasa','tipo_tasa','capitalizacion','tasa_mora','plazo_meses','numero_cuotas','periodicidad','sistema_amortizacion','fecha_inicio','fecha_primer_pago','seguro_porc_mensual','cargo_fijo','valor_inmueble','es_vis'];
     }
     else if (path.startsWith('/seguridad-social')) {
-        allowed = path.includes('/pagos') ? (path.endsWith('/soporte') ? ['soporte'] : ['periodo','fecha_pago','numero_planilla','es_correccion','ibc','porcentaje_salud','porcentaje_pension','porcentaje_fsp','porcentaje_arl','salud','pension','fsp','arl','intereses_mora','medio_pago','soporte']) : path.endsWith('/aplicar') ? ['ingreso_id'] : path.includes('/asalariado') ? ['salario','retencion_fuente','periodo'] : ['periodo','ingreso_base','es_voluntario'];
+        allowed = path.endsWith('/calcular') ? ['tipo_cotizante','periodo','salario','retencion_fuente','monto_contrato','origen_monto','porcentaje_presuncion','clase_riesgo_arl'] : path.includes('/pagos') ? (path.endsWith('/soporte') ? ['soporte'] : ['periodo','fecha_pago','numero_planilla','es_correccion','ibc','porcentaje_salud','porcentaje_pension','porcentaje_fsp','porcentaje_arl','salud','pension','fsp','arl','intereses_mora','medio_pago','soporte']) : path.endsWith('/aplicar') ? ['ingreso_id'] : path.includes('/asalariado') ? ['salario','retencion_fuente','periodo'] : ['periodo','ingreso_base','es_voluntario'];
     }
     else if (path.startsWith('/inversiones')) {
         allowed = path.endsWith('/rentabilidad') ? ['fecha_corte'] : path.includes('/simulaciones') ? ['nombre','alternativas'] : path.includes('/movimientos') ? ['tipo','fecha','monto','unidades','retencion','nota'] : path.includes('/valoraciones') ? ['fecha','valor','precio_unitario','usar_valor_causado'] : method === 'PUT' ? ['nombre','entidad','nivel_riesgo','simbolo','fecha_vencimiento','rentabilidad_esperada_porc','plazo_meses_esperado'] : ['nombre','tipo','entidad','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'fecha_apertura','monto_inicial','nivel_riesgo','tasa_ea','plazo_dias','periodicidad_intereses','fecha_vencimiento','simbolo','unidades','precio_unitario_compra','rentabilidad_esperada_porc','plazo_meses_esperado'];

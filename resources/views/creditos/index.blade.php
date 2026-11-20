@@ -30,7 +30,7 @@
 <x-ui.field name="plazo_meses" label="Plazo en meses" :required="true" :help="'Entre '.config('scfp.creditos.plazo_min_meses').' y '.config('scfp.creditos.plazo_max_meses').' meses; vivienda desde '.config('scfp.creditos.vivienda_plazo_min_meses').' meses.'"><input id="plazo_meses" name="plazo_meses" type="number" min="{{ config('scfp.creditos.plazo_min_meses') }}" max="{{ config('scfp.creditos.plazo_max_meses') }}" step="1" required></x-ui.field>
 <x-ui.date-input name="fecha_inicio" label="Fecha de desembolso" :allow-future="true" />
 <x-ui.date-input name="fecha_primer_pago" label="Fecha de primera cuota" :allow-future="true" :required="false" />
-<x-ui.field name="tasa_mora" label="Tasa de mora (% EA)" help="Opcional. La mora se calcula con la tasa informada; no ingreses aquí un monto."><input id="tasa_mora" name="tasa_mora" inputmode="decimal"></x-ui.field>
+<x-ui.field name="tasa_mora" label="Tasa de mora (% EA)" help="Este campo no requiere captura manual. Se conserva la tasa ya registrada, si existe."><input id="tasa_mora" name="tasa_mora" inputmode="decimal" disabled></x-ui.field>
 <div data-credit-housing hidden><x-ui.money-input name="valor_inmueble" id="credit-property" label="Valor del inmueble" :required="false" /><label class="ui-check"><input name="es_vis" type="checkbox" value="1"> Vivienda de interés social (VIS)</label></div>
 </div></x-ui.card><x-ui.module-status /><div class="ui-inline"><a class="ui-button ui-button--secondary" href="{{ route('creditos.index') }}">Cancelar</a><x-ui.button type="submit" data-credit-save>Registrar crédito</x-ui.button></div></form></section>
 <section data-credit-screen="detail" hidden><div data-credit-detail></div></section>

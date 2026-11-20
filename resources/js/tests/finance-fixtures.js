@@ -26,7 +26,7 @@ $sim = new App\Models\SimulacionInversion(['nombre'=>'QA-Simulación ficticia','
 $detail=['id'=>$inv->id,'nombre'=>$inv->nombre,'tipo'=>'CDT','nivel_riesgo'=>'BAJO','valor_actual_cop'=>'11000000.00','porcentaje_portafolio'=>'100.00','roi'=>'10.00','xirr'=>'10.00','fecha_ultima_valoracion'=>'2026-01-01','valoracion_desactualizada'=>true,'estado'=>'ACTIVA','moneda'=>'COP'];
 $portafolio=['valor_total'=>'11000000.00','capital_aportado_neto'=>'10000000.00','ganancia'=>'1000000.00','roi'=>'10.00','xirr'=>'10.00','distribucion'=>['por_tipo'=>[['clave'=>'CDT','porcentaje'=>'100.00','valor'=>'11000000.00']],'por_riesgo'=>[['clave'=>'BAJO','porcentaje'=>'100.00','valor'=>'11000000.00']]],'detalle'=>[$detail]];
 $cases = [
- 'seguridad-social.index'=>['esDobleObligacion'=>false,'esVoluntario'=>true,'hayCalendario'=>true,'digitos'=>'37','periodos'=>[['periodo'=>'2025-03','fecha_limite'=>'2025-04-08','estado'=>'VENCIDO']],'resumenAnual'=>$resumen],
+ 'seguridad-social.index'=>['ingresosSalario'=>collect([]),'pagosRecientes'=>collect([]),'parametro'=>null,'totalLiquidaciones'=>0,'totalPagos'=>0,'periodoActual'=>'2025-03','alertas'=>[],'esDobleObligacion'=>false,'esVoluntario'=>true,'hayCalendario'=>true,'digitos'=>'37','periodos'=>[['periodo'=>'2025-03','fecha_limite'=>'2025-04-08','estado'=>'VENCIDO']],'resumenAnual'=>$resumen],
  'seguridad-social.liquidaciones.index'=>['liquidaciones'=>$paginator([$liq])],
  'seguridad-social.asalariado.index'=>['perfil'=>$profile,'ingresosSalario'=>collect([])],
  'seguridad-social.pagos.index'=>['resumenAnual'=>$resumen,'anioActual'=>2025,'pagos'=>$paginator([$payment]),'pagosPresentados'=>collect([$payment])],

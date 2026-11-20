@@ -20,6 +20,8 @@
                 </div>
             @endif
 
+            <div class="ui-inline"><a class="ui-button ui-button--secondary" href="{{ route('perfil.alertas.index') }}">Alertas y notificaciones</a></div>
+
             <!-- Resumen de Cuenta e Identidad -->
             <div class="bg-white p-6 shadow sm:rounded-xl">
                 <div class="flex items-center justify-between border-b pb-4 mb-4">

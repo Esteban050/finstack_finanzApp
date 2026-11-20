@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Inversiones')
 @section('content')
-<div class="finance-page">
+<div class="finance-page investment-page">
 @php
     $labels = require resource_path('views/components/ui/investment-labels.php');
 @endphp
@@ -320,7 +320,7 @@
                         </select>
                     </x-ui.field>
 
-                    <x-ui.field name="mercado" label="Mercado de negociación">
+                    <x-ui.field name="mercado" id="mercado_select" label="Mercado de negociación">
                         <select name="mercado" id="mercado_select" onchange="actualizarCamposRentaVariable()">
                             <option value="BVC" @selected(old('mercado') === 'BVC')>Bolsa de Valores de Colombia (BVC)</option>
                             <option value="EXTERIOR" @selected(old('mercado') === 'EXTERIOR')>Mercado Extranjero / Internacional</option>
@@ -337,7 +337,7 @@
                         </x-ui.field>
                     </div>
 
-                    <div class="income-two-fields">
+                    <div class="income-two-fields investment-dividend-row">
                         <x-ui.field name="moneda_dividendo" label="Moneda del dividendo" help="Selecciona si el dividendo se decreta en Pesos (COP) o Dólares (USD)">
                             <select name="moneda_dividendo" id="moneda_dividendo" onchange="toggleTrmDividendo(this.value)">
                                 <option value="COP" @selected(old('moneda_dividendo', 'COP') === 'COP')>COP (Pesos Colombianos)</option>
@@ -480,22 +480,22 @@
                         <td>{{ $labels[$inv['tipo']] ?? $inv['tipo'] }}</td>
                         <td>{{ $inv['entidad_relacion']['nombre'] ?? $inv['entidad'] ?? '—' }}</td>
                         <td class="ui-number">
-                            <span data-money="{{ $inv['monto_inicial'] }}">{{ number_format((float) $inv['monto_inicial'], 2) }}</span>
+                            <span data-money="{{ $inv['monto_inicial'] }}">{{ $inv['monto_inicial'] }}</span>
                             <span class="ui-help">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
-                            <strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ number_format((float) ($inv['valor_actual'] ?? $inv['monto_inicial']), 2) }}</strong>
+                            <strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}</strong>
                             <span class="ui-help">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
                             @if(!empty($inv['valoracion_no_realizada']))
                                 @php($vnr = $inv['valoracion_no_realizada'])
-                                <span style="color: {{ (float)$vnr['valor'] >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">
-                                    {{ (float)$vnr['valor'] >= 0 ? '+' : '' }}$ {{ number_format((float)$vnr['valor'], 2) }} ({{ $vnr['porcentaje'] }}%)
+                                <span style="color: {{ bccomp((string)$vnr['valor'], '0', 2) >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">
+                                    {{ bccomp((string)$vnr['valor'], '0', 2) >= 0 ? '+' : '' }}<span data-money="{{ $vnr['valor'] }}">{{ $vnr['valor'] }}</span> ({{ $vnr['porcentaje'] }}%)
                                 </span>
                             @elseif(!empty($inv['rendimiento_estimado']))
                                 <span class="ui-help" title="Proyección al vencimiento">
-                                    Est: +$ {{ number_format((float)$inv['rendimiento_estimado'], 2) }}
+                                    Est: <span data-money="{{ $inv['rendimiento_estimado'] }}">{{ $inv['rendimiento_estimado'] }}</span>
                                 </span>
                             @else
                                 <span class="ui-help">—</span>
@@ -695,47 +695,20 @@ function fijarMesesProyeccion(meses) {
 }
 
 function actualizarWizardProyeccion() {
-    const montoEl = document.getElementById('monto_inicial');
-    const tasaEl = document.getElementById('rentabilidad_esperada_porc');
-    const mesesEl = document.getElementById('plazo_meses_esperado');
-
-    const monto = parseFloat(montoEl ? montoEl.value : 0) || 0;
-    const tasa = parseFloat(tasaEl ? tasaEl.value : 0) || 0;
-    const meses = parseInt(mesesEl ? mesesEl.value : 12) || 12;
-
-    const tasaDecimal = tasa / 100.0;
-    const diasTotales = meses * 30.4167;
-    const factorFinal = diasTotales > 0 ? Math.pow(Math.max(0.0001, 1.0 + tasaDecimal), diasTotales / 365.0) : 1.0;
-    const totalFinal = monto * factorFinal;
-    const gananciaFinal = totalFinal - monto;
-
-    const prevMonto = document.getElementById('wiz-prev-monto');
-    const prevGan = document.getElementById('wiz-prev-ganancia');
-    const prevTot = document.getElementById('wiz-prev-total');
-
-    if (prevMonto) prevMonto.innerText = '$ ' + monto.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
-    if (prevGan) prevGan.innerText = (gananciaFinal >= 0 ? '+$ ' : '-$ ') + Math.abs(gananciaFinal).toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
-    if (prevTot) prevTot.innerText = '$ ' + totalFinal.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
-
-    // Generar puntos para el Chart
-    const labels = [];
-    const dataValores = [];
-    const fechaAperturaEl = document.getElementById('fecha_apertura');
-    const fechaBase = fechaAperturaEl && fechaAperturaEl.value ? new Date(fechaAperturaEl.value) : new Date();
-
-    const pasoMeses = meses > 24 ? Math.ceil(meses / 12) : 1;
-    for (let m = 0; m <= meses; m += pasoMeses) {
-        const d = new Date(fechaBase);
-        d.setMonth(d.getMonth() + m);
-        const dias = m * 30.4167;
-        const f = dias > 0 ? Math.pow(Math.max(0.0001, 1.0 + tasaDecimal), dias / 365.0) : 1.0;
-        const valM = Math.round(monto * f * 100) / 100;
-
-        labels.push('Mes ' + m + ' (' + d.toLocaleDateString('es-CO', {month: 'short', year: '2-digit'}) + ')');
-        dataValores.push(valM);
-    }
-
-    renderWizardChart(labels, dataValores);
+    if (!window.FinanzMoney) return;
+    const {decimal,formatMoney}=window.FinanzMoney;
+    const read=id=>{try{return decimal(document.getElementById(id)?.value || '0');}catch{return decimal('0');}};
+    const monto=read('monto_inicial'),tasa=read('rentabilidad_esperada_porc');
+    const meses=parseInt(document.getElementById('plazo_meses_esperado')?.value || '12',10);
+    if(!Number.isInteger(meses)||meses<1||meses>600)return;
+    const factor=tasa.div('100').plus('1');if(factor.lte('0'))return;
+    const project=m=>monto.times(factor.pow(decimal(String(m)).times('30.4167').div('365'))).toDecimalPlaces(2);
+    const total=project(meses),gain=total.minus(monto);
+    for(const [id,value]of [['wiz-prev-monto',monto],['wiz-prev-ganancia',gain],['wiz-prev-total',total]]){const host=document.getElementById(id);if(host)host.textContent=(id==='wiz-prev-ganancia'&&gain.gt('0')?'+':'')+formatMoney(value.toFixed(2));}
+    const labels=[],values=[],date=document.getElementById('fecha_apertura')?.value;
+    const base=date?new Date(date+'T12:00:00Z'):new Date(),step=meses>24?Math.ceil(meses/12):1;
+    for(let m=0;m<=meses;m+=step){const d=new Date(base);d.setUTCMonth(d.getUTCMonth()+m);labels.push('Mes '+m+' ('+d.toLocaleDateString('es-CO',{timeZone:'America/Bogota',month:'short',year:'2-digit'})+')');values.push(project(m).toFixed(2));}
+    renderWizardChart(labels,values);
 }
 
 function renderWizardChart(labels, dataValores) {
@@ -803,51 +776,14 @@ function toggleMoneda(val) {
 
 // RF-INV-06: Auto-cálculo reactivo de 2 de 3 valores en productos por unidades
 function resolverDosDeTres(origen) {
-    const montoEl = document.getElementById('monto_inicial');
-    const unidadesEl = document.getElementById('unidades');
-    const precioEl = document.getElementById('valor_unidad');
-    const alerta = document.getElementById('alerta-inconsistencia');
-
-    if (!montoEl || !unidadesEl || !precioEl || !alerta) return;
-
-    let m = parseFloat(montoEl.value) || 0;
-    let u = parseFloat(unidadesEl.value) || 0;
-    let p = parseFloat(precioEl.value) || 0;
-
-    alerta.style.display = 'none';
-
-    if (origen === 'monto' && m > 0) {
-        if (p > 0) {
-            unidadesEl.value = (m / p).toFixed(8);
-        } else if (u > 0) {
-            precioEl.value = (m / u).toFixed(8);
-        }
-    } else if (origen === 'unidades' && u > 0) {
-        if (p > 0) {
-            montoEl.value = (u * p).toFixed(2);
-        } else if (m > 0) {
-            precioEl.value = (m / u).toFixed(8);
-        }
-    } else if (origen === 'precio' && p > 0) {
-        if (u > 0) {
-            montoEl.value = (u * p).toFixed(2);
-        } else if (m > 0) {
-            unidadesEl.value = (m / p).toFixed(8);
-        }
-    }
-
-    // Re-leer valores finales después de cualquier auto-cálculo para evitar estados obsoletos en memoria
-    const finalM = parseFloat(montoEl.value) || 0;
-    const finalU = parseFloat(unidadesEl.value) || 0;
-    const finalP = parseFloat(precioEl.value) || 0;
-
-    if (finalM > 0 && finalU > 0 && finalP > 0) {
-        const esperado = finalU * finalP;
-        if (Math.abs(finalM - esperado) > 1.0) {
-            alerta.innerText = 'Inconsistencia detectada: Monto ($' + finalM.toFixed(2) + ') difiere de Unidades × Precio ($' + esperado.toFixed(2) + ').';
-            alerta.style.display = 'block';
-        }
-    }
+    if(!window.FinanzMoney)return;
+    const {decimal,formatMoney}=window.FinanzMoney,monto=document.getElementById('monto_inicial'),unidades=document.getElementById('unidades'),precio=document.getElementById('valor_unidad'),alerta=document.getElementById('alerta-inconsistencia');
+    if(!monto||!unidades||!precio||!alerta)return;const read=el=>{try{return decimal(el.value||'0');}catch{return decimal('0');}};
+    const m=read(monto),u=read(unidades),p=read(precio);alerta.style.display='none';
+    if(origen==='monto'&&m.gt('0')){if(p.gt('0'))unidades.value=m.div(p).toFixed(8);else if(u.gt('0'))precio.value=m.div(u).toFixed(8);}
+    else if(origen==='unidades'&&u.gt('0')){if(p.gt('0'))monto.value=u.times(p).toFixed(2);else if(m.gt('0'))precio.value=m.div(u).toFixed(8);}
+    else if(origen==='precio'&&p.gt('0')){if(u.gt('0'))monto.value=u.times(p).toFixed(2);else if(m.gt('0'))unidades.value=m.div(p).toFixed(8);}
+    const final=read(monto),expected=read(unidades).times(read(precio));if(final.gt('0')&&read(unidades).gt('0')&&read(precio).gt('0')&&final.minus(expected).abs().gt('1')){alerta.textContent='El monto ('+formatMoney(final.toFixed(2))+') difiere de unidades por precio ('+formatMoney(expected.toFixed(2))+').';alerta.style.display='block';}
 }
 
 function actualizarCamposRentaVariable() {
@@ -893,28 +829,13 @@ function toggleTrmDividendo(val) {
 }
 
 function calcularProyeccionCdt() {
-    const capital = parseFloat(document.getElementById('monto_inicial').value) || 0;
-    const tasa = parseFloat(document.getElementById('tasa_ea_cdt').value) || 0;
-    const dias = parseInt(document.getElementById('plazo_dias').value) || 0;
-    const base = parseInt(document.getElementById('base_dias').value) || 365;
-    const tipoTasaEl = document.getElementById('tipo_tasa');
-    const tipoTasa = tipoTasaEl ? tipoTasaEl.value : 'EA';
-
-    if (capital > 0 && tasa > 0 && dias > 0) {
-        let tasaEa = tasa;
-        if (tipoTasa === 'NOMINAL') {
-            const m = 12;
-            tasaEa = (Math.pow(1 + (tasa / 100) / m, m) - 1) * 100;
-        }
-        const factor = Math.pow(1 + (tasaEa / 100), dias / base);
-        const bruto = capital * (factor - 1);
-        const ret = bruto * 0.04; // 4% ReteFuente renta fija
-        const neto = bruto - ret;
-
-        document.getElementById('cdt-prev-bruto').innerText = '$ ' + bruto.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('cdt-prev-ret').innerText = '$ ' + ret.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('cdt-prev-neto').innerText = '$ ' + neto.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
+    if(!window.FinanzMoney)return;const {decimal,formatMoney}=window.FinanzMoney;
+    try{const capital=decimal(document.getElementById('monto_inicial').value||'0'),tasa=decimal(document.getElementById('tasa_ea_cdt').value||'0'),dias=document.getElementById('plazo_dias').value||'0',base=document.getElementById('base_dias').value||'365';
+    if(capital.lte('0')||tasa.lt('0')||decimal(dias).lte('0'))return;
+    const nominal=document.getElementById('tipo_tasa')?.value==='NOMINAL',rate=nominal?tasa.div('100').div('12').plus('1').pow('12').minus('1'):tasa.div('100'),bruto=capital.times(rate.plus('1').pow(decimal(dias).div(base)).minus('1'));
+    const ret=bruto.times('0.04'),neto=bruto.minus(ret);
+    for(const [id,value]of [['cdt-prev-bruto',bruto],['cdt-prev-ret',ret],['cdt-prev-neto',neto]])document.getElementById(id).textContent=formatMoney(value.toFixed(2));
+    }catch{for(const id of ['cdt-prev-bruto','cdt-prev-ret','cdt-prev-neto']){const el=document.getElementById(id);if(el)el.textContent='—';}}
 }
 
 // Inicializar al cargar y asegurar deshabilitado en submit

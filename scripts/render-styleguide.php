@@ -54,6 +54,7 @@ function request(): object { return new class {
 function route(string $name, string $id = ''): string {
     // Destinos existentes, solo referencias visuales. La guía intercepta la navegación.
     return match ($name) {
+        'presupuestos.show'=>'/presupuestos', 'reportes.indicadores'=>'/reportes/indicadores', 'notificaciones.index'=>'/notificaciones', 'notificaciones.contador'=>'/notificaciones/contador',
         'dashboard' => '/dashboard', 'ingresos.index' => '/ingresos',
         'gastos.index' => '/gastos', 'gastos.categorias.index' => '/gastos/categorias',
         'seguridad-social.index' => '/seguridad-social', 'inversiones.index' => '/inversiones',

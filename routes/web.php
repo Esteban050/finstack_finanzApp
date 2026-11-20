@@ -153,6 +153,7 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
 
         // Nuevo cálculo interactivo unificado (Asalariado, Independiente, Rentista de capital)
         Route::post('/calcular', [SeguridadSocialController::class, 'calcularUnificado'])->name('calcular');
+        Route::get('/ingresos-mes', [SeguridadSocialController::class, 'ingresosMes'])->name('ingresos-mes');
 
         // RF-033: liquidación del independiente o contratista (RN-033.7)
         Route::get('/liquidaciones', [SeguridadSocialController::class, 'liquidaciones'])->name('liquidaciones.index');

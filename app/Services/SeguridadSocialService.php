@@ -36,6 +36,10 @@ class SeguridadSocialService
 
     public const AVISO_PARAFISCALES_SIN_TOPE = 'Los aportes parafiscales (Caja de Compensación, SENA e ICBF) se liquidan sobre el 100%% de la nómina salarial devengada (o 70%% en salario integral), omitiendo el límite de 25 SMMLV (RF-11).';
 
+    public const AVISO_NO_OBLIGADO = 'Tus ingresos del mes son inferiores a 1 salario mínimo, así que no estás obligado a pagar seguridad social como independiente.';
+
+    public const AVISO_IBC_MINIMO = 'Después de los descuentos, la base de cotización queda por debajo de 1 salario mínimo; por eso se cotiza sobre el salario mínimo.';
+
     public const OCUPACION_RENTISTA = 'Rentista de capital';
 
     /**
@@ -141,6 +145,87 @@ class SeguridadSocialService
     }
 
     /**
+     * Mes vencido: el periodo que se cotiza se paga con los ingresos del mes
+     * anterior (cotizar noviembre usa los ingresos de octubre).
+     */
+    public static function mesDeIngresos(CarbonImmutable $inicioPeriodo): CarbonImmutable
+    {
+        return $inicioPeriodo->startOfMonth()->subMonthNoOverflow();
+    }
+
+    /**
+     * Ingresos confirmados que respaldan el periodo a cotizar: los del mes
+     * anterior (mes vencido), de la modalidad elegida. Independiente/contratista
+     * usa rentas de trabajo y rentista de capital usa únicamente rentas de
+     * capital; nunca se mezclan ambas cédulas.
+     */
+    public static function ingresosParaSeguridadSocial(
+        string $usuarioId,
+        CarbonImmutable $inicioPeriodo,
+        string $tipoCotizante,
+        string $smmlv
+    ): array {
+        $clasificacion = strtoupper($tipoCotizante) === 'RENTISTA_CAPITAL'
+            ? 'RENTAS_CAPITAL'
+            : 'RENTAS_TRABAJO';
+        $inicioMes = self::mesDeIngresos($inicioPeriodo);
+
+        $ingresos = Ingreso::query()
+            ->where('usuario_id', $usuarioId)
+            ->confirmados()
+            ->where('clasificacion_tributaria', $clasificacion)
+            ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $inicioMes->endOfMonth()->toDateString()])
+            ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario())
+            ->with('fuente:id,nombre')
+            ->orderBy('fecha_recepcion')
+            ->get();
+
+        $total = bcadd((string) $ingresos->sum('monto_bruto_cop'), '0', 2);
+        $obligado = self::estaObligadoACotizar($total, $smmlv);
+
+        return [
+            'clasificacion' => $clasificacion,
+            'mes_ingresos' => $inicioMes->format('Y-m'),
+            'total' => $total,
+            'cantidad' => $ingresos->count(),
+            'smmlv' => bcadd($smmlv, '0', 2),
+            'obligado' => $obligado,
+            'supera_smmlv' => $obligado,
+            'ingresos' => $ingresos->map(fn ($ingreso) => [
+                'id' => $ingreso->id,
+                'fecha' => $ingreso->fecha_recepcion->format('d/m/Y'),
+                'fuente' => $ingreso->fuente?->nombre ?? 'Sin fuente',
+                'monto' => (string) $ingreso->monto_bruto_cop,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * El independiente o rentista de capital está obligado a cotizar cuando sus
+     * ingresos del mes son de al menos 1 SMMLV. Por debajo no hay obligación.
+     */
+    public static function estaObligadoACotizar(string $ingresos, string $smmlv): bool
+    {
+        return bccomp($ingresos, $smmlv, 2) >= 0;
+    }
+
+    /**
+     * Resultado para quien no está obligado a cotizar: conserva los datos de
+     * ingresos del cálculo, pero sin base ni aportes a pagar.
+     */
+    public static function sinObligacion(array $calculo): array
+    {
+        foreach (['ibc', 'salud', 'pension', 'fsp', 'arl', 'total'] as $campo) {
+            $calculo[$campo] = '0.00';
+        }
+        $calculo['aplica_fsp'] = false;
+        $calculo['obligado'] = false;
+        $calculo['avisos'] = [self::AVISO_NO_OBLIGADO];
+
+        return $calculo;
+    }
+
+    /**
      * Consulta los ingresos del periodo cotizado y calcula los aportes sugeridos
      * para el pago PILA, según sea prestación de servicios o rentista de capital.
      *
@@ -167,9 +252,8 @@ class SeguridadSocialService
             ->whereBetween('fecha_recepcion', [$inicioMes->toDateString(), $finMes->toDateString()])
             ->whereDoesntHave('fuente.tipoFuente', self::deFuenteSalario());
 
-        // El botón debe encontrar ambos tipos de ingreso del periodo. El modo
-        // seleccionado sigue determinando cómo se calcula el IBC y los aportes.
-        $query->whereIn('clasificacion_tributaria', ['RENTAS_CAPITAL', 'RENTAS_TRABAJO']);
+        $clasificacion = $esRentista ? 'RENTAS_CAPITAL' : 'RENTAS_TRABAJO';
+        $query->where('clasificacion_tributaria', $clasificacion);
 
         $ingresos = $query->with('fuente:id,nombre')
             ->orderBy('fecha_recepcion')
@@ -178,6 +262,8 @@ class SeguridadSocialService
         $suma = $ingresos->sum('monto_bruto_cop');
         $totalIngresos = bcadd((string) $suma, '0', 2);
         $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
+        $parametroPeriodo = self::parametrosDe($inicioMes->year);
+        $superaSmmlv = self::estaObligadoACotizar($totalIngresos, (string) $parametroPeriodo->valor_smmlv);
 
         if (! $tieneIngresos) {
             $msg = $esRentista
@@ -191,6 +277,8 @@ class SeguridadSocialService
                 'cantidad_ingresos' => 0,
                 'total_ingresos' => '0.00',
                 'total_ingresos_brutos' => '0.00',
+                'smmlv' => (string) $parametroPeriodo->valor_smmlv,
+                'obligacion_por_ingresos' => false,
                 'gastos_asociados' => bcadd($gastos ?: '0', '0', 2),
                 'ingreso_neto' => '0.00',
                 'ingresos' => [],
@@ -200,7 +288,7 @@ class SeguridadSocialService
             ];
         }
 
-        $parametro = self::parametrosDe($inicioMes->year);
+        $parametro = $parametroPeriodo;
         $perfil = self::perfilDelPeriodo($usuarioId, $inicioMes);
 
         $liquidacion = LiquidacionSeguridadSocial::where('usuario_id', $usuarioId)
@@ -231,6 +319,8 @@ class SeguridadSocialService
             'cantidad_ingresos' => $ingresos->count(),
             'total_ingresos' => $totalIngresos,
             'total_ingresos_brutos' => $totalIngresos,
+            'smmlv' => (string) $parametro->valor_smmlv,
+            'obligacion_por_ingresos' => $superaSmmlv,
             'gastos_asociados' => $esRentista ? bcadd($gastos ?: '0', '0', 2) : '0.00',
             'ingreso_neto' => $esRentista ? ($calculo['ingreso_neto'] ?? $totalIngresos) : $totalIngresos,
             'ingresos' => $listaIngresos,
@@ -280,10 +370,11 @@ class SeguridadSocialService
         $smmlv = (string) $parametro->valor_smmlv;
 
         // RN-033.2: IBC = ingreso base × 40 %, entre 1 y 25 SMMLV, al peso superior.
-        $ibc = self::porcentaje($ingresoBase, (string) $parametro->porc_ibc_indep);
+        $ibcSinAcotar = self::porcentaje($ingresoBase, (string) $parametro->porc_ibc_indep);
+        $ibcMinimo = bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2);
         $ibc = self::acotar(
-            $ibc,
-            bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2),
+            $ibcSinAcotar,
+            $ibcMinimo,
             bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2)
         );
         $ibc = self::redondearArriba($ibc, 1);
@@ -318,7 +409,11 @@ class SeguridadSocialService
             ...$aportes,
             // RN-033.5: total = suma de los aportes redondeados.
             'total' => array_reduce($aportes, fn ($total, $aporte) => bcadd($total, $aporte, 2), '0.00'),
-            'avisos' => bccomp($ingresoBase, $smmlv, 2) < 0 ? [self::AVISO_BAJO_SMMLV] : [],
+            'avisos' => match (true) {
+                bccomp($ingresoBase, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
+                bccomp($ibcSinAcotar, $ibcMinimo, 2) < 0 => [self::AVISO_IBC_MINIMO],
+                default => [],
+            },
             'parametros_usados' => self::parametrosUsados($parametro, $ibc, [
                 'porc_ibc' => (string) $parametro->porc_ibc_indep,
                 'tarifa_salud' => (string) $parametro->tarifa_salud_indep,
@@ -387,7 +482,13 @@ class SeguridadSocialService
             'arl' => $calculo['arl'],
             'total' => $calculo['total'],
             'aplica_fsp' => $calculo['aplica_fsp'],
-            'avisos' => bccomp($baseNeta, $smmlv, 2) < 0 ? [self::AVISO_BAJO_SMMLV] : [],
+            // La obligación depende de los ingresos brutos; si tras la presunción de
+            // costos la base queda por debajo del mínimo, se cotiza sobre 1 SMMLV.
+            'avisos' => match (true) {
+                bccomp($brutos, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
+                bccomp(self::porcentaje($baseNeta, (string) $parametro->porc_ibc_indep), bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2), 2) < 0 => [self::AVISO_IBC_MINIMO],
+                default => [],
+            },
             'parametros_usados' => array_merge($calculo['parametros_usados'], [
                 'tipo_cotizante' => 'Rentista de capital',
                 'ingresos_brutos' => $brutos,
