@@ -25,6 +25,8 @@ return [
 
         // Créditos RN-03 / RN-07: capacidad de pago (alertas, no bloquean).
         'meses_promedio_ingresos' => 3,
+        // RF-053: hasta cuántos meses completos atrás se buscan meses con ingresos.
+        'meses_busqueda_ingresos' => 12,
         'vivienda_cuota_max_porc_ingresos' => '40',
         'libranza_descuentos_max_porc_ingresos' => '50',
         'vivienda_financiacion_max_porc' => '70',
