@@ -31,6 +31,11 @@ class ParametroNormativo extends Model
         'tarifa_pension_indep',
         'tarifa_salud_emp',
         'tarifa_pension_emp',
+        'tarifa_salud_patronal',
+        'tarifa_pension_patronal',
+        'tarifa_parafiscales_ccf',
+        'tarifa_parafiscales_sena',
+        'tarifa_parafiscales_icbf',
         'porc_ibc_indep',
         'porc_ibc_integral',
         'ibc_min_smmlv',
@@ -64,6 +69,11 @@ class ParametroNormativo extends Model
             'tarifa_pension_indep' => 'decimal:2',
             'tarifa_salud_emp' => 'decimal:2',
             'tarifa_pension_emp' => 'decimal:2',
+            'tarifa_salud_patronal' => 'decimal:2',
+            'tarifa_pension_patronal' => 'decimal:2',
+            'tarifa_parafiscales_ccf' => 'decimal:2',
+            'tarifa_parafiscales_sena' => 'decimal:2',
+            'tarifa_parafiscales_icbf' => 'decimal:2',
             'porc_ibc_indep' => 'decimal:2',
             'porc_ibc_integral' => 'decimal:2',
             'ibc_min_smmlv' => 'decimal:2',
@@ -91,5 +101,20 @@ class ParametroNormativo extends Model
     public function creador(): BelongsTo
     {
         return $this->belongsTo(Usuario::class, 'creado_por');
+    }
+
+    public function ibcMinimo(): float
+    {
+        return (float) bcmul((string) $this->valor_smmlv, (string) $this->ibc_min_smmlv, 2);
+    }
+
+    public function ibcMaximo(): float
+    {
+        return (float) bcmul((string) $this->valor_smmlv, (string) $this->ibc_max_smmlv, 2);
+    }
+
+    public function getTarifaFspAttribute(): string
+    {
+        return '2.00';
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Categoria;
+use App\Models\EsquemaCostoPresunto;
 use App\Models\Ingreso;
 use App\Models\LiquidacionSeguridadSocial;
 use App\Models\PagoSeguridadSocial;
@@ -25,6 +26,15 @@ class SeguridadSocialService
 
     /** RN-033.3 */
     public const AVISO_BAJO_SMMLV = 'Con ingresos inferiores a 1 SMMLV no existe obligación de cotizar como independiente; el cálculo mostrado es voluntario sobre 1 SMMLV.';
+
+    /** RF-03, RF-05, RF-07: Alerta del tope legal de 25 SMMLV */
+    public const AVISO_TOPE_25_SMMLV = 'Se ha alcanzado el tope legal máximo de cotización de 25 SMMLV ($ %s). Conforme al Art. 18 de la Ley 100 de 1993 y la Sentencia C-1089 de 2003, la cotización se limita exactamente a 25 SMMLV y el excedente devengado de $ %s queda legalmente EXENTO de aportes a salud, pensión, FSP y ARL.';
+
+    public const AVISO_CUPO_COPAL_LABORAL = 'Tu contrato laboral cubre el tope máximo legal de 25 SMMLV ($ %s). Tus actividades independientes tienen un cupo disponible de $ 0 y están 100%% EXENTAS de cotizar en este mes.';
+
+    public const AVISO_FSP_20_SMMLV = 'El IBC consolidado total supera los 20 SMMLV ($ %s), aplicando la tarifa máxima del 2,00%% del Fondo de Solidaridad Pensional (FSP).';
+
+    public const AVISO_PARAFISCALES_SIN_TOPE = 'Los aportes parafiscales (Caja de Compensación, SENA e ICBF) se liquidan sobre el 100%% de la nómina salarial devengada (o 70%% en salario integral), omitiendo el límite de 25 SMMLV (RF-11).';
 
     public const OCUPACION_RENTISTA = 'Rentista de capital';
 
@@ -391,25 +401,475 @@ class SeguridadSocialService
     }
 
     /**
+     * RF-02 & RF-04: Cálculo de IBC individual por actividad económica para independientes.
+     */
+    public static function calcularActividadIndependiente(
+        string $ingresoBruto,
+        string $codigoActividad,
+        ?string $costosReales = null,
+        bool $usarCostosReales = false,
+        ?ParametroNormativo $parametro = null
+    ): array {
+        $brutos = bcadd($ingresoBruto, '0', 2);
+        
+        if ($usarCostosReales && $costosReales !== null && bccomp($costosReales, '0', 2) > 0) {
+            $deduccionCostos = bcadd($costosReales, '0', 2);
+            $porcentajePresuncion = null;
+            $modalidadCosto = 'REALES';
+        } else {
+            $porcentajePresuncion = EsquemaCostoPresunto::porcentajePara($codigoActividad);
+            $deduccionCostos = self::porcentaje($brutos, $porcentajePresuncion);
+            $deduccionCostos = self::redondearArriba($deduccionCostos, 1);
+            $modalidadCosto = 'PRESUNCION_UGPP';
+        }
+
+        $baseNeta = bcsub($brutos, $deduccionCostos, 2);
+        if (bccomp($baseNeta, '0', 2) < 0) {
+            $baseNeta = '0.00';
+        }
+
+        // RF-04: IBC preliminar de la actividad = 40 % sobre el ingreso neto
+        $porcIbc = $parametro ? (string) $parametro->porc_ibc_indep : '40.00';
+        $ibcPreliminar = self::porcentaje($baseNeta, $porcIbc);
+        $ibcPreliminar = self::redondearArriba($ibcPreliminar, 1);
+
+        $esServicios = in_array(strtoupper($codigoActividad), [
+            EsquemaCostoPresunto::ACTIVIDAD_SERVICIOS,
+            'PRESTACION_SERVICIOS',
+            'SERVICIOS',
+            'HONORARIOS',
+        ], true);
+
+        return [
+            'codigo_actividad' => $codigoActividad,
+            'ingreso_bruto' => $brutos,
+            'modalidad_costo' => $modalidadCosto,
+            'porcentaje_presuncion' => $porcentajePresuncion,
+            'costos_aplicados' => $deduccionCostos,
+            'ingreso_neto' => $baseNeta,
+            'porc_ibc' => $porcIbc,
+            'ibc_preliminar' => $ibcPreliminar,
+            'es_servicios' => $esServicios,
+        ];
+    }
+
+    /**
+     * RF-01 a RF-11: Motor de cálculo y consolidación multi-ingreso con control
+     * del tope de 25 SMMLV ($43.772.625), prelación laboral, deducción UGPP,
+     * ARL diferenciado y parafiscales sin tope.
+     */
+    public static function consolidarMultiIngreso(
+        array $datos,
+        ?ParametroNormativo $parametro = null,
+        ?PerfilTributario $perfil = null
+    ): array {
+        $periodo = $datos['periodo'] ?? CarbonImmutable::today()->format('Y-m');
+        $inicio = self::inicioDelPeriodo($periodo);
+        $parametro = $parametro ?? self::parametrosDe($inicio->year);
+
+        $smmlv = (string) $parametro->valor_smmlv;
+        $tope25 = bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2);
+        $piso1 = bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2);
+        $umbral20 = bcmul($smmlv, '20.00', 2);
+
+        // 1. COMPONENTE LABORAL (RF-03)
+        $salarioRaw = self::limpiarMonto((string) ($datos['salario'] ?? '0'));
+        $esIntegral = (bool) ($datos['es_salario_integral'] ?? false);
+        $tieneLaboral = bccomp($salarioRaw, '0', 2) > 0;
+        $retencionFuente = self::limpiarMonto((string) ($datos['retencion_fuente'] ?? '0'));
+
+        $claseArlLaboral = (int) ($datos['clase_riesgo_arl_laboral'] ?? ($datos['clase_riesgo_arl'] ?? ($perfil?->clase_riesgo_arl ?? 1)));
+        $claseArlServicios = (int) ($datos['clase_riesgo_arl_independiente'] ?? ($datos['clase_riesgo_arl'] ?? ($perfil?->clase_riesgo_arl ?? 1)));
+        $exoneradoParafiscales = isset($datos['exonerado_parafiscales'])
+            ? filter_var($datos['exonerado_parafiscales'], FILTER_VALIDATE_BOOLEAN)
+            : true;
+
+        if ($tieneLaboral) {
+            $baseLaboral = $esIntegral ? self::porcentaje($salarioRaw, (string) $parametro->porc_ibc_integral) : $salarioRaw;
+            if (bccomp($baseLaboral, $tope25, 2) > 0) {
+                $ibcLaboral = $tope25;
+                $excedenteLaboral = bcsub($baseLaboral, $tope25, 2);
+                $topeLaboralAlcanzado = true;
+            } else {
+                $ibcLaboral = bccomp($baseLaboral, $piso1, 2) < 0 ? $piso1 : $baseLaboral;
+                $excedenteLaboral = '0.00';
+                $topeLaboralAlcanzado = false;
+            }
+        } else {
+            $baseLaboral = '0.00';
+            $ibcLaboral = '0.00';
+            $excedenteLaboral = '0.00';
+            $topeLaboralAlcanzado = false;
+        }
+
+        // 2. CUPO DISPONIBLE PARA INDEPENDIENTES (RF-07)
+        // Cupo Disponible = max(0, IBC Máximo - IBC Asalariado)
+        $cupoDisponible = bcsub($tope25, $ibcLaboral, 2);
+        if (bccomp($cupoDisponible, '0', 2) < 0) {
+            $cupoDisponible = '0.00';
+        }
+
+        // 3. COMPONENTE INDEPENDIENTE Y RENTISTA (RF-04, RF-06)
+        $actividadesIn = $datos['actividades'] ?? $datos['actividades_independientes'] ?? [];
+        $actividadesCalculadas = [];
+        $totalIbcServiciosPreliminar = '0.00';
+        $totalIbcCapitalPreliminar = '0.00';
+        $totalIngresoBrutoIndep = '0.00';
+        $totalCostosDeducidosIndep = '0.00';
+        $totalIngresoNetoIndep = '0.00';
+
+        // Soporte de compatibilidad con inputs planos tradicionales
+        if (empty($actividadesIn) && isset($datos['monto_contrato'])) {
+            $montoTrad = self::limpiarMonto((string) $datos['monto_contrato']);
+            if (bccomp($montoTrad, '0', 2) > 0) {
+                $tipoCot = strtoupper((string) ($datos['tipo_cotizante'] ?? 'INDEPENDIENTE'));
+                $esRent = in_array($tipoCot, ['RENTISTA_CAPITAL', 'RENTISTA'], true);
+                $actividadesIn[] = [
+                    'codigo_actividad' => $esRent ? EsquemaCostoPresunto::ACTIVIDAD_CAPITAL : EsquemaCostoPresunto::ACTIVIDAD_SERVICIOS,
+                    'ingreso_bruto' => $montoTrad,
+                    'costos_reales' => $datos['gastos'] ?? '0',
+                    'usar_costos_reales' => ! empty($datos['gastos']) && bccomp((string) $datos['gastos'], '0', 2) > 0,
+                ];
+            }
+        }
+
+        foreach ($actividadesIn as $act) {
+            $montoAct = self::limpiarMonto((string) ($act['ingreso_bruto'] ?? ($act['monto_bruto'] ?? '0')));
+            if (bccomp($montoAct, '0', 2) <= 0) {
+                continue;
+            }
+            $costosAct = self::limpiarMonto((string) ($act['costos_reales'] ?? '0'));
+            $usarReales = filter_var($act['usar_costos_reales'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || (bccomp($costosAct, '0', 2) > 0);
+            $codAct = $act['codigo_actividad'] ?? ($act['tipo'] ?? EsquemaCostoPresunto::ACTIVIDAD_SERVICIOS);
+
+            $calcAct = self::calcularActividadIndependiente($montoAct, $codAct, $costosAct, $usarReales, $parametro);
+            $actividadesCalculadas[] = $calcAct;
+
+            $totalIngresoBrutoIndep = bcadd($totalIngresoBrutoIndep, $calcAct['ingreso_bruto'], 2);
+            $totalCostosDeducidosIndep = bcadd($totalCostosDeducidosIndep, $calcAct['costos_aplicados'], 2);
+            $totalIngresoNetoIndep = bcadd($totalIngresoNetoIndep, $calcAct['ingreso_neto'], 2);
+
+            if ($calcAct['es_servicios']) {
+                $totalIbcServiciosPreliminar = bcadd($totalIbcServiciosPreliminar, $calcAct['ibc_preliminar'], 2);
+            } else {
+                $totalIbcCapitalPreliminar = bcadd($totalIbcCapitalPreliminar, $calcAct['ibc_preliminar'], 2);
+            }
+        }
+
+        $sumaIbcIndepPreliminar = bcadd($totalIbcServiciosPreliminar, $totalIbcCapitalPreliminar, 2);
+        $tieneIndependiente = bccomp($sumaIbcIndepPreliminar, '0', 2) > 0;
+
+        $claseArlServicios = (int) ($datos['clase_riesgo_arl_servicios'] ?? ($perfil?->clase_riesgo_arl ?? 1));
+
+        if ($tieneIndependiente) {
+            if (bccomp($cupoDisponible, '0', 2) === 0) {
+                $ibcIndepCotizado = '0.00';
+                $excedenteIndep = $sumaIbcIndepPreliminar;
+                $topeIndepAlcanzado = true;
+                $ibcServiciosCotizado = '0.00';
+                $ibcCapitalCotizado = '0.00';
+            } elseif (bccomp($sumaIbcIndepPreliminar, $cupoDisponible, 2) > 0) {
+                $ibcIndepCotizado = $cupoDisponible;
+                $excedenteIndep = bcsub($sumaIbcIndepPreliminar, $cupoDisponible, 2);
+                $topeIndepAlcanzado = true;
+
+                // RF-10: Asignar cupo preferencial a servicios para cálculo de ARL
+                if (bccomp($totalIbcServiciosPreliminar, $cupoDisponible, 2) >= 0) {
+                    $ibcServiciosCotizado = $cupoDisponible;
+                    $ibcCapitalCotizado = '0.00';
+                } else {
+                    $ibcServiciosCotizado = $totalIbcServiciosPreliminar;
+                    $ibcCapitalCotizado = bcsub($cupoDisponible, $ibcServiciosCotizado, 2);
+                }
+            } else {
+                $ibcIndepCotizado = $sumaIbcIndepPreliminar;
+                $excedenteIndep = '0.00';
+                $topeIndepAlcanzado = false;
+                $ibcServiciosCotizado = $totalIbcServiciosPreliminar;
+                $ibcCapitalCotizado = $totalIbcCapitalPreliminar;
+
+                // Piso legal de 1 SMMLV si solo es independiente
+                if (! $tieneLaboral && bccomp($ibcIndepCotizado, $piso1, 2) < 0) {
+                    $ibcIndepCotizado = $piso1;
+                }
+            }
+        } else {
+            $ibcIndepCotizado = '0.00';
+            $excedenteIndep = '0.00';
+            $topeIndepAlcanzado = false;
+            $ibcServiciosCotizado = '0.00';
+            $ibcCapitalCotizado = '0.00';
+        }
+
+        // 4. CONSOLIDACIÓN GLOBAL DE 25 SMMLV (RF-05)
+        $ibcConsolidadoTotal = bcadd($ibcLaboral, $ibcIndepCotizado, 2);
+        $excedenteTotalExento = bcadd($excedenteLaboral, $excedenteIndep, 2);
+        $superoTope25 = bccomp($excedenteTotalExento, '0', 2) > 0 || bccomp($ibcConsolidadoTotal, $tope25, 2) >= 0;
+
+        // 5. FONDO DE SOLIDARIDAD PENSIONAL (RF-09)
+        // Evaluar si el consolidado total supera 20 SMMLV
+        $supera20Smmlv = bccomp($ibcConsolidadoTotal, $umbral20, 2) >= 0;
+        $tarifaFsp = $supera20Smmlv ? '2.00' : self::tarifaFsp($ibcConsolidadoTotal, $smmlv, $parametro);
+
+        // 6. LIQUIDACIÓN LABORAL (TIPO E)
+        if ($tieneLaboral) {
+            $saludEmp = self::redondearArriba(self::porcentaje($ibcLaboral, (string) $parametro->tarifa_salud_emp), 1);
+            $pensionEmp = self::redondearArriba(self::porcentaje($ibcLaboral, (string) $parametro->tarifa_pension_emp), 1);
+            $fspLaboral = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaFsp), 1);
+            $totalAportesEmpleado = bcadd(bcadd($saludEmp, $pensionEmp, 2), $fspLaboral, 2);
+            $salarioNetoEstimado = bcsub(bcsub($salarioRaw, $totalAportesEmpleado, 2), $retencionFuente, 2);
+            if (bccomp($salarioNetoEstimado, '0', 2) < 0) {
+                $salarioNetoEstimado = '0.00';
+            }
+
+            // Aportes Empleador
+            $tarifaSaludPatronal = (string) ($parametro->tarifa_salud_patronal ?? '8.50');
+            $tarifaPensionPatronal = (string) ($parametro->tarifa_pension_patronal ?? '12.00');
+            $tarifaArlLab = self::tarifaArlPorClase($claseArlLaboral);
+
+            $saludPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaSaludPatronal), 1);
+            $pensionPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaPensionPatronal), 1);
+            $arlPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaArlLab), 1);
+
+            // Parafiscales (RF-11: sobre nómina 100% u 70% integral OMITIENDO TOPE)
+            $baseParafiscales = $baseLaboral;
+            $tarifaCcf = (string) ($parametro->tarifa_parafiscales_ccf ?? '4.00');
+            $tarifaSena = (string) ($parametro->tarifa_parafiscales_sena ?? '2.00');
+            $tarifaIcbf = (string) ($parametro->tarifa_parafiscales_icbf ?? '3.00');
+
+            $parafiscalCcf = self::redondearArriba(self::porcentaje($baseParafiscales, $tarifaCcf), 1);
+            $parafiscalSena = $exoneradoParafiscales ? '0.00' : self::redondearArriba(self::porcentaje($baseParafiscales, $tarifaSena), 1);
+            $parafiscalIcbf = $exoneradoParafiscales ? '0.00' : self::redondearArriba(self::porcentaje($baseParafiscales, $tarifaIcbf), 1);
+            $totalParafiscales = bcadd(bcadd($parafiscalCcf, $parafiscalSena, 2), $parafiscalIcbf, 2);
+
+            $totalAportesEmpleador = bcadd(bcadd(bcadd($saludPatronal, $pensionPatronal, 2), $arlPatronal, 2), $totalParafiscales, 2);
+        } else {
+            $saludEmp = '0.00';
+            $pensionEmp = '0.00';
+            $fspLaboral = '0.00';
+            $totalAportesEmpleado = '0.00';
+            $salarioNetoEstimado = '0.00';
+            $tarifaSaludPatronal = '8.50';
+            $tarifaPensionPatronal = '12.00';
+            $tarifaArlLab = '0.000';
+            $saludPatronal = '0.00';
+            $pensionPatronal = '0.00';
+            $arlPatronal = '0.00';
+            $baseParafiscales = '0.00';
+            $tarifaCcf = (string) ($parametro->tarifa_parafiscales_ccf ?? '4.00');
+            $tarifaSena = (string) ($parametro->tarifa_parafiscales_sena ?? '2.00');
+            $tarifaIcbf = (string) ($parametro->tarifa_parafiscales_icbf ?? '3.00');
+            $parafiscalCcf = '0.00';
+            $parafiscalSena = '0.00';
+            $parafiscalIcbf = '0.00';
+            $totalParafiscales = '0.00';
+            $totalAportesEmpleador = '0.00';
+        }
+
+        // 7. LIQUIDACIÓN INDEPENDIENTE (TIPO I)
+        if ($tieneIndependiente && bccomp($ibcIndepCotizado, '0', 2) > 0) {
+            $saludIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, (string) $parametro->tarifa_salud_indep), 1);
+            $pensionIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, (string) $parametro->tarifa_pension_indep), 1);
+            $fspIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, $tarifaFsp), 1);
+
+            // RF-10: ARL ÚNICAMENTE sobre la porción de prestación de servicios cotizada
+            $tarifaArlServ = self::tarifaArlPorClase($claseArlServicios);
+            $arlIndep = self::redondearArriba(self::porcentaje($ibcServiciosCotizado, $tarifaArlServ), 1);
+
+            $totalAportesIndep = bcadd(bcadd(bcadd($saludIndep, $pensionIndep, 2), $fspIndep, 2), $arlIndep, 2);
+        } else {
+            $saludIndep = '0.00';
+            $pensionIndep = '0.00';
+            $fspIndep = '0.00';
+            $tarifaArlServ = '0.000';
+            $arlIndep = '0.00';
+            $totalAportesIndep = '0.00';
+        }
+
+        // 8. AVISOS NORMATIVOS
+        $avisos = [];
+        if ($superoTope25) {
+            $avisos[] = sprintf(
+                self::AVISO_TOPE_25_SMMLV,
+                number_format((float) $tope25, 0, ',', '.'),
+                number_format((float) $excedenteTotalExento, 0, ',', '.')
+            );
+        }
+        if ($topeLaboralAlcanzado && $tieneIndependiente) {
+            $avisos[] = sprintf(
+                self::AVISO_CUPO_COPAL_LABORAL,
+                number_format((float) $tope25, 0, ',', '.')
+            );
+        }
+        if ($tieneLaboral && $topeIndepAlcanzado && ! $topeLaboralAlcanzado) {
+            $avisos[] = sprintf(
+                'Tu contrato laboral consumió $ %s de IBC. Conforme a la prelación legal, tu cupo disponible para cotización independiente en este mes es de $ %s; el excedente independiente de $ %s queda legalmente EXENTO.',
+                number_format((float) $ibcLaboral, 0, ',', '.'),
+                number_format((float) $cupoDisponible, 0, ',', '.'),
+                number_format((float) $excedenteIndep, 0, ',', '.')
+            );
+        }
+        if ($supera20Smmlv) {
+            $avisos[] = sprintf(
+                self::AVISO_FSP_20_SMMLV,
+                number_format((float) $umbral20, 0, ',', '.')
+            );
+        }
+        if ($tieneLaboral) {
+            $avisos[] = self::AVISO_PARAFISCALES_SIN_TOPE;
+        }
+
+        $laboral = [
+            'tiene_laboral' => $tieneLaboral,
+            'salario' => $salarioRaw,
+            'es_salario_integral' => $esIntegral,
+            'base_salarial' => $baseLaboral,
+            'ibc_laboral' => $ibcLaboral,
+            'excedente_exento' => $excedenteLaboral,
+            'tope_alcanzado' => $topeLaboralAlcanzado,
+            'retencion_fuente' => $retencionFuente,
+            'salario_neto_estimado' => $salarioNetoEstimado,
+            'trabajador' => [
+                'tarifa_salud' => (string) $parametro->tarifa_salud_emp,
+                'salud' => $saludEmp,
+                'tarifa_pension' => (string) $parametro->tarifa_pension_emp,
+                'pension' => $pensionEmp,
+                'tarifa_fsp' => $tarifaFsp,
+                'fsp' => $fspLaboral,
+                'total_descuentos' => $totalAportesEmpleado,
+            ],
+            'empleador' => [
+                'tarifa_salud' => $tarifaSaludPatronal,
+                'salud' => $saludPatronal,
+                'tarifa_pension' => $tarifaPensionPatronal,
+                'pension' => $pensionPatronal,
+                'clase_riesgo_arl' => $claseArlLaboral,
+                'tarifa_arl' => $tarifaArlLab,
+                'arl' => $arlPatronal,
+                'subtotal_seguridad_social' => bcadd(bcadd($saludPatronal, $pensionPatronal, 2), $arlPatronal, 2),
+                'parafiscales' => [
+                    'base_nomina' => $baseParafiscales,
+                    'omite_tope_25_smmlv' => true,
+                    'exonerado_sena_icbf' => $exoneradoParafiscales,
+                    'tarifa_ccf' => $tarifaCcf,
+                    'ccf' => $parafiscalCcf,
+                    'tarifa_sena' => $tarifaSena,
+                    'sena' => $parafiscalSena,
+                    'tarifa_icbf' => $tarifaIcbf,
+                    'icbf' => $parafiscalIcbf,
+                    'total' => $totalParafiscales,
+                ],
+                'total_costo' => $totalAportesEmpleador,
+            ],
+            'costo_total_nomina' => bcadd($salarioRaw, $totalAportesEmpleador, 2),
+        ];
+
+        $independiente = [
+            'tiene_independiente' => $tieneIndependiente,
+            'actividades' => $actividadesCalculadas,
+            'total_ingresos_brutos' => $totalIngresoBrutoIndep,
+            'total_costos_deducidos' => $totalCostosDeducidosIndep,
+            'total_ingreso_neto' => $totalIngresoNetoIndep,
+            'suma_ibc_preliminar' => $sumaIbcIndepPreliminar,
+            'ibc_servicios_preliminar' => $totalIbcServiciosPreliminar,
+            'ibc_capital_preliminar' => $totalIbcCapitalPreliminar,
+            'ibc_cotizado' => $ibcIndepCotizado,
+            'ibc_servicios_cotizado' => $ibcServiciosCotizado,
+            'ibc_capital_cotizado' => $ibcCapitalCotizado,
+            'excedente_exento' => $excedenteIndep,
+            'tope_alcanzado' => $topeIndepAlcanzado,
+            'aportes' => [
+                'tarifa_salud' => (string) $parametro->tarifa_salud_indep,
+                'salud' => $saludIndep,
+                'tarifa_pension' => (string) $parametro->tarifa_pension_indep,
+                'pension' => $pensionIndep,
+                'tarifa_fsp' => $tarifaFsp,
+                'fsp' => $fspIndep,
+                'clase_riesgo_arl_servicios' => $claseArlServicios,
+                'tarifa_arl' => $tarifaArlServ,
+                'base_arl_servicios' => $ibcServiciosCotizado,
+                'excluye_capital_de_arl' => true,
+                'arl' => $arlIndep,
+                'total' => $totalAportesIndep,
+            ],
+        ];
+
+        return [
+            'periodo' => $periodo,
+            'anio_vigencia' => $parametro->anio_vigencia,
+            'smmlv' => $smmlv,
+            'ibc_min_smmlv' => $piso1,
+            'ibc_max_smmlv' => $tope25,
+            'supero_tope_25_smmlv' => $superoTope25,
+            'excedente_total_exento' => $excedenteTotalExento,
+            'ibc_consolidado_total' => $ibcConsolidadoTotal,
+            'cupo_disponible_independiente' => $cupoDisponible,
+            'ibc_laboral' => $ibcLaboral,
+            'ibc_independiente_preliminar' => $sumaIbcIndepPreliminar,
+            'ibc_independiente_aprobado' => $ibcIndepCotizado,
+            'excedente_desafectado_tope' => $excedenteTotalExento,
+            'tarifa_fsp_aplicada' => $tarifaFsp,
+            'aplica_fsp_20_smmlv' => $supera20Smmlv,
+            'laboral' => $laboral,
+            'liquidacion_laboral_tipo_e' => $laboral,
+            'independiente' => $independiente,
+            'liquidacion_independiente_tipo_i' => [
+                'total_independiente' => $totalAportesIndep,
+                'ibc_arl_servicios' => $ibcServiciosCotizado,
+                'arl' => $arlIndep,
+                ...$independiente['aportes'],
+            ],
+            // Resumen Global
+            'resumen' => [
+                'ibc_consolidado_total' => $ibcConsolidadoTotal,
+                'excedente_total_exento' => $excedenteTotalExento,
+                'total_seguridad_social_cotizante' => bcadd($totalAportesEmpleado, $totalAportesIndep, 2),
+                'total_seguridad_social_empleador' => $tieneLaboral ? bcadd(bcadd($saludPatronal, $pensionPatronal, 2), $arlPatronal, 2) : '0.00',
+                'total_parafiscales' => $totalParafiscales,
+                'total_general_aportes' => bcadd(bcadd($totalAportesEmpleado, $totalAportesIndep, 2), $totalAportesEmpleador, 2),
+            ],
+            'avisos' => $avisos,
+            'aviso_legal' => self::AVISO_LEGAL,
+        ];
+    }
+
+    /**
      * RF-034: aportes que el empleador descuenta del salario de un Asalariado y
      * salario neto, con la retención informada si la hay (RN-034.4).
      *
      * RN-033.5 (múltiplos de $ 100) es una regla de la PILA del independiente:
      * acá los valores se redondean a 2 decimales (RNG-02), como en CA-034.1.
      */
-    public static function calcularAsalariado(string $salario, bool $esIntegral, ParametroNormativo $parametro, ?string $retencion = null): array
-    {
+    public static function calcularAsalariado(
+        string $salario,
+        bool $esIntegral,
+        ParametroNormativo $parametro,
+        ?string $retencion = null,
+        bool $exoneradoParafiscales = true,
+        int $claseRiesgoArl = 1
+    ): array {
         $smmlv = (string) $parametro->valor_smmlv;
+        $tope25 = bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2);
 
-        // RN-034.2: IBC = salario (o 70 % del integral), entre 1 y 25 SMMLV.
+        // RN-034.2 / RF-03: IBC = salario ordinario 100 % (o 70 % del integral), acotado a 25 SMMLV.
         $base = $esIntegral ? self::porcentaje($salario, (string) $parametro->porc_ibc_integral) : $salario;
-        $ibc = IngresoService::redondear(self::acotar(
-            $base,
-            bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2),
-            bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2)
-        ));
+        
+        $excedenteTope = '0.00';
+        $topeAlcanzado = false;
+        if (bccomp($base, $tope25, 2) > 0) {
+            $ibc = IngresoService::redondear($tope25);
+            $excedenteTope = bcsub($base, $tope25, 2);
+            $topeAlcanzado = true;
+        } else {
+            $ibc = IngresoService::redondear(self::acotar(
+                $base,
+                bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2),
+                $tope25
+            ));
+        }
 
-        // RN-034.3: salud 4 %, pensión 4 % y FSP desde 4 SMMLV. Sin ARL.
+        // RN-034.3: salud 4 %, pensión 4 % y FSP desde 4 SMMLV.
         $tarifaFsp = self::tarifaFsp($ibc, $smmlv, $parametro);
 
         $aportes = [
@@ -424,11 +884,45 @@ class SeguridadSocialService
         // RN-034.4: la retención en la fuente la informa el usuario y es opcional.
         $retencion = bcadd($retencion ?? '0', '0', 2);
 
+        // RF-01, RF-08, RF-09, RF-10: Aportes patronales del empleador
+        $tarifaSaludPatronal = (string) ($parametro->tarifa_salud_patronal ?? '8.50');
+        $tarifaPensionPatronal = (string) ($parametro->tarifa_pension_patronal ?? '12.00');
+        $tarifaArlPatronal = self::tarifaArlPorClase($claseRiesgoArl);
+
+        $saludPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaSaludPatronal));
+        $pensionPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaPensionPatronal));
+        $arlPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaArlPatronal));
+
+        // RF-11: Parafiscales calculados sobre nómina 100 % (o 70 % en integral), OMITIENDO el tope de 25 SMMLV
+        $baseParafiscales = $base;
+        $tarifaCcf = (string) ($parametro->tarifa_parafiscales_ccf ?? '4.00');
+        $tarifaSena = (string) ($parametro->tarifa_parafiscales_sena ?? '2.00');
+        $tarifaIcbf = (string) ($parametro->tarifa_parafiscales_icbf ?? '3.00');
+
+        $ccf = IngresoService::redondear(self::porcentaje($baseParafiscales, $tarifaCcf));
+        $sena = $exoneradoParafiscales ? '0.00' : IngresoService::redondear(self::porcentaje($baseParafiscales, $tarifaSena));
+        $icbf = $exoneradoParafiscales ? '0.00' : IngresoService::redondear(self::porcentaje($baseParafiscales, $tarifaIcbf));
+        $totalParafiscales = bcadd(bcadd($ccf, $sena, 2), $icbf, 2);
+        $totalEmpleador = bcadd(bcadd(bcadd($saludPatronal, $pensionPatronal, 2), $arlPatronal, 2), $totalParafiscales, 2);
+
+        $avisos = [];
+        if ($topeAlcanzado) {
+            $avisos[] = sprintf(
+                self::AVISO_TOPE_25_SMMLV,
+                number_format((float) $tope25, 0, ',', '.'),
+                number_format((float) $excedenteTope, 0, ',', '.')
+            );
+        }
+
         return [
             'tipo_cotizante' => 'ASALARIADO',
             'salario' => bcadd($salario, '0', 2),
             'es_salario_integral' => $esIntegral,
+            'base_salarial' => bcadd($base, '0', 2),
             'ibc' => $ibc,
+            'tope_25_smmlv_alcanzado' => $topeAlcanzado,
+            'supero_tope_25_smmlv' => $topeAlcanzado,
+            'excedente_desafectado_tope' => $excedenteTope,
             'porcentaje_salud' => (string) $parametro->tarifa_salud_emp,
             'porcentaje_pension' => (string) $parametro->tarifa_pension_emp,
             'porcentaje_fsp' => $tarifaFsp,
@@ -440,11 +934,49 @@ class SeguridadSocialService
             'retencion_fuente' => $retencion,
             // RN-034.4: salario − salud − pensión − FSP − retención informada.
             'salario_neto_estimado' => bcsub($netoSinRetencion, $retencion, 2),
+            'desglose_patronal' => [
+                'base_parafiscales' => $baseParafiscales,
+                'salud_patronal' => $saludPatronal,
+                'pension_patronal' => $pensionPatronal,
+                'arl_patronal' => $arlPatronal,
+                'parafiscales_ccf' => $ccf,
+                'parafiscales_sena' => $sena,
+                'parafiscales_icbf' => $icbf,
+                'total_parafiscales' => $totalParafiscales,
+                'total_empleador' => $totalEmpleador,
+            ],
+            'empleador' => [
+                'porcentaje_salud' => $tarifaSaludPatronal,
+                'salud' => $saludPatronal,
+                'porcentaje_pension' => $tarifaPensionPatronal,
+                'pension' => $pensionPatronal,
+                'clase_riesgo_arl' => $claseRiesgoArl,
+                'porcentaje_arl' => $tarifaArlPatronal,
+                'arl' => $arlPatronal,
+                'subtotal_seguridad_social' => bcadd(bcadd($saludPatronal, $pensionPatronal, 2), $arlPatronal, 2),
+                'parafiscales' => [
+                    'base_calculo' => $baseParafiscales,
+                    'omite_tope_25_smmlv' => true,
+                    'exonerado_sena_icbf' => $exoneradoParafiscales,
+                    'tarifa_ccf' => $tarifaCcf,
+                    'ccf' => $ccf,
+                    'tarifa_sena' => $tarifaSena,
+                    'sena' => $sena,
+                    'tarifa_icbf' => $tarifaIcbf,
+                    'icbf' => $icbf,
+                    'total' => $totalParafiscales,
+                ],
+                'total_costo_empleador' => $totalEmpleador,
+            ],
+            'costo_total_empresa' => bcadd($salario, $totalEmpleador, 2),
+            'avisos' => $avisos,
             'parametros_usados' => self::parametrosUsados($parametro, $ibc, [
                 'porc_ibc' => $esIntegral ? (string) $parametro->porc_ibc_integral : '100.00',
                 'tarifa_salud' => (string) $parametro->tarifa_salud_emp,
                 'tarifa_pension' => (string) $parametro->tarifa_pension_emp,
                 'tarifa_fsp' => $tarifaFsp,
+                'tarifa_salud_patronal' => $tarifaSaludPatronal,
+                'tarifa_pension_patronal' => $tarifaPensionPatronal,
             ]),
             'aviso_legal' => self::AVISO_LEGAL,
         ];
@@ -682,9 +1214,13 @@ class SeguridadSocialService
      * aporta (RN-034.3: "4 SMMLV o más") y por debajo de 4 la tarifa es 0 %
      * (RN-033.4).
      */
-    private static function tarifaFsp(string $ibc, string $smmlv, ParametroNormativo $parametro): string
+    public static function tarifaFsp(string $ibc, string $smmlv, ParametroNormativo $parametro): string
     {
         $enSmmlv = bcdiv($ibc, $smmlv, 4);
+
+        if (bccomp($enSmmlv, '20.00', 4) >= 0) {
+            return (string) ($parametro->tarifa_fsp ?? '2.00');
+        }
 
         $tramo = TarifaEscalonada::where('parametro_normativo_id', $parametro->id)
             ->where('tipo_tabla', 'FSP')
@@ -696,6 +1232,58 @@ class SeguridadSocialService
             ->first();
 
         return $tramo === null ? '0' : (string) $tramo->tarifa_porc;
+    }
+
+    /**
+     * RF-10: Retorna la tarifa porcentual reglamentaria para cada clase de riesgo ARL (I a V).
+     */
+    public static function tarifaArlPorClase(int|string|null $clase): string
+    {
+        return match ((int) $clase) {
+            1 => '0.522',
+            2 => '1.044',
+            3 => '2.436',
+            4 => '4.350',
+            5 => '6.960',
+            default => '0.000',
+        };
+    }
+
+    /**
+     * Limpia un valor monetario recibido por query o post (con o sin separadores de miles).
+     */
+    public static function limpiarMonto(?string $monto): string
+    {
+        if ($monto === null) {
+            return '0.00';
+        }
+
+        $monto = trim($monto);
+        if ($monto === '') {
+            return '0.00';
+        }
+
+        // Remover espacios y caracteres excepto digitos, puntos y comas
+        $monto = preg_replace('/[^\d.,]/', '', $monto);
+
+        // Si contiene coma y punto, normalizar según la posición
+        if (str_contains($monto, ',') && str_contains($monto, '.')) {
+            if (strrpos($monto, ',') > strrpos($monto, '.')) {
+                $monto = str_replace('.', '', $monto);
+                $monto = str_replace(',', '.', $monto);
+            } else {
+                $monto = str_replace(',', '', $monto);
+            }
+        } elseif (str_contains($monto, ',')) {
+            $partes = explode(',', $monto);
+            if (count($partes) === 2 && strlen($partes[1]) <= 2) {
+                $monto = $partes[0].'.'.$partes[1];
+            } else {
+                $monto = str_replace(',', '', $monto);
+            }
+        }
+
+        return is_numeric($monto) ? bcadd($monto, '0', 2) : '0.00';
     }
 
     /**

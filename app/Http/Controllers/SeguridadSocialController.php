@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EsquemaCostoPresunto;
 use App\Models\FuenteIngreso;
 use App\Models\Ingreso;
 use App\Models\LiquidacionSeguridadSocial;
@@ -110,6 +111,7 @@ class SeguridadSocialController extends Controller
         $totalLiquidaciones = LiquidacionSeguridadSocial::count();
         $totalPagos = PagoSeguridadSocial::count();
         $resumenAnual = SeguridadSocialService::resumenAnual($usuario->id, $anioActual);
+        $esquemasCostos = EsquemaCostoPresunto::where('activo', true)->get();
 
         // Pagos recientes con su gasto asociado
         $pagosRecientes = PagoSeguridadSocial::where('usuario_id', $usuario->id)
@@ -144,6 +146,7 @@ class SeguridadSocialController extends Controller
                     'es_doble_obligacion' => $esDobleObligacion,
                     'es_voluntario' => $esVoluntario,
                     'parametro' => $parametro,
+                    'esquemas_costos' => $esquemasCostos,
                     'resumen_anual' => $resumenAnual,
                     'pagos_recientes' => $pagosRecientes,
                 ],
@@ -165,6 +168,7 @@ class SeguridadSocialController extends Controller
             'esDobleObligacion',
             'esVoluntario',
             'parametro',
+            'esquemasCostos',
             'totalLiquidaciones',
             'totalPagos',
             'resumenAnual',
@@ -179,13 +183,21 @@ class SeguridadSocialController extends Controller
     public function calcularUnificado(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
-            'tipo_cotizante' => ['required', 'string', 'in:ASALARIADO,INDEPENDIENTE,RENTISTA_CAPITAL'],
+            'tipo_cotizante' => ['required', 'string', 'in:ASALARIADO,INDEPENDIENTE,RENTISTA_CAPITAL,MULTI_INGRESO'],
             'periodo' => $this->reglaPeriodo(),
             'salario' => ['nullable'],
+            'es_salario_integral' => ['nullable', 'boolean'],
+            'exonerado_parafiscales' => ['nullable'],
+            'clase_riesgo_arl_laboral' => ['nullable', 'integer', 'between:0,5'],
             'retencion_fuente' => ['nullable'],
             'monto_contrato' => ['nullable'],
+            'codigo_actividad' => ['nullable', 'string'],
             'porcentaje_presuncion' => ['nullable'],
+            'costos_reales' => ['nullable'],
+            'usar_costos_reales' => ['nullable'],
             'clase_riesgo_arl' => ['nullable', 'integer', 'between:0,5'],
+            'clase_riesgo_arl_servicios' => ['nullable', 'integer', 'between:0,5'],
+            'actividades' => ['nullable', 'array'],
         ], [
             'tipo_cotizante.required' => 'Debes seleccionar el tipo de cotizante.',
             'tipo_cotizante.in' => 'El tipo de cotizante seleccionado no es válido.',
@@ -206,7 +218,10 @@ class SeguridadSocialController extends Controller
             $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
         }
 
-        if ($tipo === 'ASALARIADO') {
+        if ($tipo === 'MULTI_INGRESO') {
+            $calculo = SeguridadSocialService::consolidarMultiIngreso($request->all(), $parametro, $perfil);
+            $calculo['tipo_cotizante'] = 'MULTI_INGRESO';
+        } elseif ($tipo === 'ASALARIADO') {
             $salarioLimpio = PagoSeguridadSocialController::limpiarMonto((string) $request->input('salario'));
             if (bccomp($salarioLimpio, '0', 2) <= 0) {
                 throw ValidationException::withMessages([
@@ -217,8 +232,22 @@ class SeguridadSocialController extends Controller
                 ? PagoSeguridadSocialController::limpiarMonto((string) $request->input('retencion_fuente'))
                 : null;
 
-            $esIntegral = (bool) ($perfil?->es_salario_integral ?? false);
-            $calculo = SeguridadSocialService::calcularAsalariado($salarioLimpio, $esIntegral, $parametro, $retencionLimpia);
+            $esIntegral = $request->has('es_salario_integral')
+                ? $request->boolean('es_salario_integral')
+                : (bool) ($perfil?->es_salario_integral ?? false);
+            $exoneradoParafiscales = $request->has('exonerado_parafiscales')
+                ? $request->boolean('exonerado_parafiscales')
+                : true;
+            $claseArl = (int) ($request->input('clase_riesgo_arl_laboral') ?? ($request->input('clase_riesgo_arl') ?? 1));
+
+            $calculo = SeguridadSocialService::calcularAsalariado(
+                $salarioLimpio,
+                $esIntegral,
+                $parametro,
+                $retencionLimpia,
+                $exoneradoParafiscales,
+                $claseArl
+            );
         } elseif ($tipo === 'INDEPENDIENTE') {
             $montoLimpio = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingreso_base')));
             if (bccomp($montoLimpio, '0', 2) <= 0) {
@@ -236,13 +265,20 @@ class SeguridadSocialController extends Controller
                 ]);
             }
 
-            $porcentajePresuncion = $request->input('porcentaje_presuncion') ?: SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA;
+            $codigoActividad = $request->input('codigo_actividad') ?: EsquemaCostoPresunto::ACTIVIDAD_CAPITAL;
+            $porcentajePresuncion = $request->input('porcentaje_presuncion')
+                ?: EsquemaCostoPresunto::porcentajePara($codigoActividad);
+            $costosReales = $request->filled('costos_reales')
+                ? PagoSeguridadSocialController::limpiarMonto((string) $request->input('costos_reales'))
+                : '0';
+            $usarReales = $request->boolean('usar_costos_reales');
+
             $calculo = SeguridadSocialService::calcularRentistaCapital(
                 $montoLimpio,
-                '0',
+                $usarReales ? $costosReales : '0',
                 $parametro,
                 $perfil,
-                (string) $porcentajePresuncion
+                $usarReales ? null : (string) $porcentajePresuncion
             );
         }
 
