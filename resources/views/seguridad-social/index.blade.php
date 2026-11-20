@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
 <p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
@@ -68,8 +68,39 @@
 
                 {{-- Campo Periodo Común --}}
                 <x-ui.field name="periodo" label="Periodo a cotizar" :required="true" help="Mes y año de la cotización o liquidación.">
-                    <input id="periodo" name="periodo" type="month" x-model="periodo" @change="calcularEnVivo()" required max="{{ now()->format('Y-m') }}">
+                    <input id="periodo" name="periodo" type="month" x-model="periodo" @change="cambiarPeriodo()" required max="{{ now()->format('Y-m') }}">
                 </x-ui.field>
+
+                {{-- INGRESOS REGISTRADOS DEL MES (INDEPENDIENTE Y RENTISTA): el usuario decide con qué monto calcular --}}
+                <div x-show="tipoCotizante !== 'ASALARIADO'" style="margin-bottom: 1rem;" aria-live="polite">
+                    <p class="ui-help" x-show="buscandoIngresos" role="status">Buscando tus ingresos registrados del mes anterior…</p>
+                    <p class="ui-error" x-show="errorIngresos" x-text="'No pudimos consultar tus ingresos del mes. ' + errorIngresos + ' Puedes digitar el monto manualmente.'" role="alert"></p>
+
+                    <template x-if="!buscandoIngresos && ingresosMes && ingresosMes.cantidad > 0">
+                        <div class="ui-notice social-ingresos" role="status" style="border-left: 4px solid var(--ui-warning); display: grid; gap: 0.75rem;">
+                            <p style="margin: 0;">
+                                <strong x-text="'Encontramos ' + ingresosMes.cantidad + (ingresosMes.cantidad === 1 ? ' ingreso' : ' ingresos') + ' de ' + nombreClasificacion + ' en ' + mesIngresosLegible + ' por ' + formatMoney(ingresosMes.total) + '.'"></strong>
+                                <span x-text="'La seguridad social se paga mes vencido: para cotizar ' + periodoLegible + ' se toman los ingresos de ' + mesIngresosLegible + '. ¿Quieres calcular con estos ingresos o prefieres digitar el monto manualmente?'"></span>
+                            </p>
+                            <ul style="margin: 0; padding-left: 1.25rem; display: grid; gap: 0.25rem; font-size: var(--ui-text-small);">
+                                <template x-for="ingreso in ingresosMes.ingresos" :key="ingreso.id">
+                                    <li><span x-text="ingreso.fecha"></span> · <span x-text="ingreso.fuente"></span> · <strong x-text="formatMoney(ingreso.monto)"></strong></li>
+                                </template>
+                            </ul>
+                            <p x-show="!ingresosMes.obligado" style="margin: 0; font-size: var(--ui-text-small);">
+                                Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.
+                            </p>
+                            <div class="ui-inline" role="group" aria-label="Monto para calcular" style="gap: 0.5rem; flex-wrap: wrap;">
+                                <button type="button" class="ui-button" :class="origenMonto === 'INGRESOS' ? 'ui-button--primary' : 'ui-button--secondary'" :aria-pressed="origenMonto === 'INGRESOS'" @click="usarIngresos()">Usar estos ingresos</button>
+                                <button type="button" class="ui-button" :class="origenMonto === 'MANUAL' ? 'ui-button--primary' : 'ui-button--secondary'" :aria-pressed="origenMonto === 'MANUAL'" @click="usarManual()">Digitar el monto manualmente</button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <p class="ui-help" x-show="!buscandoIngresos && !errorIngresos && ingresosMes && ingresosMes.cantidad === 0" style="margin: 0;">
+                        Para cotizar <span x-text="periodoLegible"></span> se toman los ingresos de <span x-text="mesIngresosLegible"></span> (mes vencido), y no tienes ingresos confirmados de <span x-text="nombreClasificacion"></span> en ese mes. Digita el monto para calcular.
+                    </p>
+                </div>
 
                 {{-- ==================== CAMPOS ASALARIADO ==================== --}}
                 <template x-if="tipoCotizante === 'ASALARIADO'">
@@ -117,10 +148,9 @@
                 {{-- ==================== CAMPOS INDEPENDIENTE ==================== --}}
                 <template x-if="tipoCotizante === 'INDEPENDIENTE'">
                     <div style="display: grid; gap: 1rem;">
-                        <p class="ui-help">Se suman automáticamente todos los ingresos confirmados del mes clasificados como <strong>Rentas de trabajo</strong>. El campo manual se usa si no hay ingresos registrados.</p>
                         <x-ui.field name="monto_contrato" label="Monto del contrato / Honorarios del mes" :required="true" help="Ingreso bruto pactado por prestación de servicios u honorarios.">
                             <div class="ui-money">
-                                <input type="text" inputmode="decimal" x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 5.000.000" required>
+                                <input type="text" inputmode="decimal" data-monto-manual x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 5.000.000" :readonly="origenMonto === 'INGRESOS'" :aria-readonly="origenMonto === 'INGRESOS'" :disabled="esperandoDecision" :required="!esperandoDecision">
                                 <span class="ui-money-unit">COP</span>
                                 <input type="hidden" name="monto_contrato" :value="montoContratoCanonico">
                             </div>
@@ -161,10 +191,9 @@
                 {{-- ==================== CAMPOS RENTISTA DE CAPITAL ==================== --}}
                 <template x-if="tipoCotizante === 'RENTISTA_CAPITAL'">
                     <div style="display: grid; gap: 1rem;">
-                        <p class="ui-help">Se suman automáticamente todos los ingresos confirmados del mes clasificados como <strong>Rentas de capital</strong>. El campo manual se usa si no hay ingresos registrados.</p>
                         <x-ui.field name="monto_contrato" label="Monto de ingresos brutos / Contratos de capital" :required="true" help="Ingresos por arrendamientos, rendimientos o inversiones recibidos en el mes.">
                             <div class="ui-money">
-                                <input type="text" inputmode="decimal" x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 10.000.000" required>
+                                <input type="text" inputmode="decimal" data-monto-manual x-model="montoContratoDisplay" @input="onMontoContratoInput" placeholder="Ej. 10.000.000" :readonly="origenMonto === 'INGRESOS'" :aria-readonly="origenMonto === 'INGRESOS'" :disabled="esperandoDecision" :required="!esperandoDecision">
                                 <span class="ui-money-unit">COP</span>
                                 <input type="hidden" name="monto_contrato" :value="montoContratoCanonico">
                             </div>
@@ -195,12 +224,20 @@
                 <template x-if="tieneCalculo">
                     <div style="display: grid; gap: 1.25rem;">
                         {{-- AVISOS LEGALES / SMMLV --}}
-                        <div x-show="avisoBajoSmmlv" class="ui-notice" style="border-left: 3px solid var(--ui-warning); font-size: var(--ui-text-small);">
-                            <p style="margin: 0;">Con ingresos inferiores a 1 SMMLV no existe obligación legal de cotizar; el cálculo se realiza sobre la base mínima legal de 1 SMMLV (<span x-text="formatMoney(smmlv)"></span>).</p>
+                        {{-- Sin obligación: ingresos del mes por debajo de 1 salario mínimo --}}
+                        <div x-show="resultados.obligado === false" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-success); display: grid; gap: 0.25rem;">
+                            <strong>No debes pagar seguridad social este mes.</strong>
+                            <p style="margin: 0;">Tus ingresos del mes (<span x-text="formatMoney(resultados.montoContrato)"></span>) son menores que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como <span x-text="tipoCotizante === 'RENTISTA_CAPITAL' ? 'rentista de capital' : 'independiente'"></span>.</p>
                         </div>
 
+                        <template x-for="aviso in (resultados.obligado === false ? [] : resultados.avisos)" :key="aviso">
+                            <div class="ui-notice" style="border-left: 3px solid var(--ui-warning); font-size: var(--ui-text-small);">
+                                <p style="margin: 0;" x-text="aviso"></p>
+                            </div>
+                        </template>
+
                         {{-- RESUMEN DESTACADO --}}
-                        <div class="finance-stats" style="margin: 0; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                        <div class="finance-stats" x-show="resultados.obligado !== false" style="margin: 0; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
                             <template x-if="tipoCotizante === 'ASALARIADO'">
                                 <div class="finance-stat">
                                     <dt>Salario neto estimado</dt>
@@ -222,7 +259,7 @@
                         </div>
 
                         {{-- TABLA DESGLOSE --}}
-                        <dl class="finance-breakdown" style="margin: 0;">
+                        <dl class="finance-breakdown" x-show="resultados.obligado !== false" style="margin: 0;">
                             <template x-if="tipoCotizante === 'ASALARIADO'">
                                 <div style="display: contents;">
                                     <dt>Salario mensual bruto:</dt>
@@ -303,7 +340,7 @@
                         </dl>
 
                         {{-- BOTÓN DESTACADO PAGAR SEGURIDAD SOCIAL (INDEPENDIENTE Y RENTISTA) --}}
-                        <template x-if="tipoCotizante !== 'ASALARIADO'">
+                        <template x-if="tipoCotizante !== 'ASALARIADO' && resultados.obligado !== false">
                             <div style="border-top: 1px solid var(--ui-border); padding-top: 1rem; display: grid; gap: 0.75rem;">
                                 <button type="button" 
                                     class="ui-button ui-button--primary" 

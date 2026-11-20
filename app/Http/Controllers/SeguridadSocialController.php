@@ -184,9 +184,11 @@ class SeguridadSocialController extends Controller
             'salario' => ['nullable'],
             'retencion_fuente' => ['nullable'],
             'monto_contrato' => ['nullable'],
+            'origen_monto' => ['nullable', 'string', 'in:INGRESOS,MANUAL'],
             'porcentaje_presuncion' => ['nullable'],
             'clase_riesgo_arl' => ['nullable', 'integer', 'between:0,5'],
         ], [
+            'origen_monto.in' => 'Elige si calculas con los ingresos registrados o con un monto manual.',
             'tipo_cotizante.required' => 'Debes seleccionar el tipo de cotizante.',
             'tipo_cotizante.in' => 'El tipo de cotizante seleccionado no es válido.',
             'periodo.required' => 'El periodo de cotización es obligatorio.',
@@ -219,43 +221,45 @@ class SeguridadSocialController extends Controller
 
             $esIntegral = (bool) ($perfil?->es_salario_integral ?? false);
             $calculo = SeguridadSocialService::calcularAsalariado($salarioLimpio, $esIntegral, $parametro, $retencionLimpia);
-        } elseif ($tipo === 'INDEPENDIENTE') {
-            $ingresosMes = SeguridadSocialService::ingresosParaSeguridadSocial(
-                $usuario->id, $inicioMes, $tipo, (string) $parametro->valor_smmlv
-            );
-            $montoIngresos = $ingresosMes['cantidad'] > 0 ? $ingresosMes['total'] : null;
-            $montoLimpio = $montoIngresos ?? PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingreso_base')));
+        } else { // INDEPENDIENTE o RENTISTA_CAPITAL
+            $smmlv = (string) $parametro->valor_smmlv;
+            $ingresosMes = SeguridadSocialService::ingresosParaSeguridadSocial($usuario->id, $inicioMes, $tipo, $smmlv);
+
+            // El usuario decide si calcula con los ingresos registrados del mes o con un monto que digita.
+            $origen = $validated['origen_monto'] ?? null;
+            $montoManual = PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato')
+                ?? $request->input($tipo === 'INDEPENDIENTE' ? 'ingreso_base' : 'ingresos_brutos')));
+            $usarIngresos = $ingresosMes['cantidad'] > 0
+                && ($origen === 'INGRESOS' || ($origen === null && bccomp($montoManual, '0', 2) <= 0));
+            $montoLimpio = $usarIngresos ? $ingresosMes['total'] : $montoManual;
+
             if (bccomp($montoLimpio, '0', 2) <= 0) {
                 throw ValidationException::withMessages([
-                    'monto_contrato' => 'Indica un monto de contrato o ingreso mensual mayor a cero.',
+                    'monto_contrato' => $tipo === 'INDEPENDIENTE'
+                        ? 'Indica un monto de contrato o ingreso mensual mayor a cero.'
+                        : 'Indica un monto de contrato o ingresos de capital mayor a cero.',
                 ]);
             }
 
-            $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
-            $calculo['ingresos_mes'] = $ingresosMes;
-            $calculo['obligacion_por_ingresos'] = $ingresosMes['supera_smmlv'];
-        } else { // RENTISTA_CAPITAL
-            $ingresosMes = SeguridadSocialService::ingresosParaSeguridadSocial(
-                $usuario->id, $inicioMes, $tipo, (string) $parametro->valor_smmlv
-            );
-            $montoIngresos = $ingresosMes['cantidad'] > 0 ? $ingresosMes['total'] : null;
-            $montoLimpio = $montoIngresos ?? PagoSeguridadSocialController::limpiarMonto((string) ($request->input('monto_contrato') ?? $request->input('ingresos_brutos')));
-            if (bccomp($montoLimpio, '0', 2) <= 0) {
-                throw ValidationException::withMessages([
-                    'monto_contrato' => 'Indica un monto de contrato o ingresos de capital mayor a cero.',
-                ]);
+            if ($tipo === 'INDEPENDIENTE') {
+                $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
+            } else {
+                $porcentajePresuncion = $request->input('porcentaje_presuncion') ?: SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA;
+                $calculo = SeguridadSocialService::calcularRentistaCapital(
+                    $montoLimpio,
+                    '0',
+                    $parametro,
+                    $perfil,
+                    (string) $porcentajePresuncion
+                );
             }
 
-            $porcentajePresuncion = $request->input('porcentaje_presuncion') ?: SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA;
-            $calculo = SeguridadSocialService::calcularRentistaCapital(
-                $montoLimpio,
-                '0',
-                $parametro,
-                $perfil,
-                (string) $porcentajePresuncion
-            );
+            // Con ingresos del mes por debajo de 1 SMMLV no hay obligación de cotizar.
+            $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
+            $calculo = $obligado ? $calculo + ['obligado' => true] : SeguridadSocialService::sinObligacion($calculo);
+            $calculo['origen_monto'] = $usarIngresos ? 'INGRESOS' : 'MANUAL';
             $calculo['ingresos_mes'] = $ingresosMes;
-            $calculo['obligacion_por_ingresos'] = $ingresosMes['supera_smmlv'];
+            $calculo['obligacion_por_ingresos'] = $ingresosMes['obligado'];
         }
 
         $calculo['periodo'] = $periodo;
@@ -271,6 +275,35 @@ class SeguridadSocialController extends Controller
             ->with('status', 'Aportes calculados exitosamente.')
             ->with('calculo_reciente', $calculo)
             ->with('tipo_cotizante_seleccionado', $tipo);
+    }
+
+    /**
+     * Ingresos confirmados del mes para la modalidad elegida, para que el usuario
+     * decida si calcula con ellos o con un monto manual.
+     */
+    public function ingresosMes(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tipo_cotizante' => ['required', 'string', 'in:INDEPENDIENTE,RENTISTA_CAPITAL'],
+            'periodo' => $this->reglaPeriodo(),
+        ], [
+            'tipo_cotizante.in' => 'El tipo de cotizante seleccionado no es válido.',
+            'periodo.required' => 'El periodo de cotización es obligatorio.',
+            'periodo.regex' => 'El periodo debe tener el formato AAAA-MM.',
+        ]);
+
+        $inicioMes = SeguridadSocialService::inicioDelPeriodo($validated['periodo']);
+        $parametro = SeguridadSocialService::parametrosDe($inicioMes->year);
+
+        return response()->json([
+            'mensaje' => 'Ingresos del periodo consultados.',
+            'data' => SeguridadSocialService::ingresosParaSeguridadSocial(
+                (string) Auth::id(),
+                $inicioMes,
+                $validated['tipo_cotizante'],
+                (string) $parametro->valor_smmlv
+            ),
+        ]);
     }
 
     /**
