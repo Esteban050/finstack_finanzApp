@@ -15,7 +15,7 @@ export function mapFieldErrors(form, errors, { focus = true, onlyErrored = false
         if (!error || (onlyErrored && error.hidden)) continue;
         error.textContent = messages.map((message) => safeMessage(message, 'Revisa la regla de validación de este campo.')).join(' ');
         error.hidden = messages.length === 0;
-        const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
+        const input = field.querySelector('input:not([type=hidden]), select, textarea');
         input?.setAttribute('aria-invalid', String(messages.length > 0));
     }
     if (focus) form.querySelector('[aria-invalid=true]:not([disabled])')?.focus();
@@ -65,8 +65,9 @@ export function registerFoundation(Alpine) {
                     this.canonical = this.gross() ? percentageOf(this.gross(), percent) : '';
                 } else { this.display = groupMoneyControl(input, this.display); this.canonical = this.display === '' ? '' : parseMoneyInput(this.display); }
                 const allowedZero = this.$root.dataset.allowZero === 'true';
-                const inRange = this.canonical && (allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
-                if (this.canonical && !inRange) message = allowedZero ? 'El valor debe ser mayor o igual a $ 0.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';
+                const allowedNegative = this.$root.dataset.allowNegative === 'true';
+                const inRange = this.canonical && (allowedNegative ? decimal(this.canonical).abs().lte(MAX_AMOUNT) : allowedZero ? decimal(this.canonical).gte('0') && decimal(this.canonical).lte(MAX_AMOUNT) : validateAmount(this.canonical));
+                if (this.canonical && !inRange) message = allowedNegative ? 'El ajuste no puede superar $ 999.999.999.999,99 en valor absoluto.' : allowedZero ? 'El valor debe estar entre $ 0 y $ 999.999.999.999,99.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99.';
                 if (!this.canonical && input.required) message = 'Este campo es obligatorio.';
             } catch (error) { this.canonical = ''; message = error.message; }
             const hidden = this.$root.querySelector('input[type=hidden][name]');
@@ -101,7 +102,7 @@ export function mountFoundation() {
         if (url.origin === window.location.origin && !validResourcePath(url.pathname)) {link.removeAttribute('href'); link.setAttribute('aria-disabled','true'); link.title = 'Recurso no encontrado';}
     }
     document.querySelectorAll('[data-profile-form]').forEach((form) => {
-        const validate = () => validateProfilePresentation(Object.fromEntries(new FormData(form)));
+        const validate = () => { const data = new FormData(form); return validateProfilePresentation({...Object.fromEntries(data),ocupaciones:data.getAll('ocupaciones[]')}); };
         bindErrorRevalidation(form, validate);
         form.addEventListener('submit', (event) => { const errors = validate(); if (Object.keys(errors).length) {event.preventDefault(); mapFieldErrors(form, errors);} });
     });
@@ -171,10 +172,11 @@ export function mountFoundation() {
     });
     // Vincula también los errores iniciales de Blade y los campos de las vistas heredadas.
     document.querySelectorAll('[data-field]').forEach((field) => {
-        const input = [...field.querySelectorAll('input, select, textarea')].find((input) => input.id === field.dataset.field) ?? field.querySelector('input:not([type=hidden]), select, textarea');
+        const input = field.querySelector('input:not([type=hidden]), select, textarea');
         const error = field.querySelector('[data-field-error]');
         if (input && error) {
             input.id ||= field.querySelector('label')?.htmlFor || field.dataset.field;
+            field.querySelector(':scope > label')?.setAttribute('for', input.id);
             const described = new Set((input.getAttribute('aria-describedby') || '').split(' ').filter(Boolean)); described.add(error.id);
             input.setAttribute('aria-describedby', [...described].join(' '));
             input.setAttribute('aria-invalid', String(!error.hidden));
@@ -196,6 +198,7 @@ export function mountFoundation() {
     matchMedia('(min-width: 768px)').addEventListener('change', (event) => { if (event.matches && drawer?.open) drawer.close(); });
     document.querySelector('[data-dismiss-toast]')?.addEventListener('click', () => { document.querySelector('#ui-toast').hidden = true; });
     installConfirmation();
+    document.querySelectorAll('dialog[data-open-on-load]').forEach(dialog => dialog.showModal());
     document.querySelectorAll('[data-page-size]').forEach((select) => select.addEventListener('change', () => select.form.requestSubmit()));
     window.addEventListener('pageshow', resetLoading);
     document.addEventListener('submit', (event) => {

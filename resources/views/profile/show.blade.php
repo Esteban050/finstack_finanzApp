@@ -1,11 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+        <h1 class="font-semibold text-xl text-gray-800 leading-tight">
             Mi Perfil Financiero, Tributario y de Seguridad
-        </h2>
+        </h1>
     </x-slot>
 
-    <div class="py-12">
+    <div class="py-12 profile-page">
         <div class="max-w-5xl mx-auto sm:px-6 lg:px-8 space-y-8">
             <x-auth-session-status :status="session('status')" />
 
@@ -94,7 +94,7 @@
                             <input type="text" id="doc_no_editable" disabled value="{{ $usuario->tipo_documento }} - {{ $usuario->numero_documento }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
                         </x-ui.field>
                         <x-ui.field name="fecha_nacimiento" label="Fecha de Nacimiento (Mayor de 18)" :required="true">
-                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('Y-m-d'))" required class="w-full mt-1" />
+                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" max="{{ now('America/Bogota')->subYears(18)->toDateString() }}" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('d/m/Y'))" required class="w-full mt-1" />
                         </x-ui.field>
                     </div>
 
@@ -122,7 +122,7 @@
                     </div>
 
                     <!-- Perfil de Ocupación RN-008.2 -->
-                    <x-ui.field name="ocupaciones" label="Perfil de ocupación (puedes seleccionar varias)" :required="true">
+                    <x-ui.field :group="true" name="ocupaciones" label="Perfil de ocupación (puedes seleccionar varias)" :required="true">
                         @php
                             $ocupacionesActuales = old('ocupaciones', $perfilActivo?->ocupaciones ?? []);
                         @endphp
@@ -147,7 +147,7 @@
                         <x-ui.field name="clase_riesgo_arl" label="Clase de Riesgo ARL (Indep./Contratista)">
                             <select id="clase_riesgo_arl" name="clase_riesgo_arl" class="w-full mt-1 border-gray-300 rounded-md text-sm">
                                 <option value="">-- No aplica / Sin ARL --</option>
-                                @foreach ([1 => 'Clase I (0.522%)', 2 => 'Clase II (1.044%)', 3 => 'Clase III (2.436%)', 4 => 'Clase IV (4.350%)', 5 => 'Clase V (6.960%)'] as $k => $v)
+                                @foreach ([1 => 'Clase I (0,522 %)', 2 => 'Clase II (1,044 %)', 3 => 'Clase III (2,436 %)', 4 => 'Clase IV (4,350 %)', 5 => 'Clase V (6,960 %)'] as $k => $v)
                                     <option value="{{ $k }}" {{ old('clase_riesgo_arl', $perfilActivo?->clase_riesgo_arl) == $k ? 'selected' : '' }}>{{ $v }}</option>
                                 @endforeach
                             </select>
@@ -198,29 +198,20 @@
 
                         <form method="POST" action="{{ route('profile.mfa.toggle') }}" class="mt-4 flex space-x-3 items-center">
                             @csrf
-                            <input type="text" name="codigo" maxlength="6" placeholder="Código de 6 dígitos" required class="border-gray-300 rounded-md text-sm font-mono w-48" />
+                            <x-ui.field name="codigo" id="mfa-enable-code" label="Código de verificación" :required="true"><input id="mfa-enable-code" type="text" name="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required aria-describedby="mfa-enable-code-error" /></x-ui.field>
                             <x-primary-button>
                                 Activar 2FA
                             </x-primary-button>
                         </form>
                     </div>
                 @else
+                    <p class="ui-help">Para desactivar la verificación en dos pasos, solicita un código e ingrésalo con tu contraseña.</p>
+                    <form method="POST" action="{{ route('profile.mfa.code') }}">@csrf<x-ui.button type="submit" variant="secondary">Enviar código de desactivación</x-ui.button></form>
                     <form method="POST" action="{{ route('profile.mfa.toggle') }}" class="space-y-4">
                         @csrf
-                        <p class="text-sm text-gray-600">Para desactivar 2FA, ingresa tu contraseña y solicita un código:</p>
-                        <form method="POST" action="{{ route('profile.mfa.code') }}" class="inline">
-                            @csrf
-                            <button type="submit" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded text-xs font-semibold">
-                                Enviar Código de Desactivación
-                            </button>
-                        </form>
-                        <div class="flex space-x-3 items-center pt-2">
-                            <input type="password" name="password" placeholder="Tu Contraseña" required class="border-gray-300 rounded-md text-sm" />
-                            <input type="text" name="codigo" maxlength="6" placeholder="Código 6 dígitos" required class="border-gray-300 rounded-md text-sm font-mono w-36" />
-                            <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md text-xs font-bold hover:bg-red-700">
-                                Desactivar 2FA
-                            </button>
-                        </div>
+                        <x-auth.password id="mfa-current-password" label="Contraseña actual" autocomplete="current-password" />
+                        <x-ui.field name="codigo" id="mfa-disable-code" label="Código de verificación" :required="true" help="Los seis dígitos enviados a tu correo."><input id="mfa-disable-code" name="codigo" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required aria-describedby="mfa-disable-code-help mfa-disable-code-error" value="{{ old('codigo','') }}"></x-ui.field>
+                        <x-ui.button type="submit" variant="danger">Desactivar 2FA</x-ui.button>
                     </form>
                 @endif
             </div>

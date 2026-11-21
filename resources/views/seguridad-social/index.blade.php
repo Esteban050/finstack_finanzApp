@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
@@ -39,19 +42,19 @@
                     class="ui-button" 
                     :class="tipoCotizante === 'ASALARIADO' ? 'ui-button--primary' : 'ui-button--secondary'"
                     @click="cambiarTipo('ASALARIADO')">
-                    💼 Asalariado
+                    <x-icon name="src-salario" :size="20" /> Asalariado
                 </button>
                 <button type="button" 
                     class="ui-button" 
                     :class="tipoCotizante === 'INDEPENDIENTE' ? 'ui-button--primary' : 'ui-button--secondary'"
                     @click="cambiarTipo('INDEPENDIENTE')">
-                    🔨 Independiente / Contratista
+                    <x-icon name="src-honorarios-servicios" :size="20" /> Independiente / Contratista
                 </button>
                 <button type="button" 
                     class="ui-button" 
                     :class="tipoCotizante === 'RENTISTA_CAPITAL' ? 'ui-button--primary' : 'ui-button--secondary'"
                     @click="cambiarTipo('RENTISTA_CAPITAL')">
-                    📈 Rentista de capital
+                    <x-icon name="src-rendimientos-financieros" :size="20" /> Rentista de capital
                 </button>
             </div>
         </div>
@@ -364,7 +367,7 @@
                                         <select name="ingreso_id" required>
                                             <option value="">Selecciona un ingreso de salario...</option>
                                             @foreach($ingresosSalario as $ing)
-                                                <option value="{{ $ing->id }}">{{ $ing->fecha_recepcion->format('d/m/Y') }} · {{ $ing->fuente?->nombre }} ($ {{ number_format($ing->monto_bruto_cop, 0, ',', '.') }})</option>
+                                                <option value="{{ $ing->id }}">{{ $ing->fecha_recepcion->format('d/m/Y') }} · {{ $ing->fuente?->nombre }} ($ {{ $formatValue($ing->monto_bruto_cop, 0, ',', '.') }})</option>
                                             @endforeach
                                         </select>
                                         <x-ui.button type="submit" variant="secondary">
@@ -482,7 +485,7 @@
                             <td><strong>{{ $pago->periodo }}</strong></td>
                             <td><time data-date="{{ $pago->fecha_pago->format('Y-m-d') }}">{{ $pago->fecha_pago->format('d/m/Y') }}</time></td>
                             <td>{{ $pago->numero_planilla ?? '—' }}</td>
-                            <td class="ui-number"><strong>$ {{ number_format($pago->total, 0, ',', '.') }}</strong></td>
+                            <td class="ui-number"><strong>$ {{ $formatValue($pago->total, 0, ',', '.') }}</strong></td>
                             <td>
                                 @if($pago->gasto)
                                     <span class="ui-badge" style="background: rgba(34, 197, 94, 0.15); color: var(--ui-success); font-weight: 600;">

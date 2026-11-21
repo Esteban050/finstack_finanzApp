@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 @section('title', 'Reporte Anual de Utilidades – Inversiones')
 @section('content')
@@ -9,7 +12,7 @@
 <header class="income-page-header">
     <div>
         <a href="{{ route('inversiones.index') }}" class="ui-button" style="text-decoration:none; margin-bottom: 0.5rem; display: inline-block;">&larr; Volver a inversiones</a>
-        <h1>Reporte de Utilidad Realizada y Clasificación Fiscal (RF-REP-03)</h1>
+        <h1>Reporte de Utilidad Realizada y Clasificación Fiscal</h1>
         <p>Clasificación tributaria de rendimientos, dividendos y enajenaciones de activos para la declaración de renta.</p>
     </div>
     <div class="ui-inline" style="gap: 0.5rem; flex-wrap: wrap;">
@@ -60,19 +63,19 @@
 <div class="finance-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
     <x-ui.card>
         <span class="ui-help">Total Ingresos / Utilidades Brutas</span>
-        <h2 style="margin: 0.25rem 0; color: var(--color-primary);">$ {{ number_format((float) $totales['utilidad_total'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: var(--color-primary);">$ {{ $formatValue((string) $totales['utilidad_total'], 2) }}</h2>
         <span class="ui-help">Año gravable {{ $anio }}</span>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Total Retenciones Imputables</span>
-        <h2 style="margin: 0.25rem 0; color: #dc2626;">-$ {{ number_format((float) $totales['retencion_total'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: #dc2626;">-$ {{ $formatValue((string) $totales['retencion_total'], 2) }}</h2>
         <span class="ui-help">Retenciones practicadas</span>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Total Valores Deducibles Generados</span>
-        <h2 style="margin: 0.25rem 0; color: #16a34a;">$ {{ number_format((float) $totales['deducibles_total'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: #16a34a;">$ {{ $formatValue((string) $totales['deducibles_total'], 2) }}</h2>
         <span class="ui-help">Aportes FPV + Cesantías exentas + Art. 36-1</span>
     </x-ui.card>
 </div>
@@ -100,12 +103,12 @@
                         <td><strong>{{ $ing->inversion?->nombre }}</strong></td>
                         <td>{{ $labels[$ing->inversion?->tipo] ?? $ing->inversion?->tipo }}</td>
                         <td><x-ui.badge tone="primary">{{ $ing->tipo }}</x-ui.badge></td>
-                        <td class="ui-number">$ {{ number_format((float) $ing->valor_bruto, 2) }}</td>
+                        <td class="ui-number">$ {{ $formatValue((string) $ing->valor_bruto, 2) }}</td>
                         <td class="ui-number" style="color: #dc2626;">
-                            {{ (float)$ing->retencion > 0 ? '-$' . number_format((float)$ing->retencion, 2) : '—' }}
+                            {{ (string)$ing->retencion > 0 ? '-$' . $formatValue((string)$ing->retencion, 2) : '—' }}
                         </td>
                         <td class="ui-number" style="font-weight: 600;">
-                            $ {{ number_format((float) bcsub((string) $ing->valor_bruto, (string) $ing->retencion, 2), 2) }}
+                            $ {{ $formatValue((string) bcsub((string) $ing->valor_bruto, (string) $ing->retencion, 2), 2) }}
                         </td>
                     </tr>
                 @endforeach
@@ -135,9 +138,9 @@
                     <tr>
                         <td><strong>{{ $ded->inversion?->nombre }}</strong></td>
                         <td>{{ $labels[$ded->inversion?->tipo] ?? $ded->inversion?->tipo }}</td>
-                        <td><x-ui.badge tone="{{ (float)$ded->valor < 0 ? 'warning' : 'success' }}">{{ $ded->concepto }}</x-ui.badge></td>
-                        <td class="ui-number" style="font-weight: 600; color: {{ (float)$ded->valor < 0 ? '#dc2626' : '#16a34a' }};">
-                            $ {{ number_format((float)$ded->valor, 2) }}
+                        <td><x-ui.badge tone="{{ (string)$ded->valor < 0 ? 'warning' : 'success' }}">{{ $ded->concepto }}</x-ui.badge></td>
+                        <td class="ui-number" style="font-weight: 600; color: {{ (string)$ded->valor < 0 ? '#dc2626' : '#16a34a' }};">
+                            $ {{ $formatValue((string)$ded->valor, 2) }}
                         </td>
                         <td class="ui-help">
                             @if($ded->concepto === 'APORTE_FPV')

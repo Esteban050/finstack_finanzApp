@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -48,24 +51,24 @@
                     <td>{{ $p['etiqueta'] }}</td>
                     <td class="text-center">{{ $p['inicio'] }}</td>
                     <td class="text-center">{{ $p['fin'] }}</td>
-                    <td class="text-right">$ {{ number_format((float) $p['total_ingresos'], 0, ',', '.') }}</td>
-                    <td class="text-right">$ {{ number_format((float) $p['total_gastos'], 0, ',', '.') }}</td>
+                    <td class="text-right">$ {{ $formatValue((string) $p['total_ingresos'], 0, ',', '.') }}</td>
+                    <td class="text-right">$ {{ $formatValue((string) $p['total_gastos'], 0, ',', '.') }}</td>
                     <td class="text-right {{ $p['es_negativo'] ? 'negative' : 'positive' }}">
-                        $ {{ number_format((float) $p['flujo_neto'], 0, ',', '.') }}
+                        $ {{ $formatValue((string) $p['flujo_neto'], 0, ',', '.') }}
                     </td>
                     <td class="text-right text-bold">
-                        $ {{ number_format((float) $p['flujo_acumulado'], 0, ',', '.') }}
+                        $ {{ $formatValue((string) $p['flujo_acumulado'], 0, ',', '.') }}
                     </td>
                 </tr>
             @endforeach
             <tr class="row-total">
                 <td colspan="3">TOTAL GENERAL</td>
-                <td class="text-right">$ {{ number_format((float) ($reporte['totales']['total_ingresos'] ?? 0), 0, ',', '.') }}</td>
-                <td class="text-right">$ {{ number_format((float) ($reporte['totales']['total_gastos'] ?? 0), 0, ',', '.') }}</td>
-                <td class="text-right {{ ((float) ($reporte['totales']['balance_neto'] ?? 0)) < 0 ? 'negative' : 'positive' }}">
-                    $ {{ number_format((float) ($reporte['totales']['balance_neto'] ?? 0), 0, ',', '.') }}
+                <td class="text-right">$ {{ $formatValue((string) ($reporte['totales']['total_ingresos'] ?? 0), 0, ',', '.') }}</td>
+                <td class="text-right">$ {{ $formatValue((string) ($reporte['totales']['total_gastos'] ?? 0), 0, ',', '.') }}</td>
+                <td class="text-right {{ ((string) ($reporte['totales']['balance_neto'] ?? 0)) < 0 ? 'negative' : 'positive' }}">
+                    $ {{ $formatValue((string) ($reporte['totales']['balance_neto'] ?? 0), 0, ',', '.') }}
                 </td>
-                <td class="text-right">$ {{ number_format((float) ($reporte['totales']['flujo_acumulado_final'] ?? 0), 0, ',', '.') }}</td>
+                <td class="text-right">$ {{ $formatValue((string) ($reporte['totales']['flujo_acumulado_final'] ?? 0), 0, ',', '.') }}</td>
             </tr>
         </tbody>
     </table>

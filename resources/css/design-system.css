@@ -104,6 +104,18 @@ html:has(dialog[open]) { overflow: hidden; }
 .scfp-theme .ui-button:enabled:hover { background: var(--ui-raised); color: var(--ui-text); border-color: var(--ui-border-strong); }
 .scfp-theme a.ui-button:hover { background: var(--ui-raised); color: var(--ui-text); border-color: var(--ui-border-strong); }
 .scfp-theme .ui-button--secondary:enabled:hover, .scfp-theme a.ui-button--secondary:hover { background: color-mix(in srgb, var(--accent-secondary) 90%, var(--accent-secondary-contrast)); color: var(--accent-secondary-contrast); border-color: var(--ui-border-strong); }
+.scfp-theme .ui-button--primary:enabled:hover, .scfp-theme a.ui-button--primary:hover { background: color-mix(in srgb, var(--accent) 92%, var(--accent-contrast)); color: var(--accent-contrast); border-color: var(--accent); }
+.scfp-theme .ui-button--danger:enabled:hover, .scfp-theme a.ui-button--danger:hover { background: var(--ui-danger); color: var(--ui-danger-contrast); border-color: var(--ui-danger); }
+.ui-value-input { text-align: right; font-variant-numeric: tabular-nums; }
+.ui-field-group { border: 0; padding: 0; min-width: 0; }
+.ui-field-group > legend { font-size: var(--ui-text-small); font-weight: 600; margin-bottom: .625rem; }
+.ui-content button:not(.ui-button) { min-height: 44px; }
+.ui-content :is(a,button)[class*="px-"][class*="py-"] { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.ui-content :is(button,a)[class*="bg-red-600"] { background: var(--ui-danger); color: var(--ui-danger-contrast); }
+.admin-dialog { width: min(36rem,calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.admin-dialog-content { min-width: 0; }
+.investment-register > summary { display: inline-flex; min-height: 48px; align-items: center; padding: .75rem 1.125rem !important; border-radius: var(--ui-radius); background: var(--accent); color: var(--accent-contrast); }
+@media(max-width:767px) { .admin-dialog .grid { grid-template-columns: minmax(0,1fr); } .admin-dialog .col-span-2 { grid-column: auto; } .admin-dialog :is(.flex,.ui-inline) { flex-wrap: wrap; gap: .75rem; } }
 .scfp-theme .ui-button:disabled, .scfp-theme .ui-button[aria-disabled=true] { background: var(--ui-raised); color: var(--ui-muted); border: 1px dashed var(--ui-border-strong); opacity: 1; }
 .ui-button[aria-busy=true] { cursor: progress; }
 .ui-button[aria-busy=true]::before { content: ''; width: .875rem; height: .875rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .9s linear infinite; }

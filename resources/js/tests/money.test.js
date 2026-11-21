@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatMoney, formatMoneyDraft, formatQuantity, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+import { formatMoney, formatMoneyDraft, formatQuantity, formatCanonicalValue, parseLocalizedValue, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+
+test('captura común: conserva ocho decimales, ceros finales y límites sin transformar texto inválido', () => {
+    assert.equal(parseLocalizedValue('1.234.567,89'), '1234567.89');
+    assert.equal(parseLocalizedValue('1,12345678', {precision: 8}), '1.12345678');
+    assert.equal(formatCanonicalValue('1234567.12000000'), '1.234.567,12000000');
+    assert.equal(parseLocalizedValue('4.500', {precision: 0}), '4500');
+    for (const value of ['1e3', '1..000', '1,123', '12.34']) assert.throws(() => parseLocalizedValue(value));
+    assert.throws(() => parseLocalizedValue('-1.000', {min: '0'}));
+    assert.throws(() => parseLocalizedValue('1.000,01', {max: '1000'}));
+    assert.equal(parseLocalizedValue('-1.000,50', {min: '-2000'}), '-1000.50');
+});
 
 test('unidades y precios conservan ocho decimales con separadores de Colombia',()=>{
     assert.equal(formatQuantity('0.00000001'),'0,00000001');
@@ -45,7 +56,7 @@ test('pegado: símbolo COP y espacios normales/duros mantienen formato estricto'
 
 
 test('edición visual: agrupación de miles y millones sin alterar el decimal enviado',()=>{
- for(const [raw,shown,canonical] of [['1234','1.234','1234.00'],['1234567',"1'234.567",'1234567.00'],['1234567,89',"1'234.567,89",'1234567.89'],['999999999999,99',"999.999'999.999,99",'999999999999.99'],['$ 5000000',"5'000.000",'5000000.00']]){
+ for(const [raw,shown,canonical] of [['1234','1.234','1234.00'],['1234567',"1.234.567",'1234567.00'],['1234567,89',"1.234.567,89",'1234567.89'],['999999999999,99',"999.999.999.999,99",'999999999999.99'],['$ 5000000',"5.000.000",'5000000.00']]){
   assert.equal(formatMoneyDraft(raw),shown);assert.equal(parseMoneyInput(shown),canonical);
  }
  for(const invalid of ['1.5','1e5','1..000','5,000,000']){assert.equal(formatMoneyDraft(invalid),invalid);assert.throws(()=>parseMoneyInput(formatMoneyDraft(invalid)));}
@@ -58,8 +69,8 @@ import { groupMoneyControl } from '../ui/money-format.js';
 test('edición incremental y borrado reagrupan; pegado inválido conserva la validación estricta',()=>{
  const input={value:'',selectionStart:0,selectionEnd:0,matches:()=>false};
  for(const digit of '1234567'){input.value+=digit;groupMoneyControl(input,input.value,{type:'input',inputType:'insertText'});}
- assert.equal(input.value,"1'234.567");assert.equal(parseMoneyInput(input.value),'1234567.00');
- input.value='12.345.67';groupMoneyControl(input,input.value,{type:'input',inputType:'deleteContentBackward'});assert.equal(input.value,"1'234.567");
+ assert.equal(input.value,"1.234.567");assert.equal(parseMoneyInput(input.value),'1234567.00');
+ input.value='12.345.67';groupMoneyControl(input,input.value,{type:'input',inputType:'deleteContentBackward'});assert.equal(input.value,"1.234.567");
  input.value='1.5';groupMoneyControl(input,input.value,{type:'input',inputType:'insertFromPaste'});assert.equal(input.value,'1.5');assert.throws(()=>parseMoneyInput(input.value));
 });
 
@@ -67,7 +78,7 @@ import { registerFoundation } from '../ui/foundation.js';
 
 test('MoneyInput compartido mantiene el valor canónico enviado y la retención exacta',()=>{
  const factories={};registerFoundation({data:(name,factory)=>{factories[name]=factory;}});
- const visible={value:"1'234.567,89",selectionStart:12,selectionEnd:12,matches:()=>false,required:true,setAttribute(){},setCustomValidity(message){this.error=message;}};
+ const visible={value:"1.234.567,89",selectionStart:12,selectionEnd:12,matches:()=>false,required:true,setAttribute(){},setCustomValidity(message){this.error=message;}};
  const hidden={value:''},error={textContent:'',hidden:true};
  const field={dataset:{field:'monto_original'},querySelector:selector=>selector==='input[type=text]'?visible:error};
  const root={dataset:{allowZero:'false'},closest:selector=>selector==='form'?{querySelector:()=>({value:'5000000.00'})}:field,querySelector:()=>hidden};

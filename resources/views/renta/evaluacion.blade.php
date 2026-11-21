@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 
 @section('title', '¿Debo declarar renta? · Año gravable ' . $anio)
@@ -7,7 +10,7 @@
     <header class="income-page-header">
         <div>
             <h1>¿Debo declarar renta? · Año gravable {{ $anio }}</h1>
-            <p>Persona natural residente. Topes de los artículos 592, 593, 594-1 y 594-3 del Estatuto Tributario, con la UVT de {{ $anio }} ($ {{ number_format($evaluacion['parametros']['uvt'], 0, ',', '.') }}).</p>
+            <p>Persona natural residente. Topes de los artículos 592, 593, 594-1 y 594-3 del Estatuto Tributario, con la UVT de {{ $anio }} ($ {{ $formatValue($evaluacion['parametros']['uvt'], 0, ',', '.') }}).</p>
         </div>
         <div class="ui-inline">
             <a class="ui-button ui-button--secondary" href="{{ route('renta.evaluacion', ['anio' => $anio]) }}">Volver a evaluar</a>
@@ -22,12 +25,12 @@
                 <div>
                     <span class="ui-badge ui-badge--warning">Preliminar · año en curso</span>
                     <p class="mk-result-title">{{ $evaluacion['veredicto_label'] }}</p>
-                    <p class="mk-small" style="margin:0">Año gravable {{ $anio }} (UVT $ {{ number_format($evaluacion['parametros']['uvt'], 0, ',', '.') }}). Con los meses transcurridos a la fecha, el sistema proyecta tus ingresos y rendimientos de inversiones al 31/12/{{ $anio }} usando el promedio mensual.</p>
+                    <p class="mk-small" style="margin:0">Año gravable {{ $anio }} (UVT $ {{ $formatValue($evaluacion['parametros']['uvt'], 0, ',', '.') }}). Con los meses transcurridos a la fecha, el sistema proyecta tus ingresos y rendimientos de inversiones al 31/12/{{ $anio }} usando el promedio mensual.</p>
                     <dl class="mk-kv" style="margin-top:1rem">
                         <dt>Ingresos + rendimientos acumulados</dt>
-                        <dd>$ {{ number_format($evaluacion['criterios']['c2']['valor_cop'], 0, ',', '.') }}</dd>
+                        <dd>$ {{ $formatValue($evaluacion['criterios']['c2']['valor_cop'], 0, ',', '.') }}</dd>
                         <dt>Proyección al 31/12/{{ $anio }}</dt>
-                        <dd class="mk-strong">$ {{ number_format($evaluacion['criterios']['c2']['proyectado_cop'] ?? $evaluacion['criterios']['c2']['valor_cop'], 0, ',', '.') }} · {{ number_format(ConsolidadoRentaService::aUvt($evaluacion['criterios']['c2']['proyectado_cop'] ?? $evaluacion['criterios']['c2']['valor_cop'], $evaluacion['parametros']['uvt']), 2, ',', '.') }} UVT</dd>
+                        <dd class="mk-strong">$ {{ $formatValue($evaluacion['criterios']['c2']['proyectado_cop'] ?? $evaluacion['criterios']['c2']['valor_cop'], 0, ',', '.') }} · {{ $formatValue(\App\Services\Renta\ConsolidadoRentaService::aUvt($evaluacion['criterios']['c2']['proyectado_cop'] ?? $evaluacion['criterios']['c2']['valor_cop'], $evaluacion['parametros']['uvt']), 2, ',', '.') }} UVT</dd>
                     </dl>
                     <p class="ui-help" style="margin-top:.75rem">El resultado es informativo y puede cambiar hasta el cierre formal del año gravable.</p>
                 </div>
@@ -56,7 +59,7 @@
                     <dt>Evaluado el</dt>
                     <dd>{{ $declaracion->updated_at ? $declaracion->updated_at->format('d/m/Y') : now()->format('d/m/Y') }}</dd>
                     <dt>Fecha límite</dt>
-                    <dd class="mk-strong">{{ $declaracion->fecha_limite_presentacion ? $declaracion->fecha_limite_presentacion->format('d/m/Y') : '15/09/' . ($anio + 1) }}</dd>
+                    <dd class="mk-strong">{{ $declaracion->fecha_limite_presentacion ? $declaracion->fecha_limite_presentacion->format('d/m/Y') : 'Pendiente de calendario' }}</dd>
                     <dt>Estado</dt>
                     <dd>
                         @if($declaracion->estado_declaracion === 'PRESENTADA')
@@ -75,10 +78,10 @@
             <p class="mk-result-title">Falta confirmar consignaciones bancarias</p>
             <div class="mk-alert" style="margin-top:.75rem">
                 <span class="mk-icon">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.2L2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/></svg>
+                    <x-icon name="ui-advertencia" :size="20" />
                 </span>
                 <div>
-                    <strong>Tus inversiones nuevas del año suman $ {{ number_format($declaracion->c5_piso_inversiones_cop, 0, ',', '.') }} ({{ number_format(ConsolidadoRentaService::aUvt($declaracion->c5_piso_inversiones_cop, $evaluacion['parametros']['uvt']), 2, ',', '.') }} UVT), pero no has confirmado el total de consignaciones bancarias de {{ $anio }}.</strong>
+                    <strong>Tus inversiones nuevas del año suman $ {{ $formatValue($declaracion->c5_piso_inversiones_cop, 0, ',', '.') }} ({{ $formatValue(\App\Services\Renta\ConsolidadoRentaService::aUvt($declaracion->c5_piso_inversiones_cop, $evaluacion['parametros']['uvt']), 2, ',', '.') }} UVT), pero no has confirmado el total de consignaciones bancarias de {{ $anio }}.</strong>
                     <p>Confirma ese dato para descartar o activar el criterio C5. Por ahora ningún otro criterio se cumple.</p>
                 </div>
             </div>
@@ -94,7 +97,7 @@
             <p class="mk-small" style="margin:0">No cumples ninguno de los 6 criterios de obligación tributaria del año gravable {{ $anio }}.</p>
             <div class="mk-alert info" style="margin-top:1rem">
                 <span class="mk-icon">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></svg>
+                    <x-icon name="ui-info" :size="20" />
                 </span>
                 <div>
                     <strong>Puedes declarar de forma voluntaria.</strong>
@@ -130,9 +133,9 @@
                             <span class="mk-meta">Mayor que 4.500 UVT</span>
                         </td>
                         <td class="mk-meta">Módulo Inversiones (Saldos 31/12)</td>
-                        <td class="num" data-money>$ {{ number_format($c1['valor_cop'], 0, ',', '.') }}</td>
-                        <td class="num">{{ number_format($c1['valor_uvt'], 2, ',', '.') }}</td>
-                        <td class="num">$ {{ number_format($c1['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">4.500 UVT</span></td>
+                        <td class="num">$ {{ $formatValue($c1['valor_cop'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $formatValue($c1['valor_uvt'], 2, ',', '.') }}</td>
+                        <td class="num">$ {{ $formatValue($c1['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">4.500 UVT</span></td>
                         <td>
                             @if($c1['cumple'])
                                 <span class="ui-badge ui-badge--danger">Cumple</span>
@@ -144,9 +147,9 @@
                         </td>
                         <td class="num">
                             @if($c1['cumple'])
-                                Superado<br><span class="mk-meta">por $ {{ number_format($c1['valor_cop'] - $c1['tope_cop'], 0, ',', '.') }}</span>
+                                Superado<br><span class="mk-meta">por $ {{ $formatValue($c1['valor_cop'] - $c1['tope_cop'], 0, ',', '.') }}</span>
                             @else
-                                $ {{ number_format($c1['margen_disponible_cop'], 0, ',', '.') }}
+                                $ {{ $formatValue($c1['margen_disponible_cop'], 0, ',', '.') }}
                             @endif
                         </td>
                     </tr>
@@ -159,9 +162,9 @@
                             <span class="mk-meta">Mayor o igual a 1.400 UVT</span>
                         </td>
                         <td class="mk-meta">Ingresos + Rendimientos Inv.</td>
-                        <td class="num" data-money>$ {{ number_format($c2['valor_cop'], 0, ',', '.') }}</td>
-                        <td class="num">{{ number_format($c2['valor_uvt'], 2, ',', '.') }}</td>
-                        <td class="num">$ {{ number_format($c2['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
+                        <td class="num">$ {{ $formatValue($c2['valor_cop'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $formatValue($c2['valor_uvt'], 2, ',', '.') }}</td>
+                        <td class="num">$ {{ $formatValue($c2['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
                         <td>
                             @if($c2['cumple'])
                                 <span class="ui-badge ui-badge--danger">Cumple</span>
@@ -173,9 +176,9 @@
                         </td>
                         <td class="num">
                             @if($c2['cumple'])
-                                Superado<br><span class="mk-meta">por $ {{ number_format($c2['valor_cop'] - $c2['tope_cop'], 0, ',', '.') }}</span>
+                                Superado<br><span class="mk-meta">por $ {{ $formatValue($c2['valor_cop'] - $c2['tope_cop'], 0, ',', '.') }}</span>
                             @else
-                                $ {{ number_format($c2['margen_disponible_cop'], 0, ',', '.') }}
+                                $ {{ $formatValue($c2['margen_disponible_cop'], 0, ',', '.') }}
                             @endif
                         </td>
                     </tr>
@@ -188,9 +191,9 @@
                             <span class="mk-meta">Mayor que 1.400 UVT</span>
                         </td>
                         <td class="mk-meta">Info. complementaria</td>
-                        <td class="num" data-money>$ {{ number_format($c3['valor_cop'], 0, ',', '.') }}</td>
-                        <td class="num">{{ number_format($c3['valor_uvt'], 2, ',', '.') }}</td>
-                        <td class="num">$ {{ number_format($c3['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
+                        <td class="num">$ {{ $formatValue($c3['valor_cop'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $formatValue($c3['valor_uvt'], 2, ',', '.') }}</td>
+                        <td class="num">$ {{ $formatValue($c3['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
                         <td>
                             @if($c3['cumple'])
                                 <span class="ui-badge ui-badge--danger">Cumple</span>
@@ -202,9 +205,9 @@
                         </td>
                         <td class="num">
                             @if($c3['cumple'])
-                                Superado<br><span class="mk-meta">por $ {{ number_format($c3['valor_cop'] - $c3['tope_cop'], 0, ',', '.') }}</span>
+                                Superado<br><span class="mk-meta">por $ {{ $formatValue($c3['valor_cop'] - $c3['tope_cop'], 0, ',', '.') }}</span>
                             @else
-                                $ {{ number_format($c3['margen_disponible_cop'], 0, ',', '.') }}
+                                $ {{ $formatValue($c3['margen_disponible_cop'], 0, ',', '.') }}
                             @endif
                         </td>
                     </tr>
@@ -217,9 +220,9 @@
                             <span class="mk-meta">Mayor que 1.400 UVT</span>
                         </td>
                         <td class="mk-meta">Info. complementaria</td>
-                        <td class="num" data-money>$ {{ number_format($c4['valor_cop'], 0, ',', '.') }}</td>
-                        <td class="num">{{ number_format($c4['valor_uvt'], 2, ',', '.') }}</td>
-                        <td class="num">$ {{ number_format($c4['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
+                        <td class="num">$ {{ $formatValue($c4['valor_cop'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $formatValue($c4['valor_uvt'], 2, ',', '.') }}</td>
+                        <td class="num">$ {{ $formatValue($c4['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
                         <td>
                             @if($c4['cumple'])
                                 <span class="ui-badge ui-badge--danger">Cumple</span>
@@ -231,9 +234,9 @@
                         </td>
                         <td class="num">
                             @if($c4['cumple'])
-                                Superado<br><span class="mk-meta">por $ {{ number_format($c4['valor_cop'] - $c4['tope_cop'], 0, ',', '.') }}</span>
+                                Superado<br><span class="mk-meta">por $ {{ $formatValue($c4['valor_cop'] - $c4['tope_cop'], 0, ',', '.') }}</span>
                             @else
-                                $ {{ number_format($c4['margen_disponible_cop'], 0, ',', '.') }}
+                                $ {{ $formatValue($c4['margen_disponible_cop'], 0, ',', '.') }}
                             @endif
                         </td>
                     </tr>
@@ -245,10 +248,10 @@
                             <strong class="mk-strong">C5 · Consignaciones, depósitos o inversiones</strong><br>
                             <span class="mk-meta">Mayor que 1.400 UVT</span>
                         </td>
-                        <td class="mk-meta">Inversiones ($ {{ number_format($c5['piso_inversiones_cop'] / 1000000, 1, ',', '.') }}M) + Bancos</td>
-                        <td class="num" data-money>$ {{ number_format($c5['valor_cop'], 0, ',', '.') }}</td>
-                        <td class="num">{{ number_format($c5['valor_uvt'], 2, ',', '.') }}</td>
-                        <td class="num">$ {{ number_format($c5['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
+                        <td class="mk-meta">Inversiones ($ {{ $formatValue($c5['piso_inversiones_cop'] / 1000000, 1, ',', '.') }}M) + Bancos</td>
+                        <td class="num">$ {{ $formatValue($c5['valor_cop'], 0, ',', '.') }}</td>
+                        <td class="num">{{ $formatValue($c5['valor_uvt'], 2, ',', '.') }}</td>
+                        <td class="num">$ {{ $formatValue($c5['tope_cop'], 0, ',', '.') }}<br><span class="mk-meta">1.400 UVT</span></td>
                         <td>
                             @if($c5['cumple'])
                                 <span class="ui-badge ui-badge--danger">Cumple</span>
@@ -260,9 +263,9 @@
                         </td>
                         <td class="num">
                             @if($c5['cumple'])
-                                Superado<br><span class="mk-meta">por $ {{ number_format($c5['valor_cop'] - $c5['tope_cop'], 0, ',', '.') }}</span>
+                                Superado<br><span class="mk-meta">por $ {{ $formatValue($c5['valor_cop'] - $c5['tope_cop'], 0, ',', '.') }}</span>
                             @else
-                                $ {{ number_format($c5['margen_disponible_cop'], 0, ',', '.') }}
+                                $ {{ $formatValue($c5['margen_disponible_cop'], 0, ',', '.') }}
                             @endif
                         </td>
                     </tr>
@@ -307,7 +310,7 @@
                 <li style="margin-bottom:.75rem">
                     <div class="mk-row between mk-small">
                         <span>C1 · Patrimonio en inversiones</span>
-                        <span>{{ number_format($pctC1, 2, ',', '.') }} % del tope</span>
+                        <span>{{ $formatValue($pctC1, 2, ',', '.') }} % del tope</span>
                     </div>
                     <div @class(['mk-bar', 'over' => $pctC1 > 100])>
                         <i style="width: {{ min(100, $pctC1) }}%"></i>
@@ -316,7 +319,7 @@
                 <li style="margin-bottom:.75rem">
                     <div class="mk-row between mk-small">
                         <span>C3 · Tarjeta de crédito</span>
-                        <span>{{ number_format($pctC3, 2, ',', '.') }} %</span>
+                        <span>{{ $formatValue($pctC3, 2, ',', '.') }} %</span>
                     </div>
                     <div @class(['mk-bar', 'over' => $pctC3 > 100])>
                         <i style="width: {{ min(100, $pctC3) }}%"></i>
@@ -325,7 +328,7 @@
                 <li style="margin-bottom:.75rem">
                     <div class="mk-row between mk-small">
                         <span>C4 · Compras y consumos</span>
-                        <span>{{ number_format($pctC4, 2, ',', '.') }} %</span>
+                        <span>{{ $formatValue($pctC4, 2, ',', '.') }} %</span>
                     </div>
                     <div @class(['mk-bar', 'over' => $pctC4 > 100])>
                         <i style="width: {{ min(100, $pctC4) }}%"></i>
@@ -334,7 +337,7 @@
                 <li style="margin-bottom:.75rem">
                     <div class="mk-row between mk-small">
                         <span>C2 · Ingresos + Rendimientos</span>
-                        <span>{{ $pctC2 >= 100 ? 'Superado (' . number_format($pctC2, 2, ',', '.') . ' %)' : number_format($pctC2, 2, ',', '.') . ' %' }}</span>
+                        <span>{{ $pctC2 >= 100 ? 'Superado (' . $formatValue($pctC2, 2, ',', '.') . ' %)' : $formatValue($pctC2, 2, ',', '.') . ' %' }}</span>
                     </div>
                     <div @class(['mk-bar', 'over' => $pctC2 >= 100])>
                         <i style="width: {{ min(100, $pctC2) }}%"></i>
@@ -343,7 +346,7 @@
                 <li style="margin-bottom:.75rem">
                     <div class="mk-row between mk-small">
                         <span>C5 · Inversiones y consignaciones</span>
-                        <span>{{ $pctC5 > 100 ? 'Superado (' . number_format($pctC5, 2, ',', '.') . ' %)' : number_format($pctC5, 2, ',', '.') . ' %' }}</span>
+                        <span>{{ $pctC5 > 100 ? 'Superado (' . $formatValue($pctC5, 2, ',', '.') . ' %)' : $formatValue($pctC5, 2, ',', '.') . ' %' }}</span>
                     </div>
                     <div @class(['mk-bar', 'over' => $pctC5 > 100])>
                         <i style="width: {{ min(100, $pctC5) }}%"></i>
@@ -357,13 +360,13 @@
             <h2>Parámetros usados</h2>
             <dl class="mk-kv">
                 <dt>UVT año gravable {{ $anio }}</dt>
-                <dd>$ {{ number_format($evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
+                <dd>$ {{ $formatValue($evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
                 <dt>Componente inflacionario {{ $anio }}</dt>
-                <dd>{{ number_format($evaluacion['parametros']['pct_componente_inflacionario'] * 100, 2, ',', '.') }} %</dd>
+                <dd>{{ $formatValue($evaluacion['parametros']['pct_componente_inflacionario'] * 100, 2, ',', '.') }} %</dd>
                 <dt>Tope de patrimonio (4.500 UVT)</dt>
-                <dd>$ {{ number_format($evaluacion['parametros']['tope_patrimonio_uvt'] * $evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
+                <dd>$ {{ $formatValue($evaluacion['parametros']['tope_patrimonio_uvt'] * $evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
                 <dt>Tope de ingresos e inversiones (1.400 UVT)</dt>
-                <dd>$ {{ number_format($evaluacion['parametros']['tope_ingresos_uvt'] * $evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
+                <dd>$ {{ $formatValue($evaluacion['parametros']['tope_ingresos_uvt'] * $evaluacion['parametros']['uvt'], 0, ',', '.') }}</dd>
                 <dt>Responsable de IVA (perfil)</dt>
                 <dd>{{ $declaracion->c6_responsable_iva ? 'Sí' : 'No' }}</dd>
                 <dt>Fuente de los valores</dt>

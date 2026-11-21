@@ -1,3 +1,5 @@
+import { formatDate, todayBogota } from '../utils/date.js';
+
 export function passwordChecks(password, {correo = '', documento = ''} = {}) {
     const email = correo.trim().toLocaleLowerCase('es-CO'), doc = documento.trim().toLocaleLowerCase('es-CO'), lower = password.toLocaleLowerCase('es-CO');
     const local = email.split('@')[0];
@@ -35,5 +37,12 @@ export function validateProfilePresentation(values) {
     const errors = {};
     for (const name of ['nombres','apellidos']) if (!/^[\p{L} ]{2,60}$/u.test((values[name] ?? '').trim())) errors[name] = ['Debe tener entre 2 y 60 caracteres, solo letras y espacios.'];
     if (values.telefono && !/^\d{10}$/.test(values.telefono)) errors.telefono = ['El teléfono debe tener exactamente 10 dígitos.'];
+    if (Object.hasOwn(values,'fecha_nacimiento')) {
+        const today = todayBogota(), cutoff = String(Number(today.slice(0,4)) - 18) + today.slice(4);
+        try { formatDate(values.fecha_nacimiento); if (values.fecha_nacimiento > cutoff) errors.fecha_nacimiento = ['Debes ser mayor de edad.']; }
+        catch { errors.fecha_nacimiento = ['Indica una fecha de nacimiento válida.']; }
+    }
+    if (Object.hasOwn(values,'ocupaciones') && (!Array.isArray(values.ocupaciones) || !values.ocupaciones.length)) errors.ocupaciones = ['Selecciona al menos una ocupación.'];
+    if (Object.hasOwn(values,'ciudad_residencia') && (!values.ciudad_residencia.trim() || values.ciudad_residencia.trim().length > 80)) errors.ciudad_residencia = ['Indica tu ciudad, con máximo 80 caracteres.'];
     return errors;
 }

@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+        <h1 class="font-semibold text-xl text-gray-800 leading-tight">
             Panel de Administración — Parámetros y Configuración
-        </h2>
+        </h1>
     </x-slot>
 
     <div class="py-12">
@@ -12,9 +12,7 @@
                 <!-- Parámetros Normativos -->
                 <div class="bg-white p-6 rounded-xl shadow border border-gray-100 hover:shadow-lg transition">
                     <div class="flex items-center space-x-3 text-indigo-600 mb-3">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                        </svg>
+                        <x-icon name="act-clasificacion-tributaria" :size="32" />
                         <h3 class="font-bold text-lg text-gray-900">Parámetros Normativos</h3>
                     </div>
                     <p class="text-sm text-gray-600 mb-4">
@@ -28,9 +26,7 @@
                 <!-- Catálogo de Categorías -->
                 <div class="bg-white p-6 rounded-xl shadow border border-gray-100 hover:shadow-lg transition">
                     <div class="flex items-center space-x-3 text-emerald-600 mb-3">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                        </svg>
+                        <x-icon name="ui-categorias" :size="32" />
                         <h3 class="font-bold text-lg text-gray-900">Catálogo de Categorías</h3>
                     </div>
                     <p class="text-sm text-gray-600 mb-4">
@@ -44,9 +40,7 @@
                 <!-- Calendario Tributario -->
                 <div class="bg-white p-6 rounded-xl shadow border border-gray-100 hover:shadow-lg transition">
                     <div class="flex items-center space-x-3 text-amber-600 mb-3">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                        </svg>
+                        <x-icon name="ui-calendario" :size="32" />
                         <h3 class="font-bold text-lg text-gray-900">Calendario Tributario</h3>
                     </div>
                     <p class="text-sm text-gray-600 mb-4">
@@ -60,9 +54,7 @@
                 <!-- Gestión de Usuarios -->
                 <div class="bg-white p-6 rounded-xl shadow border border-gray-100 hover:shadow-lg transition">
                     <div class="flex items-center space-x-3 text-rose-600 mb-3">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                        </svg>
+                        <x-icon name="ui-usuario" :size="32" />
                         <h3 class="font-bold text-lg text-gray-900">Cuentas de Usuario</h3>
                     </div>
                     <p class="text-sm text-gray-600 mb-4">

@@ -13,6 +13,9 @@ import { mountFinance } from './finance/index.js';
 import { registerSocial } from './social/index.js';
 import { mountCredits } from './credits/index.js';
 import { mountCurrencySelector } from './ui/currency.js';
+import { mountValueInputs } from './ui/value-input.js';
+import { registerRenta } from './renta/index.js';
+import { mountAdmin } from './admin/index.js';
 
 document.querySelectorAll('[data-icon-name]').forEach((host) => {
     const svg = renderIcon(host.dataset.iconName, {
@@ -25,9 +28,11 @@ document.querySelectorAll('[data-icon-name]').forEach((host) => {
 });
 
 window.Alpine = Alpine;
+mountValueInputs();
 
 registerFoundation(Alpine);
 registerSocial();
+registerRenta(Alpine);
 Alpine.start();
 mountFoundation();
 mountIncome();
@@ -37,5 +42,6 @@ mountAuth();
 mountFinance();
 mountCredits();
 mountCurrencySelector();
+mountAdmin();
 
 mountPlanning();

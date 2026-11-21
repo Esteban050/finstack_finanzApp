@@ -1,9 +1,12 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center justify-between">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            <h1 class="font-semibold text-xl text-gray-800 leading-tight">
                 Tablas de Tarifas Escalonadas — Vigencia {{ $parametro->anio_vigencia }}
-            </h2>
+            </h1>
             <a href="{{ route('admin.parametros.index') }}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-900">
                 &larr; Volver a Vigencias
             </a>
@@ -42,10 +45,10 @@
                         <tbody class="divide-y divide-gray-200">
                             @forelse ($tarifasRenta as $t)
                                 <tr>
-                                    <td class="px-4 py-2 font-mono">{{ number_format($t->rango_desde, 0) }}</td>
-                                    <td class="px-4 py-2 font-mono">{{ $t->rango_hasta ? number_format($t->rango_hasta, 0) : 'En adelante' }}</td>
+                                    <td class="px-4 py-2 font-mono">{{ $formatValue($t->rango_desde, 0) }}</td>
+                                    <td class="px-4 py-2 font-mono">{{ $t->rango_hasta ? $formatValue($t->rango_hasta, 0) : 'En adelante' }}</td>
                                     <td class="px-4 py-2 text-right font-bold text-indigo-600">{{ $t->tarifa_porc }}%</td>
-                                    <td class="px-4 py-2 text-right font-mono">{{ number_format($t->impuesto_base_uvt, 0) }}</td>
+                                    <td class="px-4 py-2 text-right font-mono">{{ $formatValue($t->impuesto_base_uvt, 0) }}</td>
                                 </tr>
                             @empty
                                 <tr>
@@ -62,8 +65,8 @@
                 <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <h4 class="font-bold text-sm text-gray-800 mb-2">Simulador de Impuesto de Renta:</h4>
                     <div class="flex items-center space-x-3">
-                        <input type="number" id="simulador_base" placeholder="Base gravable en UVT (ej: 2000)" class="border-gray-300 rounded-md text-sm w-64" value="2000">
-                        <button type="button" id="btnCalcular" class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-md hover:bg-indigo-700">
+                        <input type="number" data-value-input data-precision="2" id="simulador_base" placeholder="Base gravable en UVT (ej: 2000)" class="border-gray-300 rounded-md text-sm w-64" value="2000">
+                        <button type="button" id="btnCalcular" data-url="{{ route('admin.tarifas.probar', $parametro->id) }}" class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-md hover:bg-indigo-700">
                             Calcular Impuesto
                         </button>
                     </div>
@@ -109,11 +112,11 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
-                            <tr><td class="px-4 py-2 font-bold">Clase I</td><td class="px-4 py-2 text-gray-600">Mínimo (Oficinas, actividades administrativas)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">0.522%</td></tr>
-                            <tr><td class="px-4 py-2 font-bold">Clase II</td><td class="px-4 py-2 text-gray-600">Bajo (Manufactura liviana, comercio)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">1.044%</td></tr>
-                            <tr><td class="px-4 py-2 font-bold">Clase III</td><td class="px-4 py-2 text-gray-600">Medio (Procesos industriales, transportes)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">2.436%</td></tr>
-                            <tr><td class="px-4 py-2 font-bold">Clase IV</td><td class="px-4 py-2 text-gray-600">Alto (Construcción, transporte de carga pesada)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">4.350%</td></tr>
-                            <tr><td class="px-4 py-2 font-bold">Clase V</td><td class="px-4 py-2 text-gray-600">Máximo (Minería, explosivos, trabajo en alturas)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">6.960%</td></tr>
+                            <tr><td class="px-4 py-2 font-bold">Clase I</td><td class="px-4 py-2 text-gray-600">Mínimo (Oficinas, actividades administrativas)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">0,522 %</td></tr>
+                            <tr><td class="px-4 py-2 font-bold">Clase II</td><td class="px-4 py-2 text-gray-600">Bajo (Manufactura liviana, comercio)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">1,044 %</td></tr>
+                            <tr><td class="px-4 py-2 font-bold">Clase III</td><td class="px-4 py-2 text-gray-600">Medio (Procesos industriales, transportes)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">2,436 %</td></tr>
+                            <tr><td class="px-4 py-2 font-bold">Clase IV</td><td class="px-4 py-2 text-gray-600">Alto (Construcción, transporte de carga pesada)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">4,350 %</td></tr>
+                            <tr><td class="px-4 py-2 font-bold">Clase V</td><td class="px-4 py-2 text-gray-600">Máximo (Minería, explosivos, trabajo en alturas)</td><td class="px-4 py-2 text-right font-mono font-bold text-indigo-600">6,960 %</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -121,33 +124,4 @@
         </div>
     </div>
 
-    <script>
-        document.getElementById('btnCalcular')?.addEventListener('click', async () => {
-            const base = document.getElementById('simulador_base').value;
-            const resDiv = document.getElementById('resultadoSimulador');
-
-            try {
-                const response = await fetch("{{ route('admin.tarifas.probar', $parametro->id) }}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ base_uvt: base })
-                });
-
-                const data = await response.json();
-                resDiv.classList.remove('hidden');
-                resDiv.innerHTML = `
-                    <div class="p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-md">
-                        Base: <strong>${data.base_uvt} UVT</strong> |
-                        Impuesto calculado: <strong class="text-indigo-600 font-mono">${data.impuesto_uvt} UVT</strong>
-                        (aprox. <strong>$${new Intl.NumberFormat('es-CO').format(data.impuesto_cop)} COP</strong>)
-                    </div>
-                `;
-            } catch (err) {
-                alert('Error al calcular el impuesto: ' + err.message);
-            }
-        });
-    </script>
 </x-app-layout>

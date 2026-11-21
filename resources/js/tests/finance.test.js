@@ -69,3 +69,11 @@ test('C/D: ocho vistas Blade reales renderizan sin consultas ni escrituras en BD
     assert.match(rendered['inversiones.show'],/Registrar Transacción/);
     assert.doesNotMatch(rendered['inversiones.show'],/id="val_valor"/); // CDT: cálculo causado, sin valoración manual.
 });
+
+test('Inversiones: las cinco variantes adicionales renderizan con cálculos decimales exactos', () => {
+ for (const investmentType of ['ACCION_ETF','CUENTA_ALTO_RENDIMIENTO','FIC','FPV','CESANTIAS']) {
+  const html=renderFinanceFixtures({investmentType,detailOnly:true})['inversiones.show'];
+  assert.match(html,/QA-Inversión ficticia/,investmentType);
+  assert.doesNotMatch(html,/\(float\)|parseFloat\(/,investmentType);
+ }
+});

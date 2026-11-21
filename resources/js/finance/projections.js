@@ -1,9 +1,16 @@
 import { decimal, parseMoneyInput, formatMoney } from '../utils/money.js';
 import { formatDate, todayBogota } from '../utils/date.js';
+import { bindMoneyGrouping } from '../ui/money-format.js';
 
 const DAY = 86400000;
 const civilTime = value => { formatDate(value); return Date.parse(value + 'T12:00:00Z'); };
 const civilDate = value => new Date(value).toISOString().slice(0, 10);
+export function projectedInterest(capital, rate, days, base = '365') {
+    const factor = decimal(String(rate)).div('100').plus('1');
+    if (factor.lt('0') || decimal(String(base)).lte('0')) throw new Error('Revisa la tasa y la base de días.');
+    return decimal(String(capital)).times(factor.pow(decimal(String(days)).div(String(base))).minus('1')).toFixed(2);
+}
+
 export function addMonthsCivil(start, count) {
     const [year,month,day]=start.split('-').map(Number);
     const last=new Date(Date.UTC(year,month-1+count+1,0)).getUTCDate();
@@ -64,6 +71,7 @@ export function mountInvestmentGoals() {
             catch(error){message=error.message;hidden.value='';output.textContent='—';}
             const field=root.closest('[data-field]'),error=field.querySelector('[data-field-error]');error.textContent=message;error.hidden=!message;input.setCustomValidity(message);input.setAttribute('aria-invalid',String(Boolean(message)));
         };
+        bindMoneyGrouping(input, {isMoney: () => mode === 'money'});
         input.addEventListener('input',update);form.addEventListener('money-change',event=>{if(event.detail.name==='monto_inicial')update();});
         root.querySelectorAll('[data-goal-mode]').forEach(button=>button.addEventListener('click',()=>{
             if(mode===button.dataset.goalMode)return;

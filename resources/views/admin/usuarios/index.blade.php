@@ -1,10 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center justify-between">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            <h1 class="font-semibold text-xl text-gray-800 leading-tight">
                 Gestión de Cuentas de Usuario
-            </h2>
-            <button onclick="document.getElementById('modalCrearAdmin').classList.remove('hidden')" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg text-sm shadow">
+            </h1>
+            <button onclick="document.getElementById('modalCrearAdmin').showModal()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg text-sm shadow">
                 + Crear Administrador
             </button>
         </div>
@@ -94,7 +94,7 @@
                                             <span class="px-2.5 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 rounded-full">{{ $u->estado }}</span>
                                         @endif
                                     </td>
-                                    <td class="px-6 py-4 text-xs text-gray-500">{{ $u->creado_en?->format('Y-m-d') }}</td>
+                                    <td class="px-6 py-4 text-xs text-gray-500">{{ $u->creado_en?->format('d/m/Y') }}</td>
                                     <td class="px-6 py-4 text-xs text-gray-500">{{ $u->ultimo_acceso ? $u->ultimo_acceso->diffForHumans() : 'Nunca' }}</td>
                                     <td class="px-6 py-4 text-center space-x-2">
                                         @if ($u->estado === 'BLOQUEADA')
@@ -139,9 +139,9 @@
     </div>
 
     <!-- Modal Inactivar Cuenta (RN-018.2: Justificación obligatoria) -->
-    <div id="modalInactivar" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-2">Inactivar Cuenta</h3>
+    <dialog id="modalInactivar" class="ui-dialog admin-dialog" aria-labelledby="inactivate-title">
+        <div class="admin-dialog-content">
+            <h3 id="inactivate-title" class="text-lg font-bold text-gray-900 mb-2">Inactivar Cuenta</h3>
             <p class="text-xs text-gray-500 mb-4" id="inactivarUsuarioTexto"></p>
 
             <form id="formInactivar" method="POST" action="">
@@ -151,11 +151,11 @@
 
                 <div>
                     <x-input-label for="justificacion" value="Motivo / Justificación (mínimo 10 caracteres) *" />
-                    <textarea name="justificacion" id="justificacion" rows="3" required class="w-full mt-1 border-gray-300 rounded-md text-sm" placeholder="Ej: Solicitud formal de suspensión temporal o conducta fraudulenta..."></textarea>
+                    <textarea name="justificacion" id="justificacion" rows="3" minlength="10" required class="w-full mt-1 border-gray-300 rounded-md text-sm" placeholder="Ej: Solicitud formal de suspensión temporal o conducta fraudulenta..."></textarea>
                 </div>
 
                 <div class="flex items-center justify-end space-x-3 mt-6">
-                    <button type="button" onclick="document.getElementById('modalInactivar').classList.add('hidden')" class="px-4 py-2 border rounded-md text-sm text-gray-600 hover:bg-gray-50">
+                    <button type="button" onclick="document.getElementById('modalInactivar').close()" class="px-4 py-2 border rounded-md text-sm text-gray-600 hover:bg-gray-50">
                         Cancelar
                     </button>
                     <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-semibold hover:bg-red-700">
@@ -164,12 +164,12 @@
                 </div>
             </form>
         </div>
-    </div>
+    </dialog>
 
     <!-- Modal Crear Administrador -->
-    <div id="modalCrearAdmin" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Crear Nuevo Administrador</h3>
+    <dialog id="modalCrearAdmin" class="ui-dialog admin-dialog" aria-labelledby="create-admin-title">
+        <div class="admin-dialog-content">
+            <h3 id="create-admin-title" class="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Crear Nuevo Administrador</h3>
 
             <form method="POST" action="{{ route('admin.usuarios.store-admin') }}" class="space-y-4">
                 @csrf
@@ -216,7 +216,7 @@
                 </div>
 
                 <div class="flex items-center justify-end space-x-3 pt-4 border-t">
-                    <button type="button" onclick="document.getElementById('modalCrearAdmin').classList.add('hidden')" class="px-4 py-2 border rounded-md text-sm text-gray-600 hover:bg-gray-50">
+                    <button type="button" onclick="document.getElementById('modalCrearAdmin').close()" class="px-4 py-2 border rounded-md text-sm text-gray-600 hover:bg-gray-50">
                         Cancelar
                     </button>
                     <x-primary-button>
@@ -225,14 +225,14 @@
                 </div>
             </form>
         </div>
-    </div>
+    </dialog>
 
     <script>
         function abrirModalInactivar(id, correo) {
             const form = document.getElementById('formInactivar');
             form.action = `/admin/usuarios/${id}/estado`;
             document.getElementById('inactivarUsuarioTexto').innerText = `Vas a inactivar la cuenta de ${correo}. Esto cerrará sus sesiones activas de inmediato.`;
-            document.getElementById('modalInactivar').classList.remove('hidden');
+            document.getElementById('modalInactivar').showModal();
         }
     </script>
 </x-app-layout>

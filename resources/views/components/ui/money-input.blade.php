@@ -1,7 +1,10 @@
-@props(['name', 'label' => 'Monto', 'currencyName' => null, 'value' => '', 'required' => true, 'allowZero' => false, 'id' => null, 'deduction' => false, 'editing' => false, 'currency' => 'COP'])
-@php($inputId = $id ?? $name)
-<x-ui.field :name="$name" :id="$inputId" :label="$label" :required="$required" :help="$deduction ? 'Porcentaje entre 0 y 100 o valor en COP/USD; máximo dos decimales.' : ($allowZero ? 'Valor mayor o igual a $ 0. Máximo dos decimales.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99. Máximo dos decimales.')">
-    <div x-data="moneyInput" data-value="{{ old($name, $value) }}" data-allow-zero="{{ $allowZero ? 'true' : 'false' }}" data-deduction="{{ $deduction ? 'true' : 'false' }}" data-editing="{{ $editing ? 'true' : 'false' }}" @deduction-mode="setMode($event.detail)">
+@props(['name', 'label' => 'Monto', 'currencyName' => null, 'value' => '', 'required' => true, 'allowZero' => false, 'allowNegative' => false, 'id' => null, 'deduction' => false, 'editing' => false, 'currency' => 'COP'])
+@php
+    $inputId = $id ?? $name;
+    $moneyHelp = $allowNegative ? 'Ajuste positivo o negativo, con máximo dos decimales. El total final no puede ser negativo.' : ($deduction ? 'Porcentaje entre 0 y 100 o valor monetario; máximo dos decimales.' : ($allowZero ? 'Valor entre $ 0 y $ 999.999.999.999,99. Máximo dos decimales.' : 'El monto debe ser mayor que $ 0 y no superar $ 999.999.999.999,99. Máximo dos decimales.'));
+@endphp
+<x-ui.field :name="$name" :id="$inputId" :label="$label" :required="$required" :help="$moneyHelp">
+    <div x-data="moneyInput" data-value="{{ old($name, $value) }}" data-allow-negative="{{ $allowNegative ? 'true' : 'false' }}" data-allow-zero="{{ $allowZero ? 'true' : 'false' }}" data-deduction="{{ $deduction ? 'true' : 'false' }}" data-editing="{{ $editing ? 'true' : 'false' }}" @deduction-mode="setMode($event.detail)">
     @if($deduction)<div class="ui-inline ui-deduction-mode" role="group" aria-label="Unidad de {{ $label }}"><button type="button" class="ui-button ui-button--secondary" @click="$dispatch('deduction-mode', 'percent')" :aria-pressed="mode === 'percent'">%</button><button type="button" class="ui-button ui-button--secondary" @click="$dispatch('deduction-mode', 'money')" :aria-pressed="mode === 'money'">$</button></div>@endif
     <div class="ui-money">
         <input id="{{ $inputId }}" type="text" inputmode="decimal" x-model="display" @input="validate" @blur="validate" @required($required) aria-describedby="{{ $inputId }}-help {{ $inputId }}-error {{ $inputId }}-unit" :aria-invalid="invalid" autocomplete="off" {{ $attributes }}>

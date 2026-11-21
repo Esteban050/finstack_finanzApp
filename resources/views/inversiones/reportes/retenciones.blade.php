@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 @section('title', 'Reporte Anual de Retenciones – Inversiones')
 @section('content')
@@ -9,7 +12,7 @@
 <header class="income-page-header">
     <div>
         <a href="{{ route('inversiones.index') }}" class="ui-button" style="text-decoration:none; margin-bottom: 0.5rem; display: inline-block;">&larr; Volver a inversiones</a>
-        <h1>Reporte Anual de Retenciones Practicadas (RF-REP-02)</h1>
+        <h1>Reporte Anual de Retenciones Practicadas</h1>
         <p>Conciliación y cruce de retención en la fuente y GMF con los certificados emitidos por entidades financieras.</p>
     </div>
     <div class="ui-inline" style="gap: 0.5rem; flex-wrap: wrap;">
@@ -60,25 +63,25 @@
 <div class="finance-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
     <x-ui.card>
         <span class="ui-help">Total Bruto Sujeto a Descuento</span>
-        <h2 style="margin: 0.25rem 0;">$ {{ number_format((float) $totales['total_bruto'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0;">$ {{ $formatValue((string) $totales['total_bruto'], 2) }}</h2>
         <span class="ui-help">Año gravable {{ $anio }}</span>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Retención en la Fuente Practicada</span>
-        <h2 style="margin: 0.25rem 0; color: #dc2626;">-$ {{ number_format((float) $totales['total_retencion'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: #dc2626;">-$ {{ $formatValue((string) $totales['total_retencion'], 2) }}</h2>
         <span class="ui-help">Anticipo acreditable en renta</span>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">GMF 4x1000 Total Descontado</span>
-        <h2 style="margin: 0.25rem 0; color: #d97706;">-$ {{ number_format((float) $totales['total_gmf'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: #d97706;">-$ {{ $formatValue((string) $totales['total_gmf'], 2) }}</h2>
         <span class="ui-help">Gravamen en retiros bancarios</span>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Neto Efectivamente Desembolsado</span>
-        <h2 style="margin: 0.25rem 0; color: #16a34a;">$ {{ number_format((float) $totales['total_neto'], 2) }}</h2>
+        <h2 style="margin: 0.25rem 0; color: #16a34a;">$ {{ $formatValue((string) $totales['total_neto'], 2) }}</h2>
         <span class="ui-help">Recibido en cuenta</span>
     </x-ui.card>
 </div>
@@ -104,10 +107,10 @@
                     <tr>
                         <td><strong>{{ $ent['entidad'] }}</strong></td>
                         <td style="text-align: center;">{{ $ent['transacciones_count'] }}</td>
-                        <td class="ui-number">$ {{ number_format((float) $ent['total_bruto'], 2) }}</td>
-                        <td class="ui-number" style="color: #dc2626; font-weight: 600;">-$ {{ number_format((float) $ent['total_retencion'], 2) }}</td>
-                        <td class="ui-number" style="color: #d97706;">-$ {{ number_format((float) $ent['total_gmf'], 2) }}</td>
-                        <td class="ui-number" style="font-weight: 600;">$ {{ number_format((float) $ent['total_neto'], 2) }}</td>
+                        <td class="ui-number">$ {{ $formatValue((string) $ent['total_bruto'], 2) }}</td>
+                        <td class="ui-number" style="color: #dc2626; font-weight: 600;">-$ {{ $formatValue((string) $ent['total_retencion'], 2) }}</td>
+                        <td class="ui-number" style="color: #d97706;">-$ {{ $formatValue((string) $ent['total_gmf'], 2) }}</td>
+                        <td class="ui-number" style="font-weight: 600;">$ {{ $formatValue((string) $ent['total_neto'], 2) }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -134,10 +137,10 @@
                 @foreach($resumenPorProducto as $prod)
                     <tr>
                         <td><x-ui.badge tone="primary">{{ $labels[$prod['tipo']] ?? $prod['tipo'] }}</x-ui.badge></td>
-                        <td class="ui-number">$ {{ number_format((float) $prod['total_bruto'], 2) }}</td>
-                        <td class="ui-number" style="color: #dc2626;">-$ {{ number_format((float) $prod['total_retencion'], 2) }}</td>
-                        <td class="ui-number" style="color: #d97706;">-$ {{ number_format((float) $prod['total_gmf'], 2) }}</td>
-                        <td class="ui-number" style="font-weight: 600;">$ {{ number_format((float) $prod['total_neto'], 2) }}</td>
+                        <td class="ui-number">$ {{ $formatValue((string) $prod['total_bruto'], 2) }}</td>
+                        <td class="ui-number" style="color: #dc2626;">-$ {{ $formatValue((string) $prod['total_retencion'], 2) }}</td>
+                        <td class="ui-number" style="color: #d97706;">-$ {{ $formatValue((string) $prod['total_gmf'], 2) }}</td>
+                        <td class="ui-number" style="font-weight: 600;">$ {{ $formatValue((string) $prod['total_neto'], 2) }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -170,14 +173,14 @@
                         <td><a href="{{ route('inversiones.show', $m->inversion_id) }}"><strong>{{ $m->inversion?->nombre }}</strong></a></td>
                         <td>{{ $m->inversion?->entidadFinanciera?->nombre ?? $m->inversion?->entidad ?? '—' }}</td>
                         <td><x-ui.badge tone="neutral">{{ $labels[$m->tipo] ?? $m->tipo }}</x-ui.badge></td>
-                        <td class="ui-number">$ {{ number_format((float) ($m->monto_bruto ?? $m->monto), 2) }}</td>
+                        <td class="ui-number">$ {{ $formatValue((string) ($m->monto_bruto ?? $m->monto), 2) }}</td>
                         <td class="ui-number" style="color: #dc2626;">
-                            {{ (float)$m->retencion_aplicada > 0 ? '-$' . number_format((float)$m->retencion_aplicada, 2) : '—' }}
+                            {{ (string)$m->retencion_aplicada > 0 ? '-$' . $formatValue((string)$m->retencion_aplicada, 2) : '—' }}
                         </td>
                         <td class="ui-number" style="color: #d97706;">
-                            {{ (float)$m->gmf_aplicado > 0 ? '-$' . number_format((float)$m->gmf_aplicado, 2) : '—' }}
+                            {{ (string)$m->gmf_aplicado > 0 ? '-$' . $formatValue((string)$m->gmf_aplicado, 2) : '—' }}
                         </td>
-                        <td class="ui-number" style="font-weight: 600;">$ {{ number_format((float) $m->monto, 2) }}</td>
+                        <td class="ui-number" style="font-weight: 600;">$ {{ $formatValue((string) $m->monto, 2) }}</td>
                     </tr>
                 @endforeach
             </tbody>

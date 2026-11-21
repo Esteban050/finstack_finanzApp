@@ -46,7 +46,7 @@ function old(string $name, mixed $fallback = null): mixed { return $fallback; }
 function asset(string $path): string { return '/'.$path; }
 function resource_path(string $path): string { return __DIR__.'/../resources/'.$path; }
 function session(string $name): mixed { return null; }
-function auth(): object { return new class { public function check(): bool { return true; } }; }
+function auth(): object { return new class { public function check(): bool { return true; } public function user(): object { return new class { public function esAdmin(): bool { return false; } }; } }; }
 function request(): object { return new class {
     public function routeIs(string ...$names): bool { return in_array('dashboard', $names, true); }
     public function except(array $keys): array { return []; }

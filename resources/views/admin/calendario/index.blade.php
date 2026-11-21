@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+        <h1 class="font-semibold text-xl text-gray-800 leading-tight">
             Calendario Tributario y de Aportes
-        </h2>
+        </h1>
     </x-slot>
 
     <div class="py-12">
@@ -58,7 +58,7 @@
                         <h4 class="font-bold text-sm text-gray-900 mb-2">Consultar Fecha por Dígitos</h4>
                         <div class="flex space-x-2">
                             <input type="text" id="consulta_digitos" maxlength="2" placeholder="Ej: 37" class="w-20 text-center font-mono text-sm border-gray-300 rounded-md">
-                            <button type="button" id="btnConsultar" class="px-3 py-1.5 bg-gray-800 text-white text-xs font-semibold rounded-md hover:bg-gray-700">
+                            <button type="button" id="btnConsultar" data-url="{{ route('admin.calendario.consultar') }}" data-year="{{ $anio }}" data-kind="{{ $tipo }}" class="px-3 py-1.5 bg-gray-800 text-white text-xs font-semibold rounded-md hover:bg-gray-700">
                                 Consultar
                             </button>
                         </div>
@@ -92,7 +92,7 @@
                                     <tr>
                                         <td class="px-4 py-2 text-indigo-700 font-bold">{{ $reg->digito_desde }}</td>
                                         <td class="px-4 py-2 text-indigo-700 font-bold">{{ $reg->digito_hasta }}</td>
-                                        <td class="px-4 py-2 font-sans">{{ $reg->fecha_vencimiento->format('Y-m-d') }}</td>
+                                        <td class="px-4 py-2 font-sans">{{ $reg->fecha_vencimiento->format('d/m/Y') }}</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -109,32 +109,4 @@
         </div>
     </div>
 
-    <script>
-        document.getElementById('btnConsultar')?.addEventListener('click', async () => {
-            const digitos = document.getElementById('consulta_digitos').value;
-            const resDiv = document.getElementById('resultadoConsulta');
-
-            if (!digitos || digitos.length < 2) {
-                alert('Ingresa 2 dígitos (ej: 05, 37, 99)');
-                return;
-            }
-
-            try {
-                const url = `{{ route('admin.calendario.consultar') }}?digitos=${digitos}&anio={{ $anio }}&tipo={{ $tipo }}`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                resDiv.classList.remove('hidden');
-                if (data.encontrado) {
-                    resDiv.className = 'mt-2 text-xs p-2 bg-green-50 border border-green-200 text-green-800 rounded font-semibold';
-                    resDiv.innerText = `Dígitos ${data.digitos}: Vence el ${data.fecha_vencimiento}`;
-                } else {
-                    resDiv.className = 'mt-2 text-xs p-2 bg-red-50 border border-red-200 text-red-700 rounded font-semibold';
-                    resDiv.innerText = data.mensaje;
-                }
-            } catch (e) {
-                alert('Error al consultar: ' + e.message);
-            }
-        });
-    </script>
 </x-app-layout>

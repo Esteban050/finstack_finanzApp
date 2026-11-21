@@ -1,4 +1,5 @@
 import { request, safeMessage } from '../api/index.js';
+import { formatDate } from '../utils/date.js';
 import { formatMoney } from '../utils/money.js';
 
 export function mountPilaAutofill() {
@@ -109,6 +110,13 @@ export function mountPilaAutofill() {
                 }
 
                 const response = await request(targetUrl, { method: 'GET' });
+                const currentExpenses = gastosInput?.closest('[x-data]')?.querySelector('input[type=hidden][name="gastos_asociados"]')?.value || gastosInput?.value || '0';
+                if (periodInput?.value !== periodo || (serviceSelect?.value === 'RENTISTA_CAPITAL') !== isRentista || (isRentista && currentExpenses !== gastosValue)) {
+                    if (msgEl) msgEl.textContent = 'Los datos cambiaron durante la consulta. Vuelve a traer los ingresos del periodo seleccionado.';
+                    if (statusEl) { statusEl.hidden = false; statusEl.dataset.state = 'warning'; }
+                    if (detailsEl) detailsEl.hidden = true;
+                    return;
+                }
                 const result = response.data;
 
                 if (!statusEl || !msgEl) return;
@@ -160,7 +168,7 @@ export function mountPilaAutofill() {
 
                             const dateSpan = document.createElement('span');
                             dateSpan.className = 'pila-autofill-item-date';
-                            dateSpan.textContent = ` (${item.fecha || periodo})`;
+                            dateSpan.textContent = ` (${item.fecha ? formatDate(item.fecha) : periodo})`;
 
                             info.append(sourceSpan, dateSpan);
 

@@ -7,9 +7,10 @@ if (typeof window !== 'undefined') {
 import { request, showRequestError, contractPayload } from '../api/index.js';
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { moneyInputErrors } from '../income/index.js';
-import { decimal, formatMoney, formatQuantity, parseMoneyInput } from '../utils/money.js';
+import { decimal, formatMoney, formatQuantity, parseMoneyInput, formatMoneyDraft, parseLocalizedValue, formatCanonicalValue } from '../utils/money.js';
+import { bindMoneyGrouping, groupMoneyControl } from '../ui/money-format.js';
 import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText, financeMessage } from './rules.js';
-import { mountInvestmentGoals } from './projections.js';
+import { mountInvestmentGoals, projectedInterest } from './projections.js';
 import { mountProjectionViews } from './projection-view.js';
 import { mountPilaAutofill } from './pila.js';
 
@@ -53,7 +54,17 @@ function updateFormats(root = document) {
     });
 }
 export function mountFinance() {
-    window.FinanzMoney = { decimal, formatMoney };
+    const nativeInvestment = document.getElementById('investment-form');
+    if (nativeInvestment) {
+        const errors = () => validateFinance(Object.fromEntries(new FormData(nativeInvestment)), 'investment');
+        bindErrorRevalidation(nativeInvestment, errors);
+        nativeInvestment.addEventListener('submit', event => {
+            const failures = errors();
+            mapFieldErrors(nativeInvestment, failures);
+            if (Object.keys(failures).length) event.preventDefault();
+        });
+    }
+    window.FinanzMoney = { decimal, formatMoney, formatQuantity, formatMoneyDraft, parseLocalizedValue, formatCanonicalValue, bindMoneyGrouping, groupMoneyControl, projectedInterest };
 
     Chart.defaults.font.size=13;
     Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;
@@ -267,7 +278,7 @@ export function mountFinance() {
             if (!preview) return;
             const monto = parseMoneyInput(montoInput?.value || '0');
             const unidades = unidadesInput?.value?.replace(',', '.');
-            if (monto && unidades && Number(monto) > 0 && Number(unidades) > 0) {
+            if (monto && unidades && decimal(monto).gt('0') && decimal(unidades).gt('0')) {
                 try {
                     const implied = decimal(monto).div(decimal(unidades)).toFixed(2);
                     preview.textContent = `Precio unitario implícito: ${formatMoney(implied)}`;

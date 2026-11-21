@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 @section('title', 'Detalle de Inversión – ' . $inversion->nombre)
 @section('content')
@@ -7,32 +10,11 @@
     $det = $presentacion['detalle_especifico'] ?? [];
     $vnr = $presentacion['valoracion_no_realizada'] ?? null;
 
-    $interesPeriodicoCdt = '0.00';
-    $totalLiquidacionCdt = '0.00';
+    $diasPeriodo = match(strtoupper($det['periodicidad_pago'] ?? 'MENSUAL')) {
+        'MENSUAL'=>30, 'TRIMESTRAL'=>90, 'SEMESTRAL'=>180, 'ANUAL'=>365,
+        default=>(int)($det['plazo_dias'] ?? 365),
+    };
     $puntosAccion = [];
-    if ($inversion->tipo === 'CDT' && !empty($det['tasa_valor'])) {
-        $cap = (float) ($det['capital'] ?? $inversion->monto_inicial);
-        $tasa = (float) $det['tasa_valor'];
-        $periodicidad = $det['periodicidad_pago'] ?? 'MENSUAL';
-        $diasPeriodo = match(strtoupper($periodicidad)) {
-            'MENSUAL' => 30,
-            'TRIMESTRAL' => 90,
-            'SEMESTRAL' => 180,
-            'ANUAL' => 365,
-            default => (int) ($det['plazo_dias'] ?? 365),
-        };
-        $base = (int) ($det['base_dias'] ?? 365);
-        $interesPeriodicoCdt = number_format($cap * (pow(1 + ($tasa / 100), $diasPeriodo / $base) - 1), 2, '.', '');
-        $totalLiquidacionCdt = number_format($cap + (float)($presentacion['rendimiento_estimado'] ?? $interesPeriodicoCdt), 2, '.', '');
-    }
-
-    $interesMensualCuenta = '0.00';
-    if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && !empty($det['tasa_ea'])) {
-        $saldoAct = (float) ($presentacion['valor_actual'] ?? $det['saldo_inicial'] ?? $inversion->monto_inicial);
-        $tasa = (float) $det['tasa_ea'];
-        $base = (int) ($det['base_dias'] ?? 365);
-        $interesMensualCuenta = number_format($saldoAct * (pow(1 + ($tasa / 100), 30 / $base) - 1), 2, '.', '');
-    }
 @endphp
 
 <header class="income-page-header">
@@ -72,36 +54,36 @@
     <x-ui.card>
         <span class="ui-help">Valor Actual de la Posición</span>
         <h2 style="margin: 0.25rem 0; color: var(--color-primary);">
-            $ {{ number_format((float) ($inversion->estaLiquidada() ? 0 : ($presentacion['valor_actual'] ?? $inversion->monto_inicial)), 2) }}
+            $ {{ $formatValue((string) ($inversion->estaLiquidada() ? 0 : ($presentacion['valor_actual'] ?? $inversion->monto_inicial)), 2) }}
             <small style="font-size: 0.9rem; color: #666;">{{ $inversion->moneda }}</small>
         </h2>
         @if($inversion->estaLiquidada())
             <p class="ui-help" style="margin: 0; color: #16a34a; font-weight: 600;">Posición redimida y cerrada</p>
         @elseif($presentacion['unidades_actuales'] !== null)
-            <p class="ui-help" style="margin: 0;">Unidades acumuladas: <strong>{{ number_format((float) $presentacion['unidades_actuales'], 8) }}</strong></p>
+            <p class="ui-help" style="margin: 0;">Unidades acumuladas: <strong>{{ $formatValue((string) $presentacion['unidades_actuales'], 8) }}</strong></p>
         @endif
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Capital Aportado Neto</span>
         <h2 style="margin: 0.25rem 0;">
-            $ {{ number_format((float) ($inversion->estaLiquidada() ? 0 : ((float)$indicadores['capital_aportado_neto'] < 0 ? 0 : $indicadores['capital_aportado_neto'])), 2) }}
+            $ {{ $formatValue((string) ($inversion->estaLiquidada() ? 0 : ((string)$indicadores['capital_aportado_neto'] < 0 ? 0 : $indicadores['capital_aportado_neto'])), 2) }}
         </h2>
         <p class="ui-help" style="margin: 0;">
             @if($inversion->estaLiquidada())
                 Posición cerrada · Capital 100% recuperado
-            @elseif((float)$indicadores['capital_aportado_neto'] < 0)
+            @elseif((string)$indicadores['capital_aportado_neto'] < 0)
                 Capital 100% recuperado (Retiros superan aportes)
             @else
-                Total Aportes: ${{ number_format((float) $indicadores['total_aportes'], 2) }}
+                Total Aportes: ${{ $formatValue((string) $indicadores['total_aportes'], 2) }}
             @endif
         </p>
     </x-ui.card>
 
     <x-ui.card>
         <span class="ui-help">Ganancia / Rendimiento Neto</span>
-        <h2 style="margin: 0.25rem 0; color: {{ (float)$indicadores['ganancia'] >= 0 ? '#16a34a' : '#dc2626' }};">
-            {{ (float)$indicadores['ganancia'] >= 0 ? '+' : '' }}$ {{ number_format((float) $indicadores['ganancia'], 2) }}
+        <h2 style="margin: 0.25rem 0; color: {{ (string)$indicadores['ganancia'] >= 0 ? '#16a34a' : '#dc2626' }};">
+            {{ (string)$indicadores['ganancia'] >= 0 ? '+' : '' }}$ {{ $formatValue((string) $indicadores['ganancia'], 2) }}
         </h2>
         <p class="ui-help" style="margin: 0;">ROI: <strong>{{ $indicadores['roi'] ?? '0.00' }}%</strong> · XIRR: <strong>{{ $indicadores['xirr'] }}</strong></p>
     </x-ui.card>
@@ -109,22 +91,22 @@
     @if($vnr)
         <x-ui.card>
             <span class="ui-help">Valorización No Realizada (RF-VAL-02)</span>
-            <h2 style="margin: 0.25rem 0; color: {{ (float)$vnr['valor'] >= 0 ? '#16a34a' : '#dc2626' }};">
-                {{ (float)$vnr['valor'] >= 0 ? '+' : '' }}$ {{ number_format((float)$vnr['valor'], 2) }}
+            <h2 style="margin: 0.25rem 0; color: {{ (string)$vnr['valor'] >= 0 ? '#16a34a' : '#dc2626' }};">
+                {{ (string)$vnr['valor'] >= 0 ? '+' : '' }}$ {{ $formatValue((string)$vnr['valor'], 2) }}
             </h2>
-            <p class="ui-help" style="margin: 0;">Variación: <strong>{{ (float)$vnr['porcentaje'] >= 0 ? '+' : '' }}{{ $vnr['porcentaje'] }}%</strong> (No genera impuesto)</p>
+            <p class="ui-help" style="margin: 0;">Variación: <strong>{{ (string)$vnr['porcentaje'] >= 0 ? '+' : '' }}{{ $vnr['porcentaje'] }}%</strong> (No genera impuesto)</p>
         </x-ui.card>
     @elseif(isset($presentacion['rendimiento_estimado']))
         <x-ui.card>
             <span class="ui-help">
-                {{ !empty($presentacion['intereses_cobrados_cdt']) && (float)$presentacion['intereses_cobrados_cdt'] > 0 ? 'Ganancia Bruta Pendiente por Cobrar' : 'Rendimiento Bruto al Vencimiento' }}
+                {{ !empty($presentacion['intereses_cobrados_cdt']) && (string)$presentacion['intereses_cobrados_cdt'] > 0 ? 'Ganancia Bruta Pendiente por Cobrar' : 'Rendimiento Bruto al Vencimiento' }}
             </span>
             <h2 style="margin: 0.25rem 0; color: #16a34a;">
-                +$ {{ number_format((float) $presentacion['rendimiento_estimado'], 2) }}
+                +$ {{ $formatValue((string) $presentacion['rendimiento_estimado'], 2) }}
             </h2>
             <p class="ui-help" style="margin: 0;">
-                @if(!empty($presentacion['intereses_cobrados_cdt']) && (float)$presentacion['intereses_cobrados_cdt'] > 0)
-                    Cobrado: ${{ number_format((float) $presentacion['intereses_cobrados_cdt'], 2) }} · Total pactado: ${{ number_format((float) ($presentacion['rendimiento_bruto_total_cdt'] ?? '0'), 2) }}
+                @if(!empty($presentacion['intereses_cobrados_cdt']) && (string)$presentacion['intereses_cobrados_cdt'] > 0)
+                    Cobrado: ${{ $formatValue((string) $presentacion['intereses_cobrados_cdt'], 2) }} · Total pactado: ${{ $formatValue((string) ($presentacion['rendimiento_bruto_total_cdt'] ?? '0'), 2) }}
                 @else
                     Vencimiento: {{ $inversion->fecha_vencimiento?->format('d/m/Y') }}
                 @endif
@@ -184,7 +166,7 @@
             </div>
             <div>
                 <span class="ui-help">Costo Promedio Ponderado:</span>
-                <p style="margin: 0.25rem 0; font-weight: 600;">$ {{ number_format((float) ($det['costo_promedio_unitario'] ?? '0'), 4) }}</p>
+                <p style="margin: 0.25rem 0; font-weight: 600;">$ {{ $formatValue((string) ($det['costo_promedio_unitario'] ?? '0'), 4) }}</p>
             </div>
             <div>
                 <span class="ui-help">Primera Compra / Antigüedad:</span>
@@ -199,7 +181,7 @@
             <div>
                 <span class="ui-help">Dividendo por Acción Decretado:</span>
                 <p style="margin: 0.25rem 0; font-weight: 600;">
-                    $ {{ number_format((float) ($det['valor_dividendo_por_unidad'] ?? '0'), 4) }} {{ $det['moneda_dividendo'] ?? 'COP' }}
+                    $ {{ $formatValue((string) ($det['valor_dividendo_por_unidad'] ?? '0'), 4) }} {{ $det['moneda_dividendo'] ?? 'COP' }}
                     @if(($det['moneda_dividendo'] ?? 'COP') === 'USD')
                         <span class="ui-help">(TRM: {{ $det['trm_dividendo'] ?? 'Auto BD' }})</span>
                     @endif
@@ -278,8 +260,8 @@
 
 @if($inversion->tipo === 'CDT')
     @php
-        $capCdt = (float) ($det['capital'] ?? $inversion->monto_inicial ?? 0);
-        $tasaCdt = (float) ($det['tasa_valor'] ?? $inversion->tasa_ea ?? 0);
+        $capCdt = (string) ($det['capital'] ?? $inversion->monto_inicial ?? 0);
+        $tasaCdt = (string) ($det['tasa_valor'] ?? $inversion->tasa_ea ?? 0);
         $plazoCdt = (int) ($det['plazo_dias'] ?? $inversion->plazo_dias ?? 180);
         $baseCdt = (int) ($det['base_dias'] ?? 365);
         $fechaAperturaCdt = \Carbon\CarbonImmutable::parse($inversion->fecha_apertura);
@@ -291,21 +273,16 @@
         for ($i = 0; $i <= $numPasos; $i++) {
             $d = ($i === $numPasos) ? $plazoCdt : ($i * $intervaloDias);
             $fechaPunto = $fechaAperturaCdt->addDays($d);
-            $factor = pow(1 + ($tasaCdt / 100), $d / $baseCdt) - 1;
-            $rBruto = round($capCdt * $factor, 2);
-            $ret4 = round($rBruto * 0.04, 2);
-            $rNeto = round($rBruto - $ret4, 2);
-
             $puntosProyeccion[] = [
                 'dia' => $d,
                 'fecha' => $fechaPunto->format('d/m/Y'),
                 'label' => "Día $d (" . $fechaPunto->format('d/m') . ")",
                 'capital' => $capCdt,
-                'rendimiento_bruto' => $rBruto,
-                'retencion_4pct' => $ret4,
-                'rendimiento_neto' => $rNeto,
-                'total_bruto' => round($capCdt + $rBruto, 2),
-                'total_neto' => round($capCdt + $rNeto, 2),
+                'rendimiento_bruto' => '0',
+                'retencion_4pct' => '0',
+                'rendimiento_neto' => '0',
+                'total_bruto' => '0',
+                'total_neto' => '0',
             ];
         }
         $puntoFinal = end($puntosProyeccion);
@@ -315,7 +292,7 @@
     <x-ui.card title="Proyección de Ganancia y Rendimiento del CDT">
         <div style="margin-bottom: 1.25rem;">
             <p class="ui-help" style="margin: 0;">
-                Curva de causación de intereses a tasa pactada de <strong>{{ number_format($tasaCdt, 2) }}% E.A.</strong> durante los <strong>{{ $plazoCdt }} días</strong> de plazo, ilustrando el rendimiento bruto vs. el rendimiento neto tras descontar la <strong>retención en la fuente del 4%</strong> (Decreto 572 de 2025 / Art. 395 E.T.).
+                Curva de causación de intereses a tasa pactada de <strong>{{ $formatValue($tasaCdt, 2) }}% E.A.</strong> durante los <strong>{{ $plazoCdt }} días</strong> de plazo, ilustrando el rendimiento bruto vs. el rendimiento neto tras descontar la <strong>retención en la fuente del 4%</strong> (Decreto 572 de 2025 / Art. 395 E.T.).
             </p>
         </div>
 
@@ -323,35 +300,35 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Capital Invertido:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ number_format($capCdt, 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ $formatValue($capCdt, 2) }}</p>
                 </div>
                 <span class="ui-help">Base inicial pactada</span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(22, 163, 74, 0.05); border: 1px solid rgba(22, 163, 74, 0.25); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="color: #16a34a; font-weight: 600;">Rendimiento Bruto Total:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #16a34a;">+$ {{ number_format($puntoFinal['rendimiento_bruto'], 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #16a34a;">+$ <span data-cdt-projection-key="rendimiento_bruto">—</span></p>
                 </div>
                 <span class="ui-help" style="color: #16a34a;">Intereses antes de impuestos</span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.25); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="color: #dc2626; font-weight: 600;">Retención 4% (D. 572/2025):</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #dc2626;">-$ {{ number_format($puntoFinal['retencion_4pct'], 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #dc2626;">-$ <span data-cdt-projection-key="retencion_4pct">—</span></p>
                 </div>
                 <span class="ui-help" style="color: #dc2626;">Deducción tributaria oficial</span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(37, 99, 235, 0.05); border: 1px solid rgba(37, 99, 235, 0.25); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="color: #2563eb; font-weight: 600;">Rendimiento Neto a Recibir:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #2563eb;">+$ {{ number_format($puntoFinal['rendimiento_neto'], 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: #2563eb;">+$ <span data-cdt-projection-key="rendimiento_neto">—</span></p>
                 </div>
                 <span class="ui-help" style="color: #2563eb;">Ganancia neta efectiva</span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.04); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Total al Vencimiento:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ number_format($puntoFinal['total_neto'], 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ <span data-cdt-projection-key="total_neto">—</span></p>
                 </div>
                 <span class="ui-help">Capital + Rendimiento neto</span>
             </div>
@@ -374,17 +351,17 @@
 
 @if($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO')
     @php
-        $saldoCuenta = (float) ($presentacion['valor_actual'] ?? $det['saldo_inicial'] ?? $inversion->monto_inicial ?? 0);
-        $tasaCuenta = (float) ($det['tasa_ea'] ?? $inversion->tasa_ea ?? 0);
+        $saldoCuenta = (string) ($presentacion['valor_actual'] ?? $det['saldo_inicial'] ?? $inversion->monto_inicial ?? 0);
+        $tasaCuenta = (string) ($det['tasa_ea'] ?? $inversion->tasa_ea ?? 0);
         $baseCuenta = (int) ($det['base_dias'] ?? 365);
-        $uvtCuenta = (float) \App\Services\ParametroTributarioService::obtenerUvt(now()->toDateString());
+        $uvtCuenta = (string) ($uvtCuenta ?? \App\Services\ParametroTributarioService::obtenerUvt(now('America/Bogota')->toDateString()));
     @endphp
 
     <!-- GRÁFICA INTERACTIVA DE PROYECCIÓN DE RENDIMIENTO - CUENTA DE ALTO RENDIMIENTO -->
     <x-ui.card title="Proyección y Simulador de Rendimiento — Cuenta de Alto Rendimiento">
         <div style="margin-bottom: 1.25rem;">
             <p class="ui-help" style="margin: 0;">
-                En las cuentas de ahorro de alto rendimiento el capital no fluctúa por cotización de bolsa, sino que genera rendimientos garantizados a una tasa de <strong>{{ number_format($tasaCuenta, 2) }}% E.A.</strong> con interés compuesto. Ajusta los días que planeas dejar tu dinero quieto para simular los intereses brutos, la retención en la fuente (Art. 1.2.4.2.1 Dec. 1625/2016) y el saldo total que acumularás.
+                En las cuentas de ahorro de alto rendimiento el capital no fluctúa por cotización de bolsa, sino que genera rendimientos garantizados a una tasa de <strong>{{ $formatValue($tasaCuenta, 2) }}% E.A.</strong> con interés compuesto. Ajusta los días que planeas dejar tu dinero quieto para simular los intereses brutos, la retención en la fuente (Art. 1.2.4.2.1 Dec. 1625/2016) y el saldo total que acumularás.
             </p>
         </div>
 
@@ -411,7 +388,7 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Saldo Actual en Cuenta:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ number_format($saldoCuenta, 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ $formatValue($saldoCuenta, 2) }}</p>
                 </div>
                 <span class="ui-help">Capital disponible hoy</span>
             </div>
@@ -439,7 +416,7 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.04); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Saldo Total Estimado:</span>
-                    <p id="cuenta_total_preview" style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ number_format($saldoCuenta, 2) }}</p>
+                    <p id="cuenta_total_preview" style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ $formatValue($saldoCuenta, 2) }}</p>
                 </div>
                 <span class="ui-help">Saldo final al terminar los días</span>
             </div>
@@ -452,10 +429,10 @@
 
         <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); font-size: 0.85rem; color: #555; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;">
             <span>
-                Si el rendimiento promedio diario no supera 0,055 UVT/día ($ \approx \$ {{ number_format($uvtCuenta * 0.055, 2) }} \text{ COP/día}$ según Dec. 1625/2016), la retención en la fuente es 0%.
+                Si el rendimiento promedio diario no supera 0,055 UVT/día ($ \approx \$ {{ $formatValue($uvtCuenta * 0.055, 2) }} \text{ COP/día}$ según Dec. 1625/2016), la retención en la fuente es 0%.
             </span>
             <span>
-                Tasa garantizada: <strong>{{ number_format($tasaCuenta, 2) }}% E.A.</strong> · Saldo base: <strong>$ {{ number_format($saldoCuenta, 2) }} COP</strong>
+                Tasa garantizada: <strong>{{ $formatValue($tasaCuenta, 2) }}% E.A.</strong> · Saldo base: <strong>$ {{ $formatValue($saldoCuenta, 2) }} COP</strong>
             </span>
         </div>
     </x-ui.card>
@@ -463,9 +440,9 @@
 
 @if($inversion->tipo === 'ACCION_ETF')
     @php
-        $costoBaseUnit = (float) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
-        $precioActual = (float) ($det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? $inversion->precio_unitario_compra ?? 0);
-        $unidadesActuales = (float) ($presentacion['unidades_actuales'] ?? $det['unidades_total'] ?? $det['unidades'] ?? 0);
+        $costoBaseUnit = (string) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
+        $precioActual = (string) ($det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? $inversion->precio_unitario_compra ?? 0);
+        $unidadesActuales = (string) ($presentacion['unidades_actuales'] ?? $det['unidades_total'] ?? $det['unidades'] ?? 0);
         $monedaAccion = $inversion->moneda ?? 'COP';
 
         // Recopilar serie histórica de valoraciones cronológicas
@@ -476,29 +453,29 @@
             $puntosAccion[] = [
                 'fecha' => $inversion->fecha_apertura->format('d/m/Y'),
                 'fecha_raw' => $inversion->fecha_apertura->format('Y-m-d'),
-                'precio' => (float) $costoBaseUnit,
-                'unidades' => (float) $unidadesActuales,
-                'valor_total' => round($costoBaseUnit * $unidadesActuales, 2),
+                'precio' => (string) $costoBaseUnit,
+                'unidades' => (string) $unidadesActuales,
+                'valor_total' => (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy($unidadesActuales)->toScale(2, \Brick\Math\RoundingMode::HalfUp),
                 'origen' => 'Compra inicial',
             ];
         } else {
             foreach ($valCronologicasFiltradas as $v) {
-                $pUnit = (float) $v->precio_unitario;
-                $u = (float) ($v->unidades > 0 ? $v->unidades : $unidadesActuales);
+                $pUnit = (string) $v->precio_unitario;
+                $u = (string) ($v->unidades > 0 ? $v->unidades : $unidadesActuales);
                 $puntosAccion[] = [
                     'fecha' => $v->fecha ? $v->fecha->format('d/m/Y') : '',
                     'fecha_raw' => $v->fecha ? $v->fecha->format('Y-m-d') : '',
-                    'precio' => round($pUnit, 4),
-                    'unidades' => round($u, 8),
-                    'valor_total' => round((float) $v->valor, 2),
+                    'precio' => $pUnit,
+                    'unidades' => $u,
+                    'valor_total' => (string)$v->valor,
                     'origen' => $v->origen === 'INICIAL' ? 'Compra inicial' : 'Valoración mercado',
                 ];
             }
         }
 
-        $difActual = $precioActual - $costoBaseUnit;
-        $pctActual = $costoBaseUnit > 0 ? (($difActual / $costoBaseUnit) * 100) : 0;
-        $gananciaTotalActual = $difActual * $unidadesActuales;
+        $difActual = (string) \Brick\Math\BigDecimal::of($precioActual)->minus($costoBaseUnit);
+        $pctActual = $costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($difActual)->multipliedBy('100')->dividedBy($costoBaseUnit,8,\Brick\Math\RoundingMode::HalfUp) : '0';
+        $gananciaTotalActual = (string) \Brick\Math\BigDecimal::of($difActual)->multipliedBy($unidadesActuales);
     @endphp
 
     <!-- GRÁFICA DE EVOLUCIÓN Y VALORACIÓN DE MERCADO DE ACCIONES / ETFS -->
@@ -514,14 +491,14 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Costo Base de Compra:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ number_format($costoBaseUnit, 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ $formatValue($costoBaseUnit, 2) }}</p>
                 </div>
-                <span class="ui-help">{{ number_format($unidadesActuales, 2) }} títulos en cartera</span>
+                <span class="ui-help">{{ $formatValue($unidadesActuales, 2) }} títulos en cartera</span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Precio Actual Cotizado:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ number_format($precioActual, 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">$ {{ $formatValue($precioActual, 2) }}</p>
                 </div>
                 <span class="ui-help">Último valor registrado</span>
             </div>
@@ -529,18 +506,18 @@
                 <div>
                     <span class="ui-help" style="color: {{ $difActual >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">Variación Unitaria:</span>
                     <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: {{ $difActual >= 0 ? '#16a34a' : '#dc2626' }};">
-                        {{ $difActual >= 0 ? '▲ +' : '▼ -' }}$ {{ number_format(abs($difActual), 2) }}
+                        {{ $difActual >= 0 ? '▲ +' : '▼ -' }}$ {{ $formatValue((string) \Brick\Math\BigDecimal::of($difActual)->abs(), 2) }}
                     </p>
                 </div>
                 <span class="ui-help" style="color: {{ $difActual >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">
-                    {{ $pctActual >= 0 ? '+' : '' }}{{ number_format($pctActual, 2) }}% vs compra
+                    {{ $pctActual >= 0 ? '+' : '' }}{{ $formatValue($pctActual, 2) }}% vs compra
                 </span>
             </div>
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: {{ $gananciaTotalActual >= 0 ? 'rgba(22, 163, 74, 0.05)' : 'rgba(220, 38, 38, 0.05)' }}; border: 1px solid {{ $gananciaTotalActual >= 0 ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.25)' }}; display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="color: {{ $gananciaTotalActual >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">Ganancia / Pérdida Total:</span>
                     <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem; color: {{ $gananciaTotalActual >= 0 ? '#16a34a' : '#dc2626' }};">
-                        {{ $gananciaTotalActual >= 0 ? '+$' : '-$' }} {{ number_format(abs($gananciaTotalActual), 2) }}
+                        {{ $gananciaTotalActual >= 0 ? '+$' : '-$' }} {{ $formatValue((string) \Brick\Math\BigDecimal::of($gananciaTotalActual)->abs(), 2) }}
                     </p>
                 </div>
                 <span class="ui-help">{{ $gananciaTotalActual >= 0 ? 'Ganancia no realizada' : 'Pérdida no realizada' }}</span>
@@ -548,7 +525,7 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Valor Total Posición:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ number_format($unidadesActuales * $precioActual, 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ $formatValue((string) \Brick\Math\BigDecimal::of($unidadesActuales)->multipliedBy($precioActual), 2) }}</p>
                 </div>
                 <span class="ui-help">Valuación actual ({{ $monedaAccion }})</span>
             </div>
@@ -575,7 +552,7 @@
         <div style="margin-bottom: 1.25rem;">
             <p class="ui-help" style="margin: 0;">
                 Curva continua de rendimiento para <strong>{{ $inversion->nombre }}</strong> ({{ $inversion->tipo }} · Portafolio {{ $datosAdministrados['portafolio']['titulo'] ?? 'Administrado' }}).
-                La línea discontinua muestra la <strong>proyección esperada inicial</strong> ({{ number_format($datosAdministrados['tasa_esperada'], 2) }}% E.A.). La línea continua refleja el <strong>rendimiento real reportado por el fondo</strong>: <span style="color: #16a34a; font-weight: 700;">● Verde</span> cuando supera o iguala la expectativa, y <span style="color: #dc2626; font-weight: 700;">● Roja</span> cuando rinde por debajo de lo proyectado.
+                La línea discontinua muestra la <strong>proyección esperada inicial</strong> ({{ $formatValue($datosAdministrados['tasa_esperada'], 2) }}% E.A.). La línea continua refleja el <strong>rendimiento real reportado por el fondo</strong>: <span style="color: #16a34a; font-weight: 700;">● Verde</span> cuando supera o iguala la expectativa, y <span style="color: #dc2626; font-weight: 700;">● Roja</span> cuando rinde por debajo de lo proyectado.
             </p>
         </div>
 
@@ -584,7 +561,7 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Rentabilidad Esperada:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">{{ number_format($datosAdministrados['tasa_esperada'], 2) }}% E.A.</p>
+                    <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem;">{{ $formatValue($datosAdministrados['tasa_esperada'], 2) }}% E.A.</p>
                 </div>
                 <span class="ui-help">Horizonte {{ $datosAdministrados['meses_proyeccion'] }} meses</span>
             </div>
@@ -592,7 +569,7 @@
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Rendimiento Real Observado:</span>
                     <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: {{ $datosAdministrados['sobre_rendimiento'] ? '#16a34a' : '#dc2626' }};">
-                        {{ number_format($datosAdministrados['ea_real_actual'], 2) }}% E.A.
+                        {{ $formatValue($datosAdministrados['ea_real_actual'], 2) }}% E.A.
                     </p>
                 </div>
                 <span class="ui-help">Último corte reportado</span>
@@ -601,7 +578,7 @@
                 <div>
                     <span class="ui-help" style="color: {{ $datosAdministrados['sobre_rendimiento'] ? '#16a34a' : '#dc2626' }}; font-weight: 600;">Desviación vs Expectativa:</span>
                     <p style="margin: 0.25rem 0; font-weight: 700; font-size: 1.05rem; color: {{ $datosAdministrados['sobre_rendimiento'] ? '#16a34a' : '#dc2626' }};">
-                        {{ $datosAdministrados['desviacion_ea'] >= 0 ? '▲ +' : '▼ ' }}{{ number_format($datosAdministrados['desviacion_ea'], 2) }}% E.A.
+                        {{ $datosAdministrados['desviacion_ea'] >= 0 ? '▲ +' : '▼ ' }}{{ $formatValue($datosAdministrados['desviacion_ea'], 2) }}% E.A.
                     </p>
                 </div>
                 <span class="ui-help" style="color: {{ $datosAdministrados['sobre_rendimiento'] ? '#16a34a' : '#dc2626' }}; font-weight: 600;">
@@ -611,7 +588,7 @@
             <div style="padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid var(--ui-border); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; height: 100%; box-sizing: border-box;">
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Saldo Proyectado Teórico:</span>
-                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ number_format($datosAdministrados['saldo_esperado_teorico'], 2) }}</p>
+                    <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem;">$ {{ $formatValue($datosAdministrados['saldo_esperado_teorico'], 2) }}</p>
                 </div>
                 <span class="ui-help">Valor estimado al corte</span>
             </div>
@@ -619,10 +596,10 @@
                 <div>
                     <span class="ui-help" style="font-weight: 600;">Saldo Real en Cartera:</span>
                     <p style="margin: 0.25rem 0; font-weight: 800; font-size: 1.05rem; color: {{ $datosAdministrados['sobre_rendimiento'] ? '#16a34a' : '#dc2626' }};">
-                        $ {{ number_format($datosAdministrados['saldo_real_actual'], 2) }}
+                        $ {{ $formatValue($datosAdministrados['saldo_real_actual'], 2) }}
                     </p>
                 </div>
-                <span class="ui-help">{{ $datosAdministrados['ganancia_neta_acumulada'] >= 0 ? '+$ ' : '-$ ' }}{{ number_format(abs($datosAdministrados['ganancia_neta_acumulada']), 2) }} rendimiento neto</span>
+                <span class="ui-help">{{ $datosAdministrados['ganancia_neta_acumulada'] >= 0 ? '+$ ' : '-$ ' }}{{ $formatValue((string) \Brick\Math\BigDecimal::of($datosAdministrados['ganancia_neta_acumulada'])->abs(), 2) }} rendimiento neto</span>
             </div>
         </div>
 
@@ -646,7 +623,7 @@
                     <div style="display: flex; flex-direction: column; gap: 0.25rem; background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
                             <span style="font-weight: 600; color: #334155;">{{ $act['nombre'] }}</span>
-                            <span style="font-weight: 700; color: #0f172a;">{{ $act['porcentaje'] }}% <span style="font-weight: normal; color: #64748b; font-size: 0.75rem;">({{ $act['categoria'] }})</span></span>
+                            <span style="font-weight: 700; color: #0f172a;">{{ $act['porcentaje'] }}% <span style="font-weight: normal; color: #64748b; font-size: 0.8125rem;">({{ $act['categoria'] }})</span></span>
                         </div>
                         <div style="width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
                             <div style="width: {{ $act['porcentaje'] }}%; height: 100%; background: #c2410c; border-radius: 3px;"></div>
@@ -676,52 +653,52 @@
 
             @if(in_array($inversion->tipo, ['FIC', 'FPV', 'CESANTIAS'], true))
                 @php
-                    $eaActual = (float) ($datosAdministrados['ea_real_actual'] ?? $inversion->rentabilidad_esperada_porc ?? 7.00);
+                    $eaActual = (string) ($datosAdministrados['ea_real_actual'] ?? $inversion->rentabilidad_esperada_porc ?? 7.00);
                 @endphp
-                <x-ui.field name="rentabilidad_real_ea" label="Rentabilidad observada (% E.A.) *" :required="true" help="Tasa anualizada que reportó el fondo a la fecha de corte (Tu expectativa inicial fue {{ number_format($inversion->rentabilidad_esperada_porc ?? 7.00, 2) }}% E.A.).">
-                    <input id="val_rentabilidad_ea" name="rentabilidad_real_ea" type="text" inputmode="decimal" value="{{ number_format($eaActual, 2, ',', '.') }}" required placeholder="Ej: 5,50" oninput="calcularImpactoPorcentajeAdministrado(this.value)">
+                <x-ui.field name="rentabilidad_real_ea" label="Rentabilidad observada (% E.A.) *" :required="true" help="Tasa anualizada que reportó el fondo a la fecha de corte (Tu expectativa inicial fue {{ $formatValue($inversion->rentabilidad_esperada_porc ?? 7.00, 2) }}% E.A.).">
+                    <input id="val_rentabilidad_ea" name="rentabilidad_real_ea" type="text" data-value-input data-precision="8" min="-100" max="500" inputmode="decimal" value="{{ $eaActual }}" required placeholder="Ej: 5,50" oninput="calcularImpactoPorcentajeAdministrado(this.value)">
                 </x-ui.field>
 
                 <div id="val-feedback-admin" style="grid-column: 1 / -1; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;">
                     <div>
                         <span class="ui-help">Nuevo Saldo Proyectado en Cartera:</span>
-                        <strong id="admin-val-total-calculado" style="font-size: 1.1rem; margin-left: 0.25rem;">$ {{ number_format($datosAdministrados['saldo_real_actual'] ?? $inversion->monto_inicial, 2) }} {{ $inversion->moneda }}</strong>
+                        <strong id="admin-val-total-calculado" style="font-size: 1.1rem; margin-left: 0.25rem;">$ {{ $formatValue($datosAdministrados['saldo_real_actual'] ?? $inversion->monto_inicial, 2) }} {{ $inversion->moneda }}</strong>
                     </div>
                     <div id="admin-val-variacion-texto">
                         <span style="font-weight: 700; color: {{ ($datosAdministrados['desviacion_ea'] ?? 0) >= 0 ? '#16a34a' : '#dc2626' }};">
                             {{ ($datosAdministrados['desviacion_ea'] ?? 0) >= 0 ? '▲ Sobre la expectativa' : '▼ Bajo la expectativa' }}
-                            ({{ ($datosAdministrados['desviacion_ea'] ?? 0) >= 0 ? '+' : '' }}{{ number_format($datosAdministrados['desviacion_ea'] ?? 0, 2) }}% E.A.)
+                            ({{ ($datosAdministrados['desviacion_ea'] ?? 0) >= 0 ? '+' : '' }}{{ $formatValue($datosAdministrados['desviacion_ea'] ?? 0, 2) }}% E.A.)
                         </span>
                     </div>
                 </div>
             @elseif($inversion->tieneUnidades())
                 @php
-                    $precioActual = (float) ($det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? $inversion->precio_unitario_compra ?? 0);
-                    $unidadesActuales = (float) ($presentacion['unidades_actuales'] ?? $det['unidades_total'] ?? $det['unidades'] ?? 0);
-                    $costoBaseUnit = (float) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
+                    $precioActual = (string) ($det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? $inversion->precio_unitario_compra ?? 0);
+                    $unidadesActuales = (string) ($presentacion['unidades_actuales'] ?? $det['unidades_total'] ?? $det['unidades'] ?? 0);
+                    $costoBaseUnit = (string) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
                 @endphp
-                <x-ui.field name="precio_unitario" label="Nuevo precio por unidad ({{ $inversion->moneda }}) *" :required="true" help="Cotización en mercado de UNA sola acción (Tu costo de compra base fue $ {{ number_format($costoBaseUnit, 2) }} {{ $inversion->moneda }}).">
-                    <input id="val_precio_unitario" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? number_format($precioActual, 2, ',', '.') : '' }}" required placeholder="Ej: {{ number_format($costoBaseUnit > 0 ? $costoBaseUnit * 1.05 : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
+                <x-ui.field name="precio_unitario" label="Nuevo precio por unidad ({{ $inversion->moneda }}) *" :required="true" help="Cotización en mercado de UNA sola acción (Tu costo de compra base fue $ {{ $formatValue($costoBaseUnit, 2) }} {{ $inversion->moneda }}).">
+                    <input id="val_precio_unitario" data-localized-value data-precision="8" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? $formatValue($precioActual, 8, ',', '.') : '' }}" required placeholder="Ej: {{ $formatValue($costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy('1.05') : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
                 </x-ui.field>
 
                 <div id="val-feedback" style="grid-column: 1 / -1; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;">
                     <div>
                         <span class="ui-help">Valor Total Proyectado:</span>
-                        <strong id="val-total-calculado" style="font-size: 1.1rem; margin-left: 0.25rem;">$ {{ number_format($unidadesActuales * $precioActual, 2) }} {{ $inversion->moneda }}</strong>
+                        <strong id="val-total-calculado" style="font-size: 1.1rem; margin-left: 0.25rem;">$ {{ $formatValue($unidadesActuales * $precioActual, 2) }} {{ $inversion->moneda }}</strong>
                     </div>
                     <div id="val-variacion-texto">
                         @if($costoBaseUnit > 0 && $precioActual > 0)
                             @php
-                                $difU = $precioActual - $costoBaseUnit;
-                                $pctU = ($difU / $costoBaseUnit) * 100;
-                                $ganU = $difU * $unidadesActuales;
+                                $difU = (string) \Brick\Math\BigDecimal::of($precioActual)->minus($costoBaseUnit);
+                                $pctU = (string) \Brick\Math\BigDecimal::of($difU)->multipliedBy('100')->dividedBy($costoBaseUnit,8,\Brick\Math\RoundingMode::HalfUp);
+                                $ganU = (string) \Brick\Math\BigDecimal::of($difU)->multipliedBy($unidadesActuales);
                             @endphp
                             <span style="color: {{ $pctU > 0 ? '#16a34a' : ($pctU < 0 ? '#dc2626' : '#64748b') }}; font-weight: 700;">
-                                @if(abs($pctU) < 0.0001)
+                                @if((string) \Brick\Math\BigDecimal::of($pctU)->abs() < 0.0001)
                                     — Sin variación (0.00%) respecto al costo base
                                 @else
-                                    {{ $pctU > 0 ? '▲ Ganancia:' : '▼ Pérdida:' }} {{ $pctU > 0 ? '+' : '' }}{{ number_format($pctU, 2) }}% 
-                                    ({{ $pctU > 0 ? '+' : '' }}${{ number_format($ganU, 2) }} {{ $inversion->moneda }})
+                                    {{ $pctU > 0 ? '▲ Ganancia:' : '▼ Pérdida:' }} {{ $pctU > 0 ? '+' : '' }}{{ $formatValue($pctU, 2) }}%
+                                    ({{ $pctU > 0 ? '+' : '' }}${{ $formatValue($ganU, 2) }} {{ $inversion->moneda }})
                                 @endif
                             </span>
                         @endif
@@ -732,17 +709,17 @@
                     $valorCausadoHoy = \App\Services\InversionService::valorCausado($inversion, \Carbon\CarbonImmutable::today());
                 @endphp
                 <x-ui.field name="valor" label="Valor causado o de mercado (COP) *" :required="true">
-                    <input id="val_valor" name="valor" type="number" step="0.01" min="0.01" value="{{ $valorCausadoHoy['valor_causado'] ?? $inversion->monto_inicial }}" required placeholder="Monto total">
+                    <input id="val_valor" name="valor" type="number" data-value-input data-precision="2" step="0.01" min="0.01" value="{{ $valorCausadoHoy['valor_causado'] ?? $inversion->monto_inicial }}" required placeholder="Monto total">
                 </x-ui.field>
                 <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem;">
                     <label class="ui-check">
                         <input type="checkbox" name="usar_valor_causado" value="1" checked>
-                        Aceptar valor causado sugerido por fórmula ($ {{ number_format((float) ($valorCausadoHoy['valor_causado'] ?? 0), 2) }})
+                        Aceptar valor causado sugerido por fórmula ($ {{ $formatValue((string) ($valorCausadoHoy['valor_causado'] ?? 0), 2) }})
                     </label>
                 </div>
             @else
                 <x-ui.field name="valor" label="Nuevo saldo / valor total de mercado (COP) *" :required="true">
-                    <input id="val_valor" name="valor" type="number" step="0.01" min="0.01" value="{{ $presentacion['valor_actual'] ?? $inversion->monto_inicial }}" required placeholder="Monto total">
+                    <input id="val_valor" name="valor" type="number" data-value-input data-precision="2" step="0.01" min="0.01" value="{{ $presentacion['valor_actual'] ?? $inversion->monto_inicial }}" required placeholder="Monto total">
                 </x-ui.field>
             @endif
         </div>
@@ -772,19 +749,19 @@
 
             <div id="trx-field-monto">
                 <x-ui.field name="monto" label="Monto total bruto / operación" :required="true">
-                    <input id="trx_monto" name="monto" type="text" inputmode="decimal" value="{{ old('monto') }}" required placeholder="Ej: 1.050.700,00" autocomplete="off">
+                    <input id="trx_monto" data-localized-value data-precision="2" name="monto" type="text" inputmode="decimal" value="{{ old('monto') }}" required placeholder="Ej: 1.050.700,00" autocomplete="off">
                 </x-ui.field>
             </div>
 
             <div id="trx-field-unidades" style="{{ $inversion->tieneUnidades() ? '' : 'display: none;' }}">
                 <x-ui.field name="unidades" label="Cantidad de unidades / títulos">
-                    <input id="trx_unidades" name="unidades" type="text" inputmode="decimal" value="{{ old('unidades') }}" placeholder="Ej: 10,00000000" autocomplete="off">
+                    <input id="trx_unidades" data-localized-value data-precision="8" name="unidades" type="text" inputmode="decimal" value="{{ old('unidades') }}" placeholder="Ej: 10,00000000" autocomplete="off">
                 </x-ui.field>
             </div>
 
             <div id="trx-field-valor-unidad" style="{{ $inversion->tieneUnidades() ? '' : 'display: none;' }}">
                 <x-ui.field name="valor_unidad" label="Valor / Precio de la unidad">
-                    <input id="trx_valor_unidad" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? number_format((float)$det['valor_actual_unidad'], 2, ',', '.') : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
+                    <input id="trx_valor_unidad" data-localized-value data-precision="8" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? $formatValue((string)$det['valor_actual_unidad'], 8, ',', '.') : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
                     <div id="trx_precio_preview" class="ui-help" style="margin-top: 0.35rem; font-weight: 600; color: var(--color-primary); font-size: 0.85rem; display: none;"></div>
                 </x-ui.field>
             </div>
@@ -800,14 +777,14 @@
                 </div>
                 <div id="trx-field-trm" style="display: none;">
                     <x-ui.field name="tasa_cambio_usada" label="TRM (Opcional: Vacío = BD)">
-                        <input id="trx_trm" name="tasa_cambio_usada" type="text" inputmode="decimal" value="{{ old('tasa_cambio_usada', $det['trm_dividendo'] ?? '') }}" placeholder="Vacío = toma TRM de BD" autocomplete="off">
+                        <input id="trx_trm" name="tasa_cambio_usada" type="text" data-value-input data-precision="4" min="0.0001" inputmode="decimal" value="{{ old('tasa_cambio_usada', $det['trm_dividendo'] ?? '') }}" placeholder="Vacío = toma TRM de BD" autocomplete="off">
                     </x-ui.field>
                 </div>
             @endif
 
             <div id="trx-field-comision" style="{{ in_array($inversion->tipo, ['ACCION_ETF', 'FIC'], true) ? '' : 'display: none;' }}">
                 <x-ui.field name="comision" label="Comisión de la operación (si aplica)">
-                    <input id="trx_comision" name="comision" type="text" inputmode="decimal" value="{{ old('comision', '0,00') }}" placeholder="0,00" autocomplete="off">
+                    <input id="trx_comision" data-localized-value data-precision="2" name="comision" type="text" inputmode="decimal" value="{{ old('comision', '0,00') }}" placeholder="0,00" autocomplete="off">
                     <div id="trx_comision_preview" class="ui-help" style="margin-top: 0.35rem; font-weight: 600; color: var(--color-primary); font-size: 0.85rem; display: none;"></div>
                 </x-ui.field>
             </div>
@@ -866,41 +843,41 @@
                             <x-ui.badge tone="primary">{{ $labels[$mov->tipo] ?? $mov->tipo }}</x-ui.badge>
                         </td>
                         <td class="ui-number">
-                            <div>$ {{ number_format((float) ($mov->monto_bruto ?? $mov->monto), 2) }}</div>
-                            @if($esRetiroFpv && ((float)$mov->retencion_aplicada > 0 || $ingresoTrx || $deducibleTrx))
+                            <div>$ {{ $formatValue((string) ($mov->monto_bruto ?? $mov->monto), 2) }}</div>
+                            @if($esRetiroFpv && ((string)$mov->retencion_aplicada > 0 || $ingresoTrx || $deducibleTrx))
                                 @php
-                                    $rendBruto = $ingresoTrx ? (float)$ingresoTrx->valor_bruto : 0.0;
-                                    $capBruto = max(0.0, (float)($mov->monto_bruto ?? $mov->monto) - $rendBruto);
+                                    $rendBruto = $ingresoTrx ? (string)$ingresoTrx->valor_bruto : 0.0;
+                                    $capBruto = (string) \Brick\Math\BigDecimal::max('0', \Brick\Math\BigDecimal::of((string)($mov->monto_bruto ?? $mov->monto))->minus((string)$rendBruto));
                                 @endphp
-                                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
-                                    <div>Capital: ${{ number_format($capBruto, 2) }}</div>
-                                    <div>Rendimientos: ${{ number_format($rendBruto, 2) }}</div>
+                                <div style="font-size: 0.8125rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
+                                    <div>Capital: ${{ $formatValue($capBruto, 2) }}</div>
+                                    <div>Rendimientos: ${{ $formatValue($rendBruto, 2) }}</div>
                                 </div>
                             @endif
                         </td>
-                        <td class="ui-number" style="color: {{ (float)$mov->retencion_aplicada > 0 ? '#dc2626' : '#666' }};">
-                            <div>{{ (float)$mov->retencion_aplicada > 0 ? '-$' . number_format((float)$mov->retencion_aplicada, 2) : '—' }}</div>
-                            @if($esRetiroFpv && (float)$mov->retencion_aplicada > 0)
+                        <td class="ui-number" style="color: {{ (string)$mov->retencion_aplicada > 0 ? '#dc2626' : '#666' }};">
+                            <div>{{ (string)$mov->retencion_aplicada > 0 ? '-$' . $formatValue((string)$mov->retencion_aplicada, 2) : '—' }}</div>
+                            @if($esRetiroFpv && (string)$mov->retencion_aplicada > 0)
                                 @php
-                                    $retRend = $ingresoTrx ? (float)$ingresoTrx->retencion : 0.0;
-                                    $retAportes = (float)$mov->retencion_aplicada - $retRend;
+                                    $retRend = $ingresoTrx ? (string)$ingresoTrx->retencion : 0.0;
+                                    $retAportes = (string) \Brick\Math\BigDecimal::of((string)$mov->retencion_aplicada)->minus((string)$retRend);
                                 @endphp
-                                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
-                                    <div>Aportes (7%): <span style="color: #b91c1c;">-${{ number_format($retAportes, 2) }}</span></div>
-                                    <div>Rendimientos (7%): <span style="color: #b91c1c;">-${{ number_format($retRend, 2) }}</span></div>
+                                <div style="font-size: 0.8125rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
+                                    <div>Aportes (7%): <span style="color: #b91c1c;">-${{ $formatValue($retAportes, 2) }}</span></div>
+                                    <div>Rendimientos (7%): <span style="color: #b91c1c;">-${{ $formatValue($retRend, 2) }}</span></div>
                                 </div>
                             @endif
                         </td>
-                        <td class="ui-number" style="color: {{ (float)$mov->gmf_aplicado > 0 ? '#dc2626' : '#666' }};">
-                            {{ (float)$mov->gmf_aplicado > 0 ? '-$' . number_format((float)$mov->gmf_aplicado, 2) : '—' }}
+                        <td class="ui-number" style="color: {{ (string)$mov->gmf_aplicado > 0 ? '#dc2626' : '#666' }};">
+                            {{ (string)$mov->gmf_aplicado > 0 ? '-$' . $formatValue((string)$mov->gmf_aplicado, 2) : '—' }}
                         </td>
                         <td class="ui-number" style="font-weight: 600;">
-                            $ {{ number_format((float) $mov->monto_cop, 2) }}
+                            $ {{ $formatValue((string) $mov->monto_cop, 2) }}
                         </td>
                         <td>{{ $mov->nota ?? '—' }}</td>
                         <td>
                             @if(!$mov->es_inicial)
-                                <form method="POST" action="{{ route('inversiones.movimientos.destroy', [$inversion->id, $mov->id]) }}" onsubmit="return confirm('¿Eliminar esta transacción?');">
+                                <form method="POST" action="{{ route('inversiones.movimientos.destroy', [$inversion->id, $mov->id]) }}" data-confirm-description="Se eliminará esta transacción de la inversión.">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="ui-button" style="color: #dc2626; background: transparent; border: none; cursor: pointer; padding: 0.25rem 0.5rem;">Eliminar</button>
@@ -920,154 +897,51 @@
 
 <script>
 function calcularImpactoValoracion(nuevoPrecio) {
-    const p = parseFloat(desformatearMiles(nuevoPrecio)) || 0;
-    const unidades = parseFloat('{{ $unidadesActuales ?? 0 }}') || 0;
-    const costoUnit = parseFloat('{{ $costoBaseUnit ?? 0 }}') || 0;
-    const moneda = '{{ $inversion->moneda }}';
-    const totalEl = document.getElementById('val-total-calculado');
-    const varEl = document.getElementById('val-variacion-texto');
-    if (!totalEl || !varEl) return;
-
-    const total = p * unidades;
-    totalEl.innerText = '$ ' + total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + moneda;
-
-    if (costoUnit > 0 && p > 0) {
-        const gananciaUnit = p - costoUnit;
-        const gananciaTotal = gananciaUnit * unidades;
-        const pct = ((p - costoUnit) / costoUnit) * 100;
-
-        let avisoBajo = '';
-        if (p < (costoUnit * 0.05) && p > 0) {
-            avisoBajo = `<div style="font-size: 0.8rem; color: #b45309; margin-top: 0.25rem; font-weight: normal;">ℹ️ Has digitado $ ${p.toLocaleString('es-CO')} ${moneda}. Si vas a escribir un precio en miles (ej. 50.000), continúa digitando los números.</div>`;
-        }
-
-        if (Math.abs(pct) < 0.0001) {
-            varEl.innerHTML = `<div><span style="color: #64748b; font-weight: 700;">— Sin variación (0.00%) respecto al costo base</span></div>`;
-        } else {
-            const signo = pct > 0 ? '+' : '';
-            const color = pct > 0 ? '#16a34a' : '#dc2626';
-            const etiqueta = pct > 0 ? '▲ Ganancia:' : '▼ Pérdida:';
-            varEl.innerHTML = `<div><span style="color: ${color}; font-weight: 700;">${etiqueta} ${signo}${pct.toFixed(2)}% (${signo}$ ${gananciaTotal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda})</span>${avisoBajo}</div>`;
-        }
-    } else {
-        varEl.innerHTML = '';
-    }
+    const {decimal, formatMoney, formatQuantity} = window.FinanzMoney;
+    const totalEl = document.getElementById('val-total-calculado'), variation = document.getElementById('val-variacion-texto');
+    if (!totalEl || !variation) return;
+    try {
+        const price = decimal(desformatearMiles(nuevoPrecio) || '0');
+        const units = decimal(@json((string)($unidadesActuales ?? '0')));
+        const cost = decimal(@json((string)($costoBaseUnit ?? '0')));
+        totalEl.textContent = formatMoney(price.times(units).toFixed(2)) + ' {{ $inversion->moneda }}';
+        if (cost.gt('0') && price.gt('0')) {
+            const difference = price.minus(cost), percentage = difference.div(cost).times('100');
+            variation.textContent = (difference.gt('0') ? 'Ganancia: ' : difference.lt('0') ? 'Pérdida: ' : 'Sin variación: ') + formatQuantity(percentage.toFixed(2)) + ' % · ' + formatMoney(difference.times(units).toFixed(2));
+            variation.className = difference.lt('0') ? 'ui-error' : 'ui-help';
+        } else variation.textContent = '';
+    } catch { totalEl.textContent = '—'; variation.textContent = 'Revisa el precio y su precisión antes de continuar.'; }
 }
 
-function formatearMiles(val, permitirDecimales = true) {
-    if (val === null || val === undefined || val === '') return '';
-
-    // Si ya es un número de JavaScript (typeof number)
-    if (typeof val === 'number') {
-        if (isNaN(val)) return '';
-        const fixed = permitirDecimales ? val.toFixed(2) : Math.round(val).toString();
-        const partes = fixed.split('.');
-        const intFmt = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-        if (partes.length > 1 && partes[1] !== '00') {
-            return intFmt + ',' + partes[1];
-        }
-        return intFmt;
-    }
-
-    let str = String(val).trim().replace(/[$ \u00a0COP]/g, '');
-    if (!str) return '';
-
-    // Si el usuario escribió o pegó una coma (separador decimal colombiano)
-    if (str.includes(',')) {
-        const partes = str.split(',');
-        const entero = partes[0].replace(/\D/g, '');
-        const decimal = permitirDecimales ? partes.slice(1).join('').replace(/\D/g, '').slice(0, 4) : '';
-        const enteroFmt = entero ? entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '0';
-        return decimal !== '' ? enteroFmt + ',' + decimal : enteroFmt + (str.endsWith(',') ? ',' : '');
-    }
-
-    // Si no contiene coma: en formato financiero colombiano, cualquier punto es de miles, NO decimal
-    const entero = str.replace(/\D/g, '');
-    if (!entero) return '';
-    return entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+function formatearMiles(value) {
+    return window.FinanzMoney.formatMoneyDraft(String(value ?? ''));
 }
-
-function desformatearMiles(val) {
-    if (val === null || val === undefined || val === '') return '';
-    if (typeof val === 'number') return isNaN(val) ? '' : val.toString();
-
-    let str = String(val).trim().replace(/[$ \u00a0COP]/g, '');
-    if (!str) return '';
-
-    // Si contiene coma: la coma es el separador decimal en formato colombiano (ej. "10,50" o "1.234,56")
-    if (str.includes(',')) {
-        const partes = str.split(',');
-        const entero = partes[0].replace(/\D/g, '') || '0';
-        const decimal = partes.slice(1).join('').replace(/\D/g, '').slice(0, 4);
-        return decimal ? entero + '.' + decimal : entero;
-    }
-
-    // Si viene como número decimal en notación estándar JS que empieza por 0 (ej. "0.85" o "0.005")
-    if (/^0\.\d+$/.test(str)) {
-        return str;
-    }
-
-    // Sin coma: en formato colombiano todos los puntos son separadores de miles visuales (ej. "3.500", "51.400")
-    return str.replace(/\D/g, '');
+function desformatearMiles(value) {
+    if (value === '' || value === null || value === undefined) return '';
+    try { return window.FinanzMoney.parseLocalizedValue(String(value), {precision: 8}); }
+    catch { return ''; }
 }
-
 function enlazarMascaraNumero(input, onUpdate) {
-    if (!input) return;
-    input.type = 'text';
-    input.inputMode = 'decimal';
-
-    input.addEventListener('input', function() {
-        const raw = input.value;
-        if (!raw) {
-            if (onUpdate) onUpdate();
-            return;
-        }
-        const selStart = input.selectionStart || 0;
-        const digitosAntes = (raw.slice(0, selStart).match(/\d/g) || []).length;
-        const tieneComaAntes = raw.slice(0, selStart).includes(',');
-
-        const fmt = formatearMiles(raw);
-        input.value = fmt;
-
-        let contados = 0;
-        let nuevaPos = fmt.length;
-        for (let i = 0; i < fmt.length; i++) {
-            if (/\d/.test(fmt[i])) contados++;
-            if (contados === digitosAntes) {
-                nuevaPos = i + 1;
-                if (tieneComaAntes && fmt[i + 1] === ',') nuevaPos = i + 2;
-                break;
-            }
-        }
-        input.setSelectionRange(nuevaPos, nuevaPos);
+    if (!input || input.hasAttribute('data-value-bound')) return;
+    input.type = 'text'; input.inputMode = 'decimal';
+    const precision = /unidades|unitario|valor_unidad/.test(input.id) ? 8 : /trm/.test(input.id) ? 4 : 2;
+    const update = () => {
+        let message = '';
+        try {
+            if (input.value) window.FinanzMoney.parseLocalizedValue(input.value, {precision, min: '0', max: '999999999999.99'});
+            else if (input.required) message = 'Este campo es obligatorio.';
+        } catch (error) { message = error.message; }
+        input.setCustomValidity(message); input.setAttribute('aria-invalid', String(Boolean(message)));
+        const error = input.closest('[data-field]')?.querySelector('[data-field-error]');
+        if (error) { error.textContent = message; error.hidden = !message; }
         if (onUpdate) onUpdate();
-    });
-
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Backspace') {
-            const selStart = input.selectionStart;
-            const selEnd = input.selectionEnd;
-            if (selStart === selEnd && selStart > 1 && input.value[selStart - 1] === '.') {
-                e.preventDefault();
-                const nuevo = input.value.slice(0, selStart - 2) + input.value.slice(selStart);
-                input.value = formatearMiles(nuevo);
-                const pos = Math.max(0, selStart - 2);
-                input.setSelectionRange(pos, pos);
-                if (onUpdate) onUpdate();
-            }
-        }
-    });
-
-    input.addEventListener('blur', function() {
-        if (input.value) {
-            input.value = formatearMiles(input.value);
-        }
-        if (onUpdate) onUpdate();
-    });
-
+    };
+    window.FinanzMoney.bindMoneyGrouping(input);
+    input.addEventListener('input', update); input.addEventListener('blur', update);
     if (input.value) {
-        input.value = formatearMiles(input.value);
-        if (onUpdate) onUpdate();
+        // old() entrega el decimal canónico del último envío.
+        if (/^-?\d+(?:\.\d+)?$/.test(input.value)) input.value = window.FinanzMoney.formatCanonicalValue(input.value);
+        update();
     }
 }
 
@@ -1081,7 +955,7 @@ function actualizarPreviewCampo(input, previewId, label = 'Valor') {
         return;
     }
     const fmt = formatearMiles(raw);
-    preview.innerHTML = `<strong>${label}:</strong> $ ${fmt}`;
+    preview.textContent = label + ': $ ' + fmt;
     preview.style.display = 'block';
 }
 
@@ -1111,10 +985,10 @@ function adaptarFormularioTrx(tipo) {
 
     function autoCalcular() {
         if (!unidadesEl || !precioEl || !montoEl) return;
-        const u = parseFloat(desformatearMiles(unidadesEl.value)) || 0;
-        const p = parseFloat(desformatearMiles(precioEl.value)) || 0;
-        if (u > 0 && p > 0) {
-            montoEl.value = formatearMiles(u * p);
+        const u = window.FinanzMoney.decimal(desformatearMiles(unidadesEl.value) || '0');
+        const p = window.FinanzMoney.decimal(desformatearMiles(precioEl.value) || '0');
+        if (u.gt('0') && p.gt('0')) {
+            montoEl.value = window.FinanzMoney.formatCanonicalValue(u.times(p).toFixed(2));
         }
     }
 
@@ -1129,7 +1003,7 @@ function adaptarFormularioTrx(tipo) {
         if (tipo === 'ABONO_INTERES') {
             if (montoLabel) montoLabel.innerText = 'Interés bruto a cobrar (COP) *';
             if (montoEl) {
-                montoEl.value = formatearMiles(Number('{{ $interesPeriodicoCdt }}') || 0);
+                montoEl.value = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.projectedInterest(@json((string)($det['capital'] ?? $inversion->monto_inicial)), @json((string)($det['tasa_valor'] ?? $inversion->tasa_ea ?? '0')), @json((string)$diasPeriodo), @json((string)($det['base_dias'] ?? '365'))));
             }
             if (notaEl) notaEl.value = 'Cobro de intereses periódicos pactados';
         } else if (tipo === 'REDENCION') {
@@ -1137,13 +1011,13 @@ function adaptarFormularioTrx(tipo) {
             if (periodicidad === 'VENCIMIENTO' || periodicidad === 'AL_VENCIMIENTO') {
                 if (montoLabel) montoLabel.innerText = 'Monto bruto total al vencimiento (Capital + Rendimientos) *';
                 if (montoEl) {
-                    montoEl.value = formatearMiles(Number('{{ $totalLiquidacionCdt }}') || 0);
+                    montoEl.value = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(@json((string)($det['capital'] ?? $inversion->monto_inicial))).plus(@json((string)($presentacion['rendimiento_estimado'] ?? '0'))).toFixed(2));
                 }
                 if (notaEl) notaEl.value = 'Redención total y liquidación de intereses al vencimiento';
             } else {
                 if (montoLabel) montoLabel.innerText = 'Capital a liquidar / redimir (COP) *';
                 if (montoEl) {
-                    montoEl.value = formatearMiles(Number('{{ $det['capital'] ?? $inversion->monto_inicial }}') || 0);
+                    montoEl.value = window.FinanzMoney.formatCanonicalValue('{{ $det['capital'] ?? $inversion->monto_inicial }}');
                 }
                 if (notaEl) notaEl.value = 'Redención y liquidación final del CDT';
             }
@@ -1166,7 +1040,7 @@ function adaptarFormularioTrx(tipo) {
             if (precioLabel) precioLabel.innerText = 'Precio unitario de compra';
             if (precioEl) {
                 const rawP = '{{ $det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? '' }}';
-                precioEl.value = rawP ? formatearMiles(Number(rawP)) : '';
+                precioEl.value = rawP ? window.FinanzMoney.formatCanonicalValue(rawP) : '';
             }
             if (fieldMoneda) fieldMoneda.style.display = 'none';
             if (fieldTrm) fieldTrm.style.display = 'none';
@@ -1177,13 +1051,13 @@ function adaptarFormularioTrx(tipo) {
             if (unidadesLabel) unidadesLabel.innerText = 'Cantidad de unidades a vender';
             if (unidadesEl) {
                 const rawU = '{{ $det['unidades_total'] ?? '' }}';
-                unidadesEl.value = rawU ? formatearMiles(Number(rawU)) : '';
+                unidadesEl.value = rawU ? window.FinanzMoney.formatCanonicalValue(rawU) : '';
             }
             if (precioWrap) precioWrap.style.display = 'block';
             if (precioLabel) precioLabel.innerText = 'Precio unitario de venta';
             if (precioEl) {
                 const rawP = '{{ $det['valor_actual_unidad'] ?? $det['costo_promedio_unitario'] ?? '' }}';
-                precioEl.value = rawP ? formatearMiles(Number(rawP)) : '';
+                precioEl.value = rawP ? window.FinanzMoney.formatCanonicalValue(rawP) : '';
             }
             if (fieldMoneda) fieldMoneda.style.display = 'none';
             if (fieldTrm) fieldTrm.style.display = 'none';
@@ -1195,13 +1069,13 @@ function adaptarFormularioTrx(tipo) {
             if (unidadesLabel) unidadesLabel.innerText = 'Acciones con derecho a dividendo';
             if (unidadesEl) {
                 const rawU = '{{ $det['unidades_total'] ?? '' }}';
-                unidadesEl.value = rawU ? formatearMiles(Number(rawU)) : '';
+                unidadesEl.value = rawU ? window.FinanzMoney.formatCanonicalValue(rawU) : '';
             }
             if (precioWrap) precioWrap.style.display = 'block';
             if (precioLabel) precioLabel.innerText = 'Dividendo por acción decretado (' + monedaActual + ')';
             if (precioEl) {
                 const rawP = '{{ $det['valor_dividendo_por_unidad'] ?? '' }}';
-                precioEl.value = rawP ? formatearMiles(Number(rawP)) : '';
+                precioEl.value = rawP ? window.FinanzMoney.formatCanonicalValue(rawP) : '';
             }
             if (fieldMoneda) fieldMoneda.style.display = 'block';
             if (fieldTrm) fieldTrm.style.display = (monedaActual === 'USD') ? 'block' : 'none';
@@ -1235,7 +1109,7 @@ function adaptarFormularioTrx(tipo) {
 
         if (tipo === 'ABONO_INTERES') {
             if (montoLabel) montoLabel.innerText = 'Interés bruto abonado (COP) *';
-            if (montoEl) montoEl.value = formatearMiles(Number('{{ $interesMensualCuenta }}') || 0);
+            if (montoEl) montoEl.value = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.projectedInterest(@json((string)($presentacion['valor_actual'] ?? $det['saldo_inicial'] ?? $inversion->monto_inicial)), @json((string)($det['tasa_ea'] ?? '0')), '30', @json((string)($det['base_dias'] ?? '365'))));
             if (notaEl) notaEl.value = 'Abono de intereses del periodo';
         } else if (tipo === 'APORTE') {
             if (montoLabel) montoLabel.innerText = 'Monto a consignar / depositar (COP) *';
@@ -1249,7 +1123,7 @@ function adaptarFormularioTrx(tipo) {
         if (fieldTrm) fieldTrm.style.display = 'none';
         if (comisionWrap) comisionWrap.style.display = 'none';
 
-        const tieneUnidadesFpv = {{ (!empty($det['unidades']) && (float)$det['unidades'] > 0) ? 'true' : 'false' }};
+        const tieneUnidadesFpv = {{ (!empty($det['unidades']) && (string)$det['unidades'] > 0) ? 'true' : 'false' }};
         if (tieneUnidadesFpv) {
             if (unidadesWrap) unidadesWrap.style.display = 'block';
             if (unidadesLabel) unidadesLabel.innerText = 'Unidades aportadas (opcional si digita monto)';
@@ -1257,7 +1131,7 @@ function adaptarFormularioTrx(tipo) {
             if (precioLabel) precioLabel.innerText = 'Valor de la cuota / unidad';
             if (precioEl) {
                 const rawP = '{{ $det['valor_unidad'] ?? '' }}';
-                precioEl.value = rawP ? formatearMiles(Number(rawP)) : '';
+                precioEl.value = rawP ? window.FinanzMoney.formatCanonicalValue(rawP) : '';
             }
         } else {
             if (unidadesWrap) unidadesWrap.style.display = 'none';
@@ -1270,7 +1144,7 @@ function adaptarFormularioTrx(tipo) {
             if (notaEl) notaEl.value = 'Aporte voluntario a pensión (Art. 126-1 ET)';
         } else if (tipo === 'RETIRO') {
             if (montoLabel) montoLabel.innerText = 'Monto a retirar (COP) *';
-            if (montoEl) montoEl.value = formatearMiles(Number('{{ $det['saldo_actual'] ?? $inversion->monto_inicial }}') || 0);
+            if (montoEl) montoEl.value = window.FinanzMoney.formatCanonicalValue('{{ $det['saldo_actual'] ?? $inversion->monto_inicial }}');
             if (fpvPermanencia) fpvPermanencia.style.display = 'block';
             if (notaEl) notaEl.value = 'Retiro de fondos de pensión voluntaria';
         }
@@ -1287,7 +1161,7 @@ function adaptarFormularioTrx(tipo) {
             if (notaEl) notaEl.value = 'Consignación anual de cesantías por empleador';
         } else if (tipo === 'RETIRO') {
             if (montoLabel) montoLabel.innerText = 'Monto a retirar (COP) *';
-            if (montoEl) montoEl.value = formatearMiles(Number('{{ $det['saldo'] ?? $inversion->monto_inicial }}') || 0);
+            if (montoEl) montoEl.value = window.FinanzMoney.formatCanonicalValue('{{ $det['saldo'] ?? $inversion->monto_inicial }}');
             if (notaEl) notaEl.value = 'Retiro de cesantías';
         }
     }
@@ -1309,10 +1183,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function autoCalcularTrxMonto() {
         if (!trxUnidades || !trxPrecio || !trxMonto) return;
-        const u = parseFloat(desformatearMiles(trxUnidades.value)) || 0;
-        const p = parseFloat(desformatearMiles(trxPrecio.value)) || 0;
-        if (u > 0 && p > 0) {
-            trxMonto.value = formatearMiles(u * p);
+        const u = window.FinanzMoney.decimal(desformatearMiles(trxUnidades.value) || '0');
+        const p = window.FinanzMoney.decimal(desformatearMiles(trxPrecio.value) || '0');
+        if (u.gt('0') && p.gt('0')) {
+            trxMonto.value = window.FinanzMoney.formatCanonicalValue(u.times(p).toFixed(2));
         }
     }
 
@@ -1344,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (trxPrecio && trxPrecio.value) trxPrecio.value = desformatearMiles(trxPrecio.value);
             if (trxComision && trxComision.value) trxComision.value = desformatearMiles(trxComision.value);
             const trxTrm = document.getElementById('trx_trm');
-            if (trxTrm && trxTrm.value) trxTrm.value = desformatearMiles(trxTrm.value);
+            if (trxTrm && trxTrm.value && !trxTrm.hasAttribute('data-value-bound')) trxTrm.value = desformatearMiles(trxTrm.value);
         });
     }
 
@@ -1352,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (valForm) {
         valForm.addEventListener('submit', function() {
             if (valPrecioUnit && valPrecioUnit.value) valPrecioUnit.value = desformatearMiles(valPrecioUnit.value);
-            if (valValor && valValor.value) valValor.value = desformatearMiles(valValor.value);
+            if (valValor && valValor.value && !valValor.hasAttribute('data-value-bound')) valValor.value = desformatearMiles(valValor.value);
         });
     }
 
@@ -1364,7 +1238,13 @@ document.addEventListener('DOMContentLoaded', function() {
     @if($inversion->tipo === 'CDT')
     const cdtCanvas = document.getElementById('cdtProjectionCanvas');
     if (cdtCanvas) {
-        const puntos = @json($puntosProyeccion);
+        const puntos = @json($puntosProyeccion).map(point => {
+            const {decimal, projectedInterest} = window.FinanzMoney;
+            const gross = projectedInterest(String(point.capital), @json((string)$tasaCdt), String(point.dia), @json((string)$baseCdt));
+            const retention = decimal(gross).times('0.04').toFixed(2), net = decimal(gross).minus(retention).toFixed(2);
+            return {...point, rendimiento_bruto:gross, retencion_4pct:retention, rendimiento_neto:net, total_bruto:decimal(String(point.capital)).plus(gross).toFixed(2), total_neto:decimal(String(point.capital)).plus(net).toFixed(2)};
+        });
+        for (const host of document.querySelectorAll('[data-cdt-projection-key]')) host.textContent = window.FinanzMoney.formatQuantity(puntos.at(-1)[host.dataset.cdtProjectionKey]);
         const labels = puntos.map(p => p.label);
         const dataBruto = puntos.map(p => p.rendimiento_bruto);
         const dataNeto = puntos.map(p => p.rendimiento_neto);
@@ -1429,20 +1309,20 @@ document.addEventListener('DOMContentLoaded', function() {
                             labels: {
                                 boxWidth: 14,
                                 padding: 12,
-                                font: { size: 12, weight: '600' }
+                                font: { size: 13, weight: '600' }
                             }
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    const val = Number(context.raw).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    const val = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(2));
                                     return ` ${context.dataset.label}: $ ${val}`;
                                 },
                                 afterBody: function(tooltipItems) {
                                     const idx = tooltipItems[0].dataIndex;
                                     const p = puntos[idx];
-                                    const cap = Number(p.capital).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                    const totNeto = Number(p.total_neto).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    const cap = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(p.capital)).toFixed(2));
+                                    const totNeto = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(p.total_neto)).toFixed(2));
                                     return [
                                         `— Capital base: $ ${cap}`,
                                         `— Total acumulado a recibir: $ ${totNeto}`
@@ -1455,7 +1335,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         y: {
                             ticks: {
                                 callback: function(value) {
-                                    return '$ ' + Number(value).toLocaleString('es-CO');
+                                    return '$ ' + window.FinanzMoney.formatQuantity(String(value));
                                 }
                             },
                             title: {
@@ -1481,10 +1361,10 @@ document.addEventListener('DOMContentLoaded', function() {
     @if($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO')
     const cuentaCanvas = document.getElementById('cuentaProjectionCanvas');
     if (cuentaCanvas) {
-        const saldoBase = {{ $saldoCuenta }};
-        const tasaEa = {{ $tasaCuenta }};
+        const saldoBase = @json((string)$saldoCuenta);
+        const tasaEa = @json((string)$tasaCuenta);
         const baseDias = {{ $baseCuenta }};
-        const uvtValor = {{ $uvtCuenta }};
+        const uvtValor = @json((string)$uvtCuenta);
         const diasInput = document.getElementById('sim_cuenta_dias');
         const btnsDias = document.querySelectorAll('.btn-dias-cuenta');
 
@@ -1506,12 +1386,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             for (let i = 0; i <= numPasos; i++) {
                 const d = (i === numPasos) ? dTot : (i * step);
-                const factor = Math.pow(1 + (tasaEa / 100), d / baseDias) - 1;
-                const rB = Math.round(saldoBase * factor * 100) / 100;
-                const topeMinimo = d * 0.055 * uvtValor;
-                const ret = rB >= topeMinimo ? Math.round(rB * 0.07 * 100) / 100 : 0;
-                const rN = Math.round((rB - ret) * 100) / 100;
-                const tot = Math.round((saldoBase + rN) * 100) / 100;
+                const {decimal, projectedInterest} = window.FinanzMoney;
+                const rB = projectedInterest(saldoBase, tasaEa, String(d), String(baseDias));
+                const minimum = decimal(uvtValor).times('0.055').times(String(d));
+                const ret = decimal(rB).gte(minimum) ? decimal(rB).times('0.07').toFixed(2) : '0.00';
+                const rN = decimal(rB).minus(ret).toFixed(2);
+                const tot = decimal(saldoBase).plus(rN).toFixed(2);
 
                 labels.push('Día ' + d);
                 dataBruto.push(rB);
@@ -1531,11 +1411,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const nEl = document.getElementById('cuenta_neto_preview');
             const tEl = document.getElementById('cuenta_total_preview');
 
-            if (bEl) bEl.innerText = '+$ ' + rBrutoFin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (rEl) rEl.innerText = '-$ ' + retFin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (bEl) bEl.innerText = '+$ ' + window.FinanzMoney.formatQuantity(String(rBrutoFin));
+            if (rEl) rEl.innerText = '-$ ' + window.FinanzMoney.formatQuantity(String(retFin));
             if (rNota) rNota.innerText = retFin > 0 ? '7% Art. 395 ET (Supera base 0,055 UVT/día)' : 'Exento (inferior a 0,055 UVT/día)';
-            if (nEl) nEl.innerText = '+$ ' + rNetoFin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (tEl) tEl.innerText = '$ ' + totFin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (nEl) nEl.innerText = '+$ ' + window.FinanzMoney.formatQuantity(String(rNetoFin));
+            if (tEl) tEl.innerText = '$ ' + window.FinanzMoney.formatQuantity(String(totFin));
 
             const ChartConstructor = window.Chart || (typeof Chart !== 'undefined' ? Chart : null);
             if (!ChartConstructor) return;
@@ -1590,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             labels: {
                                 boxWidth: 14,
                                 padding: 12,
-                                font: { size: 12, weight: '600' }
+                                font: { size: 13, weight: '600' }
                             }
                         },
                         tooltip: {
@@ -1599,16 +1479,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                     return `📅 Proyección: ${context[0].label} con fondos quietos`;
                                 },
                                 label: function(context) {
-                                    const val = Number(context.raw).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    const val = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(2));
                                     return ` ${context.dataset.label}: +$ ${val} COP`;
                                 },
                                 afterBody: function(tooltipItems) {
                                     const idx = tooltipItems[0].dataIndex;
                                     const neto = dataNeto[idx];
-                                    const tot = saldoBase + neto;
+                                    const tot = window.FinanzMoney.decimal(saldoBase).plus(String(neto)).toFixed(2);
                                     return [
-                                        `— Saldo base actual: $ ${saldoBase.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} COP`,
-                                        `— Saldo total estimado: $ ${tot.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} COP`
+                                        `— Saldo base actual: $ ${window.FinanzMoney.formatQuantity(String(saldoBase))} COP`,
+                                        `— Saldo total estimado: $ ${window.FinanzMoney.formatQuantity(String(tot))} COP`
                                     ];
                                 }
                             }
@@ -1618,7 +1498,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         y: {
                             ticks: {
                                 callback: function(value) {
-                                    return '$ ' + Number(value).toLocaleString('es-CO');
+                                    return '$ ' + window.FinanzMoney.formatQuantity(String(value));
                                 }
                             },
                             title: {
@@ -1678,7 +1558,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const accionCanvas = document.getElementById('accionValoracionCanvas');
     if (accionCanvas) {
         const puntos = @json($puntosAccion);
-        const costoBase = {{ $costoBaseUnit }};
+        const costoBase = @json((string)$costoBaseUnit);
         const moneda = '{{ $monedaAccion }}';
 
         const labels = puntos.map(p => p.fecha);
@@ -1743,7 +1623,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         },
                         {
-                            label: 'Costo Base de Compra ($ ' + Number(costoBase).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' ' + moneda + ')',
+                            label: 'Costo Base de Compra ($ ' + window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(costoBase)).toFixed(4)) + ' ' + moneda + ')',
                             data: dataCostoBase,
                             borderColor: '#64748b',
                             borderWidth: 2,
@@ -1767,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             labels: {
                                 boxWidth: 14,
                                 padding: 12,
-                                font: { size: 12, weight: '600' }
+                                font: { size: 13, weight: '600' }
                             }
                         },
                         tooltip: {
@@ -1779,23 +1659,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                 },
                                 label: function(context) {
                                     if (context.datasetIndex === 1) {
-                                        return ` 🏷️ Costo Base: $ ${Number(context.raw).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${moneda}`;
+                                        return ` 🏷️ Costo Base: $ ${window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(4))} ${moneda}`;
                                     }
-                                    const val = Number(context.raw).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+                                    const val = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(4));
                                     return ` 📈 Precio Acción/ETF: $ ${val} ${moneda}`;
                                 },
                                 afterBody: function(tooltipItems) {
                                     const idx = tooltipItems[0].dataIndex;
                                     const p = puntos[idx];
-                                    const dif = p.precio - costoBase;
-                                    const pct = costoBase > 0 ? ((dif / costoBase) * 100) : 0;
+                                    const dif = window.FinanzMoney.decimal(String(p.precio)).minus(costoBase);
+                                    const pct = window.FinanzMoney.decimal(costoBase).gt('0') ? dif.div(costoBase).times('100') : window.FinanzMoney.decimal('0');
                                     const signo = pct >= 0 ? '+' : '';
                                     const estado = pct >= 0 ? '▲ Ganancia No Realizada' : '▼ Pérdida No Realizada';
-                                    const valorTotalFmt = Number(p.valor_total).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                    const unidadesFmt = Number(p.unidades).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+                                    const valorTotalFmt = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(p.valor_total)).toFixed(2));
+                                    const unidadesFmt = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(p.unidades)).toFixed(4));
 
                                     return [
-                                        `— Variación vs Compra: ${signo}${pct.toFixed(2)}% ($ ${signo}${Number(dif).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${moneda})`,
+                                        `— Variación vs Compra: ${signo}${pct.toFixed(2)}% ($ ${signo}${window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(dif)).toFixed(4))} ${moneda})`,
                                         `— Estado de la posición: ${estado}`,
                                         `— Valor Total Posición: $ ${valorTotalFmt} ${moneda} (${unidadesFmt} títulos)`
                                     ];
@@ -1807,7 +1687,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         y: {
                             ticks: {
                                 callback: function(value) {
-                                    return '$ ' + Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    return '$ ' + window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(value)).toFixed(2));
                                 }
                             },
                             title: {
@@ -1834,8 +1714,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const adminCanvas = document.getElementById('administradosValoracionCanvas');
     if (adminCanvas) {
         const datosAdmin = @json($datosAdministrados);
-        const montoInicial = {{ (float) $inversion->monto_inicial }};
-        const tasaEsperada = {{ (float) ($datosAdministrados['tasa_esperada'] ?? 7.00) }};
+        const montoInicial = @json((string)$inversion->monto_inicial);
+        const tasaEsperada = @json((string)($datosAdministrados['tasa_esperada'] ?? '7'));
         const moneda = '{{ $inversion->moneda }}';
         const fechaAperturaStr = '{{ $inversion->fecha_apertura->format('Y-m-d') }}';
 
@@ -1858,8 +1738,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const d1 = new Date(fechaAperturaStr);
                 const d2 = new Date(r.fecha);
                 const dias = Math.max(0, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
-                const fEsp = dias > 0 ? Math.pow(Math.max(0.0001, 1.0 + (tasaEsperada / 100.0)), dias / 365.0) : 1.0;
-                const vEsp = Math.round(montoInicial * fEsp * 100) / 100;
+                const vEsp = window.FinanzMoney.decimal(montoInicial).plus(window.FinanzMoney.projectedInterest(montoInicial,tasaEsperada,String(dias),'365')).toFixed(2);
 
                 mapaFechas.set(r.fecha, { fecha: r.fecha, etiqueta: r.etiqueta, valorEsperado: vEsp, valorReal: r.valor, eaReal: r.ea });
             }
@@ -1937,7 +1816,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             labels: {
                                 boxWidth: 14,
                                 padding: 12,
-                                font: { size: 12, weight: '600' }
+                                font: { size: 13, weight: '600' }
                             }
                         },
                         tooltip: {
@@ -1948,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     return `📅 Fecha: ${item.etiqueta || item.fecha}`;
                                 },
                                 label: function(context) {
-                                    const val = Number(context.raw).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    const val = window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(2));
                                     return ` ${context.dataset.label.split('(')[0].trim()}: $ ${val} ${moneda}`;
                                 },
                                 afterBody: function(tooltipItems) {
@@ -1957,16 +1836,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                     const lineas = [];
 
                                     if (item.valorReal !== null) {
-                                        const difValor = item.valorReal - item.valorEsperado;
+                                        const difValor = window.FinanzMoney.decimal(String(item.valorReal)).minus(String(item.valorEsperado));
                                         const signoVal = difValor >= 0 ? '+' : '';
                                         const estado = difValor >= 0 ? '▲ Sobre la expectativa' : '▼ Bajo la expectativa';
                                         lineas.push(`— Estado: ${estado}`);
-                                        lineas.push(`— Brecha vs Proyección: ${signoVal}$ ${Number(difValor).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`);
+                                        lineas.push(`— Brecha vs Proyección: ${signoVal}$ ${window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(difValor)).toFixed(2))} ${moneda}`);
                                         if (item.eaReal !== null) {
-                                            lineas.push(`— Tasa observada en extracto: ${Number(item.eaReal).toFixed(2)}% E.A.`);
+                                            lineas.push(`— Tasa observada en extracto: ${window.FinanzMoney.decimal(String(item.eaReal)).toFixed(2).replace('.', ',')}% E.A.`);
                                         }
                                     } else {
-                                        lineas.push(`— Proyección esperada a futuro: $ ${Number(item.valorEsperado).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`);
+                                        lineas.push(`— Proyección esperada a futuro: $ ${window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(item.valorEsperado)).toFixed(2))} ${moneda}`);
                                     }
 
                                     return lineas;
@@ -1978,7 +1857,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         y: {
                             ticks: {
                                 callback: function(value) {
-                                    return '$ ' + Number(value).toLocaleString('es-CO');
+                                    return '$ ' + window.FinanzMoney.formatQuantity(String(value));
                                 }
                             },
                             title: {
@@ -2004,40 +1883,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Función de feedback reactivo para valoración porcentual en productos administrados
 window.calcularImpactoPorcentajeAdministrado = function(valStr) {
-    if (!valStr) return;
-    const cleanStr = valStr.replace(/\./g, '').replace(',', '.');
-    const ea = parseFloat(cleanStr);
-    if (isNaN(ea)) return;
-
-    const montoInicial = {{ (float) $inversion->monto_inicial }};
-    const tasaEsperada = {{ (float) ($datosAdministrados['tasa_esperada'] ?? $inversion->rentabilidad_esperada_porc ?? 7.00) }};
-    const fechaApertura = new Date('{{ $inversion->fecha_apertura->format('Y-m-d') }}');
-    const fechaInputEl = document.getElementById('val_fecha');
-    const fechaCorte = fechaInputEl && fechaInputEl.value ? new Date(fechaInputEl.value) : new Date();
-
-    const diffTime = Math.max(0, fechaCorte - fechaApertura);
-    const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    const tasaDecimal = ea / 100.0;
-    const factor = dias > 0 ? Math.pow(Math.max(0.0001, 1.0 + tasaDecimal), dias / 365.0) : 1.0;
-    const saldoProyectado = montoInicial * factor;
-    const diffEa = ea - tasaEsperada;
-
-    const totalEl = document.getElementById('admin-val-total-calculado');
-    const varEl = document.getElementById('admin-val-variacion-texto');
-
-    if (totalEl) {
-        totalEl.innerText = '$ ' + saldoProyectado.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' {{ $inversion->moneda }}';
-    }
-
-    if (varEl) {
-        const sobreEsperado = diffEa >= 0;
-        const signo = sobreEsperado ? '+' : '';
-        const texto = sobreEsperado ? '▲ Sobre la expectativa' : '▼ Bajo la expectativa';
-        const color = sobreEsperado ? '#16a34a' : '#dc2626';
-
-        varEl.innerHTML = `<span style="font-weight: 700; color: ${color};">${texto} (${signo}${diffEa.toFixed(2)}% E.A.)</span>`;
-    }
+    const {decimal, parseLocalizedValue, formatMoney, formatQuantity} = window.FinanzMoney;
+    const totalEl = document.getElementById('admin-val-total-calculado'), variation = document.getElementById('admin-val-variacion-texto');
+    try {
+        const rate = decimal(String(valStr));
+        const capital = decimal(@json((string)$inversion->monto_inicial));
+        const expected = decimal(@json((string)($datosAdministrados['tasa_esperada'] ?? $inversion->rentabilidad_esperada_porc ?? '7')));
+        const from = new Date('{{ $inversion->fecha_apertura->format('Y-m-d') }}T12:00:00Z');
+        const value = document.getElementById('val_fecha')?.value;
+        const until = value ? new Date(value + 'T12:00:00Z') : new Date();
+        const days = String(Math.max(0, Math.ceil((until - from) / 86400000)));
+        const factor = rate.div('100').plus('1');
+        if (factor.lte('0')) throw new Error();
+        const total = capital.times(factor.pow(decimal(days).div('365')));
+        if (totalEl) totalEl.textContent = formatMoney(total.toFixed(2)) + ' {{ $inversion->moneda }}';
+        if (variation) { const diff = rate.minus(expected); variation.textContent = (diff.gte('0') ? 'Sobre la expectativa: ' : 'Bajo la expectativa: ') + formatQuantity(diff.toFixed(2)) + ' % E.A.'; variation.className = 'ui-help'; }
+    } catch { if (totalEl) totalEl.textContent = '—'; if (variation) variation.textContent = 'Revisa la tasa y su precisión.'; }
 };
 </script>
 </div>

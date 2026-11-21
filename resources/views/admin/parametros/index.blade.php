@@ -1,10 +1,13 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <div>
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                <h1 class="font-semibold text-xl text-gray-800 leading-tight">
                     Parámetros Normativos por Vigencia
-                </h2>
+                </h1>
                 <p class="text-xs text-gray-500 mt-1">Una versión activa por cada año gravable para cálculos de retención y liquidación fiscal.</p>
             </div>
             <a href="{{ route('admin.parametros.create') }}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm shadow">
@@ -42,9 +45,9 @@
                                         <span class="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-full">Histórica</span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 text-gray-600">{{ $p->acto_administrativo }} ({{ $p->fecha_acto->format('Y-m-d') }})</td>
-                                <td class="px-6 py-4 text-right font-mono font-semibold">${{ number_format($p->valor_uvt, 0, ',', '.') }}</td>
-                                <td class="px-6 py-4 text-right font-mono font-semibold">${{ number_format($p->valor_smmlv, 0, ',', '.') }}</td>
+                                <td class="px-6 py-4 text-gray-600">{{ $p->acto_administrativo }} ({{ $p->fecha_acto->format('d/m/Y') }})</td>
+                                <td class="px-6 py-4 text-right font-mono font-semibold">${{ $formatValue($p->valor_uvt, 0, ',', '.') }}</td>
+                                <td class="px-6 py-4 text-right font-mono font-semibold">${{ $formatValue($p->valor_smmlv, 0, ',', '.') }}</td>
                                 <td class="px-6 py-4 text-center space-x-2">
                                     <a href="{{ route('admin.parametros.edit', $p->id) }}" class="text-indigo-600 hover:text-indigo-900 font-medium">Editar</a>
                                     <span class="text-gray-300">|</span>

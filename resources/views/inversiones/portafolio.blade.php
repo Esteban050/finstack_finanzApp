@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 @extends('layouts.app')
 @section('title', 'Portafolio')
 @section('content')
@@ -47,8 +50,8 @@
                     $chartData = collect($items)->map(fn($item) => [
                         'key' => $item['clave'],
                         'label' => $labels[$item['clave']] ?? $item['clave'],
-                        'value' => (float)$item['valor'],
-                        'percentage' => (float)$item['porcentaje'],
+                        'value' => (string)$item['valor'],
+                        'percentage' => (string)$item['porcentaje'],
                     ])->values();
                 @endphp
                 <x-ui.card :title="$title">
@@ -68,7 +71,7 @@
                                             <span class="portfolio-pie-item-name">{{ $labels[$item['clave']] ?? $item['clave'] }}</span>
                                         </div>
                                         <div class="portfolio-pie-item-values">
-                                            <strong class="portfolio-pie-item-pct">{{ number_format((float)$item['porcentaje'], 2, ',', '.') }} %</strong>
+                                            <strong class="portfolio-pie-item-pct">{{ $formatValue((string)$item['porcentaje'], 2, ',', '.') }} %</strong>
                                             <span class="portfolio-pie-item-val" data-money="{{ $item['valor'] }}">{{ $item['valor'] }}</span>
                                         </div>
                                     </li>

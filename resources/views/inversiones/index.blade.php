@@ -26,7 +26,7 @@
 @endif
 
 <x-ui.card>
-    <details @if($errors->any()) open @endif>
+    <details class="investment-register" @if($errors->any()) open @endif>
         <summary style="font-weight: 600; cursor: pointer; font-size: 1.1rem; padding: 0.5rem 0;">+ Registrar Nueva Inversión</summary>
         
         @php
@@ -39,15 +39,15 @@
 
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
                 <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">Datos de la inversión</h3>
-                <span style="background: #c2410c; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">1</span>
+                <span style="background: #c2410c; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 700;">1</span>
             </div>
 
             <div class="income-two-fields">
-                <x-ui.field name="nombre" label="Nombre *" :required="true" help="Entre 3 y 60 caracteres.">
+                <x-ui.field name="nombre" label="Nombre" :required="true" help="Entre 3 y 60 caracteres.">
                     <input id="nombre" name="nombre" minlength="3" maxlength="60" value="{{ old('nombre') }}" placeholder="Ej: Fondo Renta Conservador, CDT Bancolombia, etc." required>
                 </x-ui.field>
 
-                <x-ui.field name="tipo" label="Tipo *" :required="true">
+                <x-ui.field name="tipo" label="Tipo" :required="true">
                     <select id="tipo" name="tipo" required onchange="actualizarFormularioPorTipo(this.value)">
                         <option value="">Selecciona uno de los 6 productos</option>
                         @foreach($tipos as $type)
@@ -69,13 +69,13 @@
                     <input id="entidad" name="entidad" maxlength="80" value="{{ old('entidad') }}" placeholder="Ej: Fiduciaria de Prueba, Skandia, Porvenir">
                 </x-ui.field>
 
-                <x-ui.field name="monto_inicial" label="Monto inicial *" :required="true" help="Capital inicial a invertir o depositar">
-                    <input id="monto_inicial" name="monto_inicial" type="number" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Ej: 10000000" oninput="actualizarCalculosGenerales(); resolverDosDeTres('monto'); calcularProyeccionCdt(); actualizarWizardProyeccion();">
+                <x-ui.field name="monto_inicial" label="Monto inicial" :required="true" help="Capital inicial a invertir o depositar">
+                    <input id="monto_inicial" name="monto_inicial" type="number" data-value-input data-precision="2" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Ej: 10000000" oninput="actualizarCalculosGenerales(); resolverDosDeTres('monto'); calcularProyeccionCdt(); actualizarWizardProyeccion();">
                 </x-ui.field>
 
-                <x-ui.date-input name="fecha_apertura" label="Fecha de apertura *" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
+                <x-ui.date-input name="fecha_apertura" label="Fecha de apertura" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
 
-                <x-ui.field name="moneda" label="Moneda *" :required="true">
+                <x-ui.field name="moneda" label="Moneda" :required="true">
                     <div class="ui-inline" role="group" aria-label="Moneda" style="margin-top: 0.25rem;">
                         <label class="ui-check"><input type="radio" name="moneda" value="COP" @checked(old('moneda', 'COP') === 'COP') onchange="toggleMoneda(this.value)"> COP ($)</label>
                         <label class="ui-check"><input type="radio" name="moneda" value="USD" @checked(old('moneda') === 'USD') onchange="toggleMoneda(this.value)"> USD (US$)</label>
@@ -84,7 +84,7 @@
 
                 <div id="tasa-cambio-wrapper" @if(old('moneda', 'COP') !== 'USD') style="display:none;" @endif>
                     <x-ui.field name="tasa_cambio_usada" label="Tasa de cambio (TRM)" help="Si se deja vacía, se tomará la TRM oficial de la fecha de apertura.">
-                        <input id="tasa_cambio_usada" name="tasa_cambio_usada" type="number" step="0.0001" placeholder="Ej: 4150.00" value="{{ old('tasa_cambio_usada') }}">
+                        <input id="tasa_cambio_usada" name="tasa_cambio_usada" type="number" data-value-input data-precision="4" step="0.0001" placeholder="Ej: 4150.00" value="{{ old('tasa_cambio_usada') }}">
                     </x-ui.field>
                 </div>
 
@@ -163,12 +163,12 @@
                         <div>
                             <x-ui.field name="rentabilidad_esperada_porc" label="Rentabilidad que crees que va a generar (% E.A.) *" :required="true" help="Ajusta dentro del rango de tu nivel de riesgo seleccionado">
                                 <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                    <input id="rentabilidad_esperada_porc" name="rentabilidad_esperada_porc" type="number" step="0.1" value="{{ old('rentabilidad_esperada_porc', '5.5') }}" style="max-width: 140px; font-weight: 700; font-size: 1.05rem;" oninput="sincronizarSliderRentabilidad(this.value); actualizarWizardProyeccion();">
+                                    <input id="rentabilidad_esperada_porc" name="rentabilidad_esperada_porc" type="number" data-value-input data-precision="1" step="0.1" value="{{ old('rentabilidad_esperada_porc', '5.5') }}" style="max-width: 140px; font-weight: 700; font-size: 1.05rem;" oninput="sincronizarSliderRentabilidad(this.value); actualizarWizardProyeccion();">
                                     <span style="font-weight: 700; color: #475569;">% E.A.</span>
                                 </div>
                             </x-ui.field>
                             <input id="slider_rentabilidad_ea" type="range" min="4" max="7" step="0.1" value="{{ old('rentabilidad_esperada_porc', '5.5') }}" style="width: 100%; margin-top: 0.5rem; accent-color: #c2410c;" oninput="sincronizarInputRentabilidad(this.value); actualizarWizardProyeccion();">
-                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8125rem; color: #94a3b8; margin-top: 0.25rem;">
                                 <span id="label-slider-min">Min: 4.0%</span>
                                 <span id="label-slider-max">Max: 7.0%</span>
                             </div>
@@ -179,11 +179,11 @@
                                 <input id="plazo_meses_esperado" name="plazo_meses_esperado" type="number" min="1" max="600" value="{{ old('plazo_meses_esperado', 12) }}" style="font-weight: 700;" oninput="actualizarWizardProyeccion()">
                             </x-ui.field>
                             <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.5rem;">
-                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(6)">6 meses</button>
-                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem; background: #e2e8f0;" onclick="fijarMesesProyeccion(12)">1 año</button>
-                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(24)">2 años</button>
-                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(36)">3 años</button>
-                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="fijarMesesProyeccion(60)">5 años</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.8125rem;" onclick="fijarMesesProyeccion(6)">6 meses</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.8125rem; background: #e2e8f0;" onclick="fijarMesesProyeccion(12)">1 año</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.8125rem;" onclick="fijarMesesProyeccion(24)">2 años</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.8125rem;" onclick="fijarMesesProyeccion(36)">3 años</button>
+                                <button type="button" class="ui-button" style="padding: 0.2rem 0.5rem; font-size: 0.8125rem;" onclick="fijarMesesProyeccion(60)">5 años</button>
                             </div>
                         </div>
                     </div>
@@ -218,13 +218,13 @@
                 <div class="income-two-fields">
                     <div id="wrapper-unidades" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }}">
                         <x-ui.field name="unidades" label="Cantidad de unidades / títulos">
-                            <input id="unidades" name="unidades" type="number" step="0.00000001" min="0.00000001" value="{{ old('unidades') }}" placeholder="Ej: 10.50000000" oninput="resolverDosDeTres('unidades')" @disabled($selectedTipo !== 'ACCION_ETF')>
+                            <input id="unidades" name="unidades" type="number" data-value-input data-precision="8" step="0.00000001" min="0.00000001" value="{{ old('unidades') }}" placeholder="Ej: 10.50000000" oninput="resolverDosDeTres('unidades')" @disabled($selectedTipo !== 'ACCION_ETF')>
                         </x-ui.field>
                     </div>
 
                     <div id="wrapper-valor-unidad" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }}">
                         <x-ui.field name="valor_unidad" label="Valor / Precio de compra por unidad">
-                            <input id="valor_unidad" name="valor_unidad" type="number" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled($selectedTipo !== 'ACCION_ETF')>
+                            <input id="valor_unidad" name="valor_unidad" type="number" data-value-input data-precision="8" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled($selectedTipo !== 'ACCION_ETF')>
                         </x-ui.field>
                     </div>
                 </div>
@@ -236,7 +236,7 @@
                 <legend style="font-weight: 600; color: var(--color-primary);">Parámetros CDT / CDAT (ReteFuente 4% automática)</legend>
                 <div class="income-two-fields">
                     <x-ui.field name="tasa_ea" id="tasa_ea_cdt" label="Tasa pactada (% E.A. o Nominal)" help="Porcentaje anual. Admite hasta 8 decimales (ej. 11.9000277) para cuadrar con liquidaciones bancarias al centavo.">
-                        <input id="tasa_ea_cdt" name="tasa_ea" type="number" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 11.90 o 11.9000277" oninput="calcularProyeccionCdt()">
+                        <input id="tasa_ea_cdt" name="tasa_ea" type="number" data-value-input data-precision="8" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 11.90 o 11.9000277" oninput="calcularProyeccionCdt()">
                     </x-ui.field>
 
                     <x-ui.field name="tipo_tasa" label="Tipo de tasa">
@@ -279,7 +279,7 @@
                 <legend style="font-weight: 600; color: var(--color-primary);">Parámetros Cuenta de Alto Rendimiento (ReteFuente 7% en abono)</legend>
                 <div class="income-two-fields">
                     <x-ui.field name="tasa_ea" id="tasa_ea_cuenta" label="Tasa Fija (% E.A.)" help="Sección 9.2: Tasa EA fija para cálculo constante (admite hasta 8 decimales)">
-                        <input id="tasa_ea_cuenta" name="tasa_ea" type="number" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 12.0000">
+                        <input id="tasa_ea_cuenta" name="tasa_ea" type="number" data-value-input data-precision="8" step="any" min="0" max="100" value="{{ old('tasa_ea') }}" placeholder="Ej: 12.0000">
                     </x-ui.field>
 
                     <x-ui.field name="periodicidad_abono" label="Periodicidad de abono de intereses">
@@ -346,13 +346,13 @@
                         </x-ui.field>
 
                         <x-ui.field name="valor_dividendo_por_unidad" label="Dividendo por acción decretado" :required="true" help="Valor en la moneda seleccionada. Si no decreta dividendos, digita 0.00.">
-                            <input name="valor_dividendo_por_unidad" id="valor_dividendo_por_unidad" type="number" step="0.0001" min="0" value="{{ old('valor_dividendo_por_unidad', '0.00') }}" required placeholder="0.00">
+                            <input name="valor_dividendo_por_unidad" id="valor_dividendo_por_unidad" type="number" data-value-input data-precision="4" step="0.0001" min="0" value="{{ old('valor_dividendo_por_unidad', '0.00') }}" required placeholder="0.00">
                         </x-ui.field>
                     </div>
 
                     <div id="wrapper-trm-dividendo" style="{{ old('moneda_dividendo', 'COP') === 'USD' ? '' : 'display: none;' }} grid-column: 1 / -1;">
                         <x-ui.field name="trm_dividendo" label="TRM de conversión del dividendo (Opcional)" help="Si la dejas vacía, el sistema tomará automáticamente la TRM oficial de la base de datos para la fecha de apertura.">
-                            <input name="trm_dividendo" id="trm_dividendo" type="number" step="0.0001" min="0.0001" value="{{ old('trm_dividendo') }}" placeholder="Ej: 4150.50 (Opcional: toma TRM de BD si está vacío)">
+                            <input name="trm_dividendo" id="trm_dividendo" type="number" data-value-input data-precision="4" step="0.0001" min="0.0001" value="{{ old('trm_dividendo') }}" placeholder="Ej: 4150.50 (Opcional: toma TRM de BD si está vacío)">
                         </x-ui.field>
                     </div>
 
@@ -385,7 +385,7 @@
                     </x-ui.field>
 
                     <x-ui.field name="ingreso_anual_estimado" label="Ingreso anual estimado del partícipe (COP)" help="Requerido para validar el tope del 30%">
-                        <input name="ingreso_anual_estimado" type="number" step="0.01" min="0" value="{{ old('ingreso_anual_estimado', $perfilTributario?->ingreso_anual_estimado ?? '') }}" placeholder="Ej: 120000000">
+                        <input name="ingreso_anual_estimado" type="number" data-value-input data-precision="2" step="0.01" min="0" value="{{ old('ingreso_anual_estimado', $perfilTributario?->ingreso_anual_estimado ?? '') }}" placeholder="Ej: 120000000">
                     </x-ui.field>
                 </div>
                 <div class="ui-notice" style="margin-top: 0.5rem; background: #fefce8; border-color: #fde047;">
@@ -405,7 +405,7 @@
                     </x-ui.field>
 
                     <x-ui.field name="ingreso_laboral_promedio_6m" label="Salario mensual promedio últimos 6 meses (COP)" help="Base para calcular el porcentaje exento por UVT">
-                        <input name="ingreso_laboral_promedio_6m" type="number" step="0.01" min="0" value="{{ old('ingreso_laboral_promedio_6m', $perfilTributario?->ingreso_laboral_promedio_6m ?? '') }}" placeholder="Ej: 8000000">
+                        <input name="ingreso_laboral_promedio_6m" type="number" data-value-input data-precision="2" step="0.01" min="0" value="{{ old('ingreso_laboral_promedio_6m', $perfilTributario?->ingreso_laboral_promedio_6m ?? '') }}" placeholder="Ej: 8000000">
                     </x-ui.field>
 
                     <x-ui.field name="plazo_dias" id="plazo_dias_cesantias" label="Plazo estimado de permanencia (Días)">
@@ -664,7 +664,7 @@ function renderizarComposicionPortafolio(tipo, nivel) {
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
                     <span style="font-weight: 600; color: #334155;">${act.nombre}</span>
-                    <span style="font-weight: 700; color: #0f172a;">${act.porcentaje}% <span style="font-weight: normal; color: #64748b; font-size: 0.78rem;">(${act.categoria})</span></span>
+                    <span style="font-weight: 700; color: #0f172a;">${act.porcentaje}% <span style="font-weight: normal; color: #64748b; font-size: 0.8125rem;">(${act.categoria})</span></span>
                 </div>
                 <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
                     <div style="width: ${act.porcentaje}%; height: 100%; background: #c2410c; border-radius: 4px;"></div>
@@ -751,7 +751,7 @@ function renderWizardChart(labels, dataValores) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return ' Proyección: $ ' + Number(context.raw).toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' COP';
+                            return ' Proyección: $ ' + window.FinanzMoney.formatCanonicalValue(window.FinanzMoney.decimal(String(context.raw)).toFixed(2)) + ' COP';
                         }
                     }
                 }
@@ -760,7 +760,7 @@ function renderWizardChart(labels, dataValores) {
                 y: {
                     ticks: {
                         callback: function(value) {
-                            return '$ ' + Number(value).toLocaleString('es-CO');
+                            return '$ ' + window.FinanzMoney.formatQuantity(String(value));
                         }
                     }
                 }

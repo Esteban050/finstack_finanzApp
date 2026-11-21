@@ -1,3 +1,6 @@
+@php
+    $formatValue = require resource_path('views/components/ui/format-value.php');
+@endphp
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -173,7 +176,7 @@
         @elseif($isIncompleto)
             Información complementaria pendiente: No se ha confirmado el total de consignaciones bancarias de {{ $anio }} para descartar o confirmar el criterio C5.
         @else
-            No se supera ninguno de los topes legales fijados para el año gravable {{ $anio }} (UVT $ {{ number_format($evaluacion['parametros']['uvt'], 0, ',', '.') }}).
+            No se supera ninguno de los topes legales fijados para el año gravable {{ $anio }} (UVT $ {{ $formatValue($evaluacion['parametros']['uvt'], 0, ',', '.') }}).
         @endif
     </div>
 </div>
@@ -196,8 +199,8 @@
         <tr>
             <td>C1 · Patrimonio bruto al 31/12 (&gt; 4.500 UVT)</td>
             <td>Módulo Inversiones (Saldos 31/12)</td>
-            <td class="num">$ {{ number_format($c1['valor_cop'], 0, ',', '.') }}</td>
-            <td class="num">{{ number_format($c1['valor_uvt'], 2, ',', '.') }}</td>
+            <td class="num">$ {{ $formatValue($c1['valor_cop'], 0, ',', '.') }}</td>
+            <td class="num">{{ $formatValue($c1['valor_uvt'], 2, ',', '.') }}</td>
             <td class="num">&gt; 4.500 UVT</td>
             <td><span class="badge {{ $c1['cumple'] ? 'badge-danger' : ($c1['cerca'] ? 'badge-warning' : 'badge-neutral') }}">{{ $c1['cumple'] ? 'Cumple' : 'No cumple' }}</span></td>
         </tr>
@@ -207,8 +210,8 @@
         <tr>
             <td><strong>C2 · Ingresos brutos del año (&ge; 1.400 UVT)</strong></td>
             <td>Ingresos + Rendimientos Inversiones</td>
-            <td class="num">$ {{ number_format($c2['valor_cop'], 0, ',', '.') }}</td>
-            <td class="num">{{ number_format($c2['valor_uvt'], 2, ',', '.') }}</td>
+            <td class="num">$ {{ $formatValue($c2['valor_cop'], 0, ',', '.') }}</td>
+            <td class="num">{{ $formatValue($c2['valor_uvt'], 2, ',', '.') }}</td>
             <td class="num">&ge; 1.400 UVT</td>
             <td><span class="badge {{ $c2['cumple'] ? 'badge-danger' : ($c2['cerca'] ? 'badge-warning' : 'badge-neutral') }}">{{ $c2['cumple'] ? 'Cumple' : 'No cumple' }}</span></td>
         </tr>
@@ -218,8 +221,8 @@
         <tr>
             <td>C3 · Consumos con tarjeta de crédito (&gt; 1.400 UVT)</td>
             <td>Info. complementaria</td>
-            <td class="num">$ {{ number_format($c3['valor_cop'], 0, ',', '.') }}</td>
-            <td class="num">{{ number_format($c3['valor_uvt'], 2, ',', '.') }}</td>
+            <td class="num">$ {{ $formatValue($c3['valor_cop'], 0, ',', '.') }}</td>
+            <td class="num">{{ $formatValue($c3['valor_uvt'], 2, ',', '.') }}</td>
             <td class="num">&gt; 1.400 UVT</td>
             <td><span class="badge {{ $c3['cumple'] ? 'badge-danger' : ($c3['cerca'] ? 'badge-warning' : 'badge-neutral') }}">{{ $c3['cumple'] ? 'Cumple' : 'No cumple' }}</span></td>
         </tr>
@@ -229,8 +232,8 @@
         <tr>
             <td>C4 · Compras y consumos totales (&gt; 1.400 UVT)</td>
             <td>Info. complementaria</td>
-            <td class="num">$ {{ number_format($c4['valor_cop'], 0, ',', '.') }}</td>
-            <td class="num">{{ number_format($c4['valor_uvt'], 2, ',', '.') }}</td>
+            <td class="num">$ {{ $formatValue($c4['valor_cop'], 0, ',', '.') }}</td>
+            <td class="num">{{ $formatValue($c4['valor_uvt'], 2, ',', '.') }}</td>
             <td class="num">&gt; 1.400 UVT</td>
             <td><span class="badge {{ $c4['cumple'] ? 'badge-danger' : ($c4['cerca'] ? 'badge-warning' : 'badge-neutral') }}">{{ $c4['cumple'] ? 'Cumple' : 'No cumple' }}</span></td>
         </tr>
@@ -239,9 +242,9 @@
         @php $c5 = $evaluacion['criterios']['c5']; @endphp
         <tr>
             <td><strong>C5 · Consignaciones, depósitos o inversiones (&gt; 1.400 UVT)</strong></td>
-            <td>Inversiones ($ {{ number_format($c5['piso_inversiones_cop'] / 1000000, 1, ',', '.') }}M) + Bancos</td>
-            <td class="num">$ {{ number_format($c5['valor_cop'], 0, ',', '.') }}</td>
-            <td class="num">{{ number_format($c5['valor_uvt'], 2, ',', '.') }}</td>
+            <td>Inversiones ($ {{ $formatValue($c5['piso_inversiones_cop'] / 1000000, 1, ',', '.') }}M) + Bancos</td>
+            <td class="num">$ {{ $formatValue($c5['valor_cop'], 0, ',', '.') }}</td>
+            <td class="num">{{ $formatValue($c5['valor_uvt'], 2, ',', '.') }}</td>
             <td class="num">&gt; 1.400 UVT</td>
             <td><span class="badge {{ $c5['cumple'] ? 'badge-danger' : ($c5['cerca'] ? 'badge-warning' : 'badge-neutral') }}">{{ $c5['cumple'] ? 'Cumple' : 'No cumple' }}</span></td>
         </tr>
@@ -262,15 +265,15 @@
 {{-- RESUMEN DE ESTIMACIÓN CÉDULA GENERAL --}}
 <div class="summary-box">
     <strong>Resumen de liquidación estimada (Cédula General · Art. 336 y 241 E.T.):</strong><br>
-    Ingresos brutos $ {{ number_format($estimacion['paso1']['ingresos_brutos_cop'], 0, ',', '.') }}
-    − INCRNGO $ {{ number_format($estimacion['paso2']['incrngo_total_cop'], 0, ',', '.') }}
-    (incluye {{ number_format($evaluacion['parametros']['pct_componente_inflacionario'] * 100, 2, ',', '.') }} % de componente inflacionario y beneficio Art. 36-1 E.T.)
-    − Rentas exentas aceptadas $ {{ number_format($estimacion['paso5']['total_exentas_aceptadas_cop'], 0, ',', '.') }}
+    Ingresos brutos $ {{ $formatValue($estimacion['paso1']['ingresos_brutos_cop'], 0, ',', '.') }}
+    − INCRNGO $ {{ $formatValue($estimacion['paso2']['incrngo_total_cop'], 0, ',', '.') }}
+    (incluye {{ $formatValue($evaluacion['parametros']['pct_componente_inflacionario'] * 100, 2, ',', '.') }} % de componente inflacionario y beneficio Art. 36-1 E.T.)
+    − Rentas exentas aceptadas $ {{ $formatValue($estimacion['paso5']['total_exentas_aceptadas_cop'], 0, ',', '.') }}
     (aportes FPV, cesantías y 25 % laboral con límite del 40 % o 1.340 UVT)
-    = Renta líquida gravable <strong>$ {{ number_format($estimacion['paso6']['rlg_cop'], 0, ',', '.') }}</strong> ({{ number_format($estimacion['paso6']['rlg_uvt'], 2, ',', '.') }} UVT).<br>
-    Impuesto sobre la renta según tabla Art. 241 E.T.: $ {{ number_format($estimacion['paso7']['impuesto_redondeado_cop'], 0, ',', '.') }}
-    − Retenciones practicadas del año: $ {{ number_format($estimacion['paso8']['retenciones_totales_cop'], 0, ',', '.') }}
-    = <strong>{{ $estimacion['paso8']['saldo_label'] }}: $ {{ number_format($estimacion['paso8']['saldo_valor_mostrado_cop'], 0, ',', '.') }}</strong>.
+    = Renta líquida gravable <strong>$ {{ $formatValue($estimacion['paso6']['rlg_cop'], 0, ',', '.') }}</strong> ({{ $formatValue($estimacion['paso6']['rlg_uvt'], 2, ',', '.') }} UVT).<br>
+    Impuesto sobre la renta según tabla Art. 241 E.T.: $ {{ $formatValue($estimacion['paso7']['impuesto_redondeado_cop'], 0, ',', '.') }}
+    − Retenciones practicadas del año: $ {{ $formatValue($estimacion['paso8']['retenciones_totales_cop'], 0, ',', '.') }}
+    = <strong>{{ $estimacion['paso8']['saldo_label'] }}: $ {{ $formatValue($estimacion['paso8']['saldo_valor_mostrado_cop'], 0, ',', '.') }}</strong>.
 </div>
 
 <div class="disclaimer-box">

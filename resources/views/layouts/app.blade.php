@@ -10,7 +10,8 @@
         window.addEventListener('pageshow', function (event) {
             if (event.persisted || privateHistoryNavigation) {
                 document.documentElement.style.visibility = 'hidden';
-                window.location.replace(@js(route('login')));
+                // El servidor revalida la sesión sin expulsar al usuario que sigue autenticado.
+                window.location.reload();
             }
         });
     </script>

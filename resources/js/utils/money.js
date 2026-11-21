@@ -85,6 +85,26 @@ export function formatMoneyDraft(value, { regroup = false } = {}) {
     if (!regroup && whole.includes('.') && !/^-?\d{1,3}(?:\.\d{3})+$/.test(whole)) return String(value);
     const digits = whole.replace(/[-.]/g, '');
     if (!digits) return String(value);
-    const groups = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.').split('.');
-    return sign + groups.map((group,index)=> (index === 0 ? '' : (groups.length-index)%2 === 0 ? "'" : '.') + group).join('') + (fraction === undefined ? '' : ',' + fraction);
+    return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (fraction === undefined ? '' : ',' + fraction);
+}
+
+// Tasas, precios y cantidades conservan su precisión contractual, sin pasar por Number.
+export function parseLocalizedValue(value, { precision = 2, min, max } = {}) {
+    const raw = normalizeMoneyInput(value);
+    const fraction = String(precision) === '0' ? '' : `(?:,\\d{1,${precision}})?`;
+    if (typeof raw !== 'string' || !new RegExp(`^-?(?:\\d+|\\d{1,3}(?:\\.\\d{3})+)${fraction}$`).test(raw)) {
+        throw new TypeError(`Usa puntos para los miles y coma para los decimales; máximo ${precision} decimales.`);
+    }
+    const canonical = raw.replaceAll('.', '').replace(',', '.');
+    const amount = decimal(canonical);
+    if (min !== undefined && amount.lt(String(min))) throw new RangeError(`El valor debe ser mayor o igual a ${formatQuantity(String(min))}.`);
+    if (max !== undefined && amount.gt(String(max))) throw new RangeError(`El valor no puede superar ${formatQuantity(String(max))}.`);
+    return canonical;
+}
+
+export function formatCanonicalValue(value) {
+    const raw = String(value);
+    decimal(raw);
+    const [whole, fraction] = raw.split('.');
+    return whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (fraction ? ',' + fraction : '');
 }

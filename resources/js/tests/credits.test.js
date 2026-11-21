@@ -75,11 +75,11 @@ test('créditos: comparación muestra solo cuotas futuras y suma strings del ser
  assert.deepEqual(result,{cuotaAntes:'100',cuotaDespues:'90',cuotasAntes:2,cuotasDespues:2,interesesAntes:'35',interesesDespues:'28'});
 });
 
-test('lint: la deuda heredada es inmutable y no admite infracciones nuevas',async()=>{
+test('lint: renta corregida queda limpia y no admite infracciones nuevas',async()=>{
  const {financialLintStatus}=await import('../../../scripts/legacy-financial-baseline.mjs');
  const {readFileSync}=await import('node:fs');
  const file='resources/views/renta/estimacion.blade.php',source=readFileSync(file,'utf8');
- assert.equal(financialLintStatus(file,source),'legacy');
+ assert.equal(financialLintStatus(file,source),'clean');
  assert.equal(financialLintStatus(file,source+'\nconst nueva = parseFloat(1);'),'error');
  assert.equal(financialLintStatus('resources/views/creditos/nuevo.blade.php','const n=parseFloat(1);'),'error');
  assert.equal(financialLintStatus('resources/views/creditos/index.blade.php','const n=decimal("1");'),'clean');

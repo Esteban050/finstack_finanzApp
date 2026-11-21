@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 
 // Renderizado de presentación: modelos nuevos sin persistir y cualquier consulta bloqueada.
-export function renderFinanceFixtures() {
+export function renderFinanceFixtures({ investmentType = 'CDT', detailOnly = false } = {}) {
+    if (!['CDT','CUENTA_ALTO_RENDIMIENTO','ACCION_ETF','FIC','FPV','CESANTIAS'].includes(investmentType)) throw new Error('Producto ficticio inválido.');
     return JSON.parse(execFileSync('php', ['-r', String.raw`
 require 'vendor/autoload.php';
 $app = require 'bootstrap/app.php';
@@ -10,7 +11,7 @@ Illuminate\Support\Facades\DB::connection()->beforeExecuting(function () { throw
 $app['request']->setLaravelSession($app['session']->driver());
 $app['view']->share('errors', new Illuminate\Support\ViewErrorBag());
 $profile = new App\Models\PerfilTributario(['es_salario_integral'=>false]);
-$inv = new App\Models\Inversion(['nombre'=>'QA-Inversión ficticia','tipo'=>'CDT','moneda'=>'COP','estado'=>'ACTIVA','nivel_riesgo'=>'BAJO','fecha_apertura'=>'2025-01-01','monto_inicial'=>'10000000.00','tasa_ea'=>'10','plazo_dias'=>365,'fecha_vencimiento'=>'2026-01-01']);
+$inv = new App\Models\Inversion(['nombre'=>'QA-Inversión ficticia','tipo'=>'${investmentType}','moneda'=>'COP','estado'=>'ACTIVA','nivel_riesgo'=>'BAJO','fecha_apertura'=>'2025-01-01','monto_inicial'=>'10000000.00','tasa_ea'=>'10','plazo_dias'=>365,'fecha_vencimiento'=>'2026-01-01']);
 $inv->id='00000000-0000-4000-8000-000000000001';
 foreach(['detalleCdt','detalleCuenta','detalleRentaVariable','detalleFic','detalleFpv','detalleCesantias','entidadFinanciera'] as $relation)$inv->setRelation($relation,null);
 $inv->setRelation('movimientos',collect([]));
@@ -31,11 +32,12 @@ $cases = [
  'seguridad-social.asalariado.index'=>['perfil'=>$profile,'ingresosSalario'=>collect([])],
  'seguridad-social.pagos.index'=>['resumenAnual'=>$resumen,'anioActual'=>2025,'pagos'=>$paginator([$payment]),'pagosPresentados'=>collect([$payment])],
  'inversiones.index'=>['tipos'=>App\Models\Inversion::TIPOS,'estados'=>App\Models\Inversion::ESTADOS,'inversiones'=>$paginator([$inv]),'inversionesPresentadas'=>collect([$presentacion]),'entidades'=>collect([]),'fics'=>collect([]),'perfilTributario'=>null,'portafoliosPorProducto'=>[],'rangosRiesgo'=>[]],
- 'inversiones.show'=>['inversion'=>$inv,'presentacion'=>$presentacion,'indicadores'=>$ind,'valoraciones'=>collect([$val]),'valoracionesCronologicas'=>collect([$val]),'movimientos'=>collect([$mov]),'valorCausadoPropuesto'=>['fecha'=>'2025-07-02','valor_causado'=>'10486719.00']],
+ 'inversiones.show'=>['inversion'=>$inv,'presentacion'=>$presentacion,'indicadores'=>$ind,'valoraciones'=>collect([$val]),'valoracionesCronologicas'=>collect([$val]),'movimientos'=>collect([$mov]),'uvtCuenta'=>'49799','valorCausadoPropuesto'=>['fecha'=>'2025-07-02','valor_causado'=>'10486719.00']],
  'inversiones.portafolio'=>['portafolio'=>$portafolio,'fechaCorte'=>'2026-01-01'],
  'inversiones.simulaciones'=>['simulaciones'=>$paginator([$sim]),'maximo'=>20],
 ];
 $output=[];
+if (${detailOnly ? 'true' : 'false'}) $cases = ['inversiones.show'=>$cases['inversiones.show']];
 foreach($cases as $name=>$data){
  $source=file_get_contents(resource_path('views/'.str_replace('.','/',$name).'.blade.php'));
  $source=preg_replace('/@extends\([^\n]*\)\s*|@section\(\x27title\x27[^\n]*\)\s*|@section\(\x27content\x27\)\s*|@endsection/','',$source);

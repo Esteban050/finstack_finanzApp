@@ -11,7 +11,7 @@
                 </x-ui.field>
                 <div data-exchange-rate-field @if(old('moneda', $record['moneda'] ?? 'COP') !== 'USD') hidden @endif>
                     <x-ui.field name="tasa_cambio_usada" :id="$prefix.'-rate'" label="Tasa de cambio (TRM)" help="Opcional. Si se deja vacía, se aplicará automáticamente la TRM oficial de la fecha del gasto.">
-                        <input id="{{ $prefix }}-rate" type="text" inputmode="decimal" name="tasa_cambio_usada" data-decimal-input data-precision="4" data-min="1" placeholder="Ej: 4150.00" value="{{ old('tasa_cambio_usada', $record['tasa_cambio_usada'] ?? '') }}">
+                        <input id="{{ $prefix }}-rate" type="text" inputmode="decimal" data-value-input data-precision="4" min="0.0001" data-positive="true" name="tasa_cambio_usada" placeholder="Ej: 4.150,00" value="{{ old('tasa_cambio_usada', $record['tasa_cambio_usada'] ?? '') }}">
                     </x-ui.field>
                 </div>
             </div>
