@@ -86,3 +86,28 @@ test('MoneyInput compartido mantiene el valor canónico enviado y la retención 
  assert.equal(hidden.value,'1234567.89');assert.equal(state.invalid,false);
  state.mode='percent';state.display='3';root.dataset.allowZero='true';state.validate();assert.equal(hidden.value,'150000.00');assert.equal(state.preview,'= $\u00a0150.000');
 });
+
+import { exceedsMoneyDigits } from '../utils/money.js';
+test('RNG-09: el campo de monto no admite más de 12 enteros ni más de 2 decimales', () => {
+    for (const ok of ['', '1', '999.999.999.999', '999.999.999.999,99', '999999999999,9', '000.000.000.000.001', '-999.999.999.999,99', '$ 1.000,5'])
+        assert.equal(exceedsMoneyDigits(ok), false, ok);
+    for (const malo of ['1.000.000.000.000', '9999999999999', '999.999.999.999,999', '1,123', '-1.000.000.000.000'])
+        assert.equal(exceedsMoneyDigits(malo), true, malo);
+});
+
+import { cleanMoneyInsert } from '../utils/money.js';
+test('campo de dinero: solo números, puntos y comas', () => {
+    for (const ok of ['1', '1.000', '1.000,50', ',', '.', '']) assert.equal(cleanMoneyInsert(ok), ok, ok);
+    for (const malo of ['a', 'e', '1e5', ' ', '$', '#', '%', '+', '-', '1 000', 'ñ', '€']) assert.equal(cleanMoneyInsert(malo), null, malo);
+    assert.equal(cleanMoneyInsert('-', { allowNegative: true }), '-');
+    // Al pegar "$ 1.000" se limpia; con letras se rechaza.
+    assert.equal(cleanMoneyInsert('$ 1.000,50', { pasted: true }), '1.000,50');
+    assert.equal(cleanMoneyInsert('1.000 COP', { pasted: true }), null);
+});
+
+test('campos con más precisión (tasas, precios) conservan sus decimales', () => {
+    assert.equal(exceedsMoneyDigits('1,12345678', 8), false);
+    assert.equal(exceedsMoneyDigits('1,123456789', 8), true);
+    assert.equal(exceedsMoneyDigits('1,1234', 4), false);
+    assert.equal(exceedsMoneyDigits('1,123', 0), true);
+});

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BitacoraAuditoria;
 use App\Models\SesionUsuario;
 use App\Models\Usuario;
 use Illuminate\Support\Facades\Cookie;
@@ -11,12 +12,32 @@ use Illuminate\Support\Str;
 
 class AuthSecurityService
 {
+    /** RN-004.1: ventana en la que se cuentan los intentos fallidos consecutivos. */
+    public const VENTANA_INTENTOS_SEGUNDOS = 15 * 60;
+
     /**
      * Registrar intento fallido de inicio de sesión (RF-004, RN-004.1)
      */
     public static function registrarIntentoFallido(Usuario $usuario): void
     {
-        $usuario->increment('intentos_fallidos');
+        // RN-004.1: solo cuentan los fallos consecutivos de los últimos 15 minutos.
+        // intentos_fallidos dice cuántos fallos seguidos lleva la cuenta (se pone en
+        // 0 al entrar, al desbloquear o al restablecer la contraseña); la hora de
+        // cada uno se toma de la bitácora, y los que quedaron fuera de la ventana
+        // dejan de contar.
+        $consecutivos = (int) $usuario->intentos_fallidos;
+        $enVentana = 0;
+        if ($consecutivos > 0) {
+            $desde = now()->subSeconds(self::VENTANA_INTENTOS_SEGUNDOS);
+            $enVentana = BitacoraAuditoria::where('usuario_id', $usuario->id)
+                ->where('accion', 'INTENTO_LOGIN_FALLIDO')
+                ->orderByDesc('fecha_evento')
+                ->limit($consecutivos)
+                ->pluck('fecha_evento')
+                ->filter(fn ($fecha) => $fecha !== null && $fecha->greaterThanOrEqualTo($desde))
+                ->count();
+        }
+        $usuario->update(['intentos_fallidos' => $enVentana + 1]);
 
         BitacoraService::registrar(
             accion: 'INTENTO_LOGIN_FALLIDO',
@@ -84,10 +105,12 @@ class AuthSecurityService
             'creado_en' => now(),
         ]);
 
-        // Guardar JTI en sesión y cookie segura HttpOnly, Strict
+        // RN-003.3: JTI en sesión y en cookie HttpOnly, SameSite=Strict y Secure.
+        // Secure sigue la misma configuración que la cookie de sesión de Laravel
+        // (SESSION_SECURE_COOKIE): desactivada en local por HTTP y activa en HTTPS.
         session(['scfp_jti' => $jti]);
         Cookie::queue(
-            Cookie::make('scfp_session_token', $jti, 480, '/', null, false, true, false, 'Strict')
+            Cookie::make('scfp_session_token', $jti, 480, '/', null, (bool) config('session.secure', false), true, false, 'Strict')
         );
 
         BitacoraService::registrar(
@@ -145,8 +168,17 @@ class AuthSecurityService
             ->where('revocada', false)
             ->update(['revocada' => true]);
 
-        // Anular dispositivos recordados
+        self::olvidarDispositivosRecordados($usuario);
+    }
+
+    /**
+     * RN-012.6: cambiar la contraseña anula todos los dispositivos recordados,
+     * también el actual; en el próximo inicio de sesión se vuelve a pedir el código.
+     */
+    public static function olvidarDispositivosRecordados(Usuario $usuario): void
+    {
         SesionUsuario::where('usuario_id', $usuario->id)
+            ->whereNotNull('recordar_dispositivo_until')
             ->update(['recordar_dispositivo_until' => null]);
     }
 

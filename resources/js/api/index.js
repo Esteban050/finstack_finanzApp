@@ -4,7 +4,7 @@
 // TODO(contrato: RN-002.2/RF-012: reenvíos sin metadatos de espera/cupos. La cuenta regresiva local ayuda a la UX; la autoridad de los límites sigue siendo el servidor.)
 // TODO(contrato: RN-005: reset solo recibe token, no expone correo/documento. La exclusión de datos personales se valida en servidor, sin inventar campos para el formulario.)
 // TODO(contrato: mensajes auth: login bloqueado no es genérico; registro duplicado, reutilización y mensajes MFA difieren en puntuación. Mantener los mensajes recibidos literalmente.)
-// TODO(contrato: registro: apellidos no tiene validación de letras/espacios en servidor; PasswordPolicyRule también prohíbe la parte local del correo de longitud >= 3.)
+// TODO(contrato: registro: PasswordPolicyRule también prohíbe la parte local del correo de longitud >= 3.)
 // TODO(contrato: auth.verify-email y auth.confirm-password no tienen ruta de vista activa: la verificación redirige al login y la confirmación no está registrada.)
 // TODO(contrato: RN-027: no existe operación de reorganización/reparentado ni campo de orden; no ofrecer arrastre que no se guarde.)
 // TODO(contrato: RN-025: subcategoria_id sigue nullable en registro/recurrencia del backend; el front exige subcategoría activa y bloquea categorías sin hijas.)

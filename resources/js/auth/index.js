@@ -1,4 +1,4 @@
-import { passwordChecks, validateAuth, secondsRemaining } from './rules.js';
+import { passwordChecks, validateAuth, secondsRemaining, nameFieldError, documentFieldError } from './rules.js';
 
 const cookie = (name) => document.cookie.split('; ').find((item) => item.startsWith(name + '='))?.slice(name.length + 1);
 const setCookie = (name, value, age = 86400) => { document.cookie = `${name}=${value}; Path=/; Max-Age=${age}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`; };
@@ -41,6 +41,21 @@ export function mountAuth() {
             submit.disabled = kind === 'register' && (data.acepta_politica !== '1' || Object.values(checks).some((value) => value !== true) || !confirmation.value || Boolean(mismatch.password_confirmation));
         };
         form.addEventListener('input', update); form.addEventListener('change', update); update();
+        if (kind === 'register') {
+            // RN-001.1: el error de nombres, apellidos y documento aparece al salir del campo y se actualiza mientras se corrige.
+            for (const [name, rule] of [['nombres', nameFieldError], ['apellidos', nameFieldError], ['numero_documento', documentFieldError]]) {
+                const input = form.elements.namedItem(name), message = form.querySelector(`[data-auth-client-error="${name}"]`);
+                if (!input || !message) continue;
+                const check = () => {
+                    const error = rule(input.value);
+                    message.textContent = error; message.hidden = !error;
+                    if (error) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+                };
+                input.addEventListener('blur', () => { input.dataset.touched = 'true'; check(); });
+                input.addEventListener('input', () => { if (input.dataset.touched) check(); });
+                if (input.value) { input.dataset.touched = 'true'; check(); }
+            }
+        }
         form.addEventListener('submit', (event) => {
             if (form.dataset.submitting) { event.preventDefault(); return; }
             const errors = validateAuth(kind, values(), {correo: form.dataset.passwordEmail, documento: form.dataset.passwordDocument});
@@ -58,8 +73,15 @@ export function mountAuth() {
         const key = 'fa_resend_' + form.dataset.resendKey;
         let deadline = Number(cookie(key) || 0);
         if (!deadline && form.dataset.resendInitial === 'true') { deadline = Date.now() + 60000; setCookie(key, deadline); }
+        // El servidor manda la espera real cuando rechaza un reenvío por los 60 s.
+        if (form.dataset.resendWait) { deadline = Date.now() + Number(form.dataset.resendWait) * 1000; setCookie(key, deadline); }
         const button = form.querySelector('[data-auth-submit]'), output = form.querySelector('[data-resend-countdown]');
         form.dataset.resendDeadline = String(deadline);
+        if (form.dataset.resendBlocked === 'true') {
+            // RN-002.2 / RN-012.4: con el límite alcanzado no se ofrece más reenvío.
+            button.disabled = true; output.textContent = 'Ya no hay más reenvíos permitidos por ahora.';
+            return;
+        }
         const tick = () => { const remaining = secondsRemaining(deadline); output.textContent = remaining ? `Puedes reenviar en ${remaining} s.` : 'Ya puedes solicitar un reenvío.'; if (!form.dataset.submitting) button.disabled = remaining > 0; return remaining; };
         if (tick()) { const interval = setInterval(() => { if (!tick()) clearInterval(interval); }, 1000); }
     });

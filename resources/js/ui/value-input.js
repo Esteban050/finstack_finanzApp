@@ -59,7 +59,8 @@ export function mountValueInputs(root = document) {
             return !error;
         };
         sync();
-        bindMoneyGrouping(visible);
+        // Respeta la precisión del campo (tasas y precios usan 4 u 8 decimales) y su mínimo negativo.
+        bindMoneyGrouping(visible, { maxDecimals: Number(precision), allowNegative: () => Number(canonical.getAttribute('min') || 0) < 0 });
         visible.addEventListener('input', () => validate());
         visible.addEventListener('change', () => { validate(); canonical.dispatchEvent(new Event('change', { bubbles: true })); });
         visible.addEventListener('blur', () => validate(false));

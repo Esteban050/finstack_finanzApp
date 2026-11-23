@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AceptacionPolitica;
 use App\Models\PerfilTributario;
 use App\Models\TokenSeguridad;
 use App\Models\Usuario;
@@ -42,7 +43,7 @@ class UserProfileController extends Controller
 
         $validated = $request->validate([
             'nombres' => ['required', 'string', 'min:2', 'max:60', 'regex:/^[\pL\s]+$/u'],
-            'apellidos' => ['required', 'string', 'min:2', 'max:60'],
+            'apellidos' => ['required', 'string', 'min:2', 'max:60', 'regex:/^[\pL\s]+$/u'],
             'fecha_nacimiento' => ['required', 'date'],
             'ciudad_residencia' => ['required', 'string', 'max:80'],
             'telefono' => ['nullable', 'string', 'digits:10'],
@@ -54,11 +55,44 @@ class UserProfileController extends Controller
             'clase_riesgo_arl' => ['nullable', 'integer', 'between:1,5'],
             'arl_obligatoria' => ['nullable', 'boolean'],
             'responsable_iva' => ['required', 'boolean'],
-            'vigente_desde' => ['nullable', 'date'],
+            'vigente_desde' => ['nullable', 'date', 'before_or_equal:' . now('America/Bogota')->toDateString()],
         ], [
+            'nombres.required' => 'Los nombres son obligatorios.',
+            'nombres.min' => 'Los nombres deben tener mínimo 2 caracteres.',
+            'nombres.max' => 'Los nombres pueden tener máximo 60 caracteres.',
             'nombres.regex' => 'Los nombres solo deben contener letras y espacios.',
+            'apellidos.required' => 'Los apellidos son obligatorios.',
+            'apellidos.min' => 'Los apellidos deben tener mínimo 2 caracteres.',
+            'apellidos.max' => 'Los apellidos pueden tener máximo 60 caracteres.',
+            'apellidos.regex' => 'Los apellidos solo deben contener letras y espacios.',
+            'fecha_nacimiento.required' => 'La fecha de nacimiento es obligatoria.',
+            'fecha_nacimiento.date' => 'Ingresa una fecha de nacimiento válida.',
+            'ciudad_residencia.required' => 'La ciudad de residencia es obligatoria.',
+            'ciudad_residencia.max' => 'La ciudad puede tener máximo 80 caracteres.',
+            'telefono.digits' => 'El teléfono debe tener exactamente 10 dígitos.',
             'ultimos_digitos_nit.regex' => 'Los últimos dígitos deben ser exactamente 2 números (00-99).',
+            'personas_a_cargo.required' => 'Indica el número de personas a cargo.',
+            'personas_a_cargo.integer' => 'Las personas a cargo deben ser un número entero entre 0 y 10.',
+            'personas_a_cargo.between' => 'Las personas a cargo deben estar entre 0 y 10.',
+            'ocupaciones.required' => 'Selecciona al menos una ocupación.',
+            'ocupaciones.min' => 'Selecciona al menos una ocupación.',
+            'ocupaciones.*.in' => 'La ocupación seleccionada no es válida.',
+            'clase_riesgo_arl.integer' => 'La clase de riesgo ARL debe estar entre I y V.',
+            'clase_riesgo_arl.between' => 'La clase de riesgo ARL debe estar entre I y V.',
+            'responsable_iva.required' => 'Indica si eres responsable de IVA.',
+            'vigente_desde.date' => 'Ingresa una fecha de vigencia válida.',
+            'vigente_desde.before_or_equal' => 'La fecha de vigencia no puede ser futura.',
         ]);
+
+        // RN-008.6: la vigencia no puede ser anterior al inicio de la versión actual,
+        // para no reescribir periodos que ya usaron otra versión del perfil.
+        $versionActual = $usuario->perfilesTributarios()->whereNull('vigente_hasta')->first();
+        if (!empty($validated['vigente_desde']) && $versionActual
+            && Carbon::parse($validated['vigente_desde'])->startOfDay()->lessThan(Carbon::parse($versionActual->vigente_desde)->startOfDay())) {
+            return back()->withInput()->withErrors([
+                'vigente_desde' => 'La fecha de vigencia no puede ser anterior al ' . Carbon::parse($versionActual->vigente_desde)->format('d/m/Y') . ', inicio de la versión vigente de tu perfil.',
+            ]);
+        }
 
         // CA-008.3: Debe ser mayor de edad (>= 18 años)
         $edad = Carbon::parse($validated['fecha_nacimiento'])->age;
@@ -155,8 +189,10 @@ class UserProfileController extends Controller
             return back()->with('status', 'Perfil actualizado');
         } catch (\Throwable $e) {
             DB::rollBack();
+            // RNF-012: el detalle técnico va al log, nunca a la pantalla.
+            \Illuminate\Support\Facades\Log::error('Error al guardar el perfil tributario', ['usuario_id' => $usuario->id, 'error' => $e->getMessage()]);
             return back()->withInput()->withErrors([
-                'perfil_error' => 'Error al guardar el perfil: ' . $e->getMessage(),
+                'perfil_error' => 'No pudimos guardar tu perfil. Intenta de nuevo en unos minutos.',
             ]);
         }
     }
@@ -259,7 +295,25 @@ class UserProfileController extends Controller
         ]);
 
         if (!Hash::check($request->password, $usuario->password_hash)) {
-            return back()->withErrors(['password' => 'La contraseña no es correcta.']);
+            return back()->withInput($request->only('revocar_autorizacion'))
+                ->withErrors(['password' => 'La contraseña no es correcta.']);
+        }
+
+        // RN-009.4: revocar la autorización de tratamiento de datos implica pedir la
+        // supresión de la cuenta. Se marca la aceptación vigente como revocada; si
+        // el titular cancela la supresión, deberá aceptar la política de nuevo.
+        if ($request->boolean('revocar_autorizacion')) {
+            AceptacionPolitica::where('usuario_id', $usuario->id)
+                ->whereNull('revocada_en')
+                ->update(['revocada_en' => now()]);
+
+            BitacoraService::registrar(
+                accion: 'REVOCACION_AUTORIZACION_DATOS',
+                entidadAfectada: 'aceptaciones_politica',
+                entidadId: $usuario->id,
+                justificacion: 'El titular revocó la autorización de tratamiento de datos (RN-009.4)',
+                usuarioId: $usuario->id
+            );
         }
 
         // RN-010.2: Pasa a PENDIENTE_SUPRESION, se bloquea por 15 días
@@ -340,10 +394,13 @@ class UserProfileController extends Controller
         $usuario = Auth::user();
 
         // RN-011.2: Máximo 1 exportación cada 24 horas
-        if ($usuario->ultima_exportacion_en && now()->diffInHours($usuario->ultima_exportacion_en) < 24) {
-            $horasFaltantes = 24 - now()->diffInHours($usuario->ultima_exportacion_en);
+        // La diferencia se toma en valor absoluto: en Carbon 3 now()->diffInHours(pasado)
+        // es negativa y bloqueaba la exportación para siempre.
+        if ($usuario->ultima_exportacion_en && $usuario->ultima_exportacion_en->diffInSeconds(now(), true) < 24 * 60 * 60) {
+            $disponible = $usuario->ultima_exportacion_en->copy()->addHours(24)->timezone('America/Bogota');
             return back()->withErrors([
-                'exportacion_error' => "Solo se permite una exportación cada 24 horas. Podrás solicitarla nuevamente en {$horasFaltantes} horas.",
+                'exportacion_error' => 'Solo se permite una exportación cada 24 horas. Podrás solicitarla nuevamente el '
+                    . $disponible->format('d/m/Y') . ' a las ' . $disponible->format('H:i') . '.',
             ]);
         }
 

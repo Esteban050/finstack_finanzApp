@@ -7,6 +7,7 @@ use App\Models\FuenteIngreso;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
 use App\Services\IngresoService;
+use App\Services\RecurrenciaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -144,11 +145,21 @@ class FuenteIngresoController extends Controller
             usuarioId: Auth::id()
         );
 
+        // Sin fuente activa no deben seguir generándose ingresos recurrentes:
+        // se pausan y se avisa. Al reactivarla no se reanudan solas; el usuario
+        // decide cuáles reanudar (CA-022.2 salta las fechas que pasaron).
+        $pausadas = $nuevoEstado ? 0 : RecurrenciaService::pausarDeFuente($fuente);
+
         $mensaje = $nuevoEstado
-            ? 'Fuente activada.'
-            : 'Fuente inactivada. No aparecerá al registrar ingresos nuevos.';
+            ? 'Fuente activada. Si tenía ingresos recurrentes pausados, puedes reanudarlos en Recurrentes.'
+            : 'Fuente inactivada. No aparecerá al registrar ingresos nuevos.'
+                . ($pausadas > 0
+                    ? ' Se ' . ($pausadas === 1 ? 'pausó 1 ingreso recurrente' : "pausaron {$pausadas} ingresos recurrentes") . ' que usaba' . ($pausadas === 1 ? '' : 'n') . ' esta fuente.'
+                    : '');
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', $mensaje);
             return response()->json([
                 'mensaje' => $mensaje,
                 'data' => $fuente->fresh(),

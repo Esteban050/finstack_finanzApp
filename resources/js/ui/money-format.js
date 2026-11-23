@@ -1,4 +1,4 @@
-import { formatMoneyDraft, normalizeMoneyInput } from '../utils/money.js';
+import { formatMoneyDraft, normalizeMoneyInput, exceedsMoneyDigits, cleanMoneyInsert } from '../utils/money.js';
 
 const previousValues = new WeakMap();
 const bound = new WeakSet();
@@ -33,11 +33,35 @@ export function groupMoneyControl(input, value = input.value, event = null) {
     return formatted;
 }
 
-export function bindMoneyGrouping(input, { isMoney = () => true } = {}) {
+// maxDecimals: decimales permitidos (2 en dinero; tasas y precios pueden usar más).
+// allowNegative: si el campo admite el signo menos (por defecto lo dice data-allow-negative).
+export function bindMoneyGrouping(input, { isMoney = () => true, maxDecimals = 2, allowNegative = null } = {}) {
     if (bound.has(input)) return;
     bound.add(input);
     if (isMoney()) groupMoneyControl(input);
+    const permiteNegativo = allowNegative ?? (() => input.closest('[data-allow-negative]')?.dataset.allowNegative === 'true');
     input.addEventListener('beforeinput', event => {
+        if (event.inputType?.startsWith('insert')) {
+            const pegado = event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop';
+            const original = event.data ?? event.dataTransfer?.getData('text') ?? '';
+            // Solo números, puntos y comas: letras y caracteres especiales no entran.
+            const texto = cleanMoneyInsert(original, { allowNegative: permiteNegativo(), pasted: pegado });
+            const inicio = input.selectionStart ?? input.value.length, fin = input.selectionEnd ?? inicio;
+            const resultado = texto === null ? null : input.value.slice(0, inicio) + texto + input.value.slice(fin);
+            // RNG-09: tampoco más de 12 dígitos enteros ni más de 2 decimales
+            // (tope $ 999.999.999.999,99); se calcula el texto que quedaría y se bloquea antes.
+            if (resultado === null || (isMoney() && exceedsMoneyDigits(resultado, maxDecimals))) {
+                event.preventDefault();
+                return;
+            }
+            // Un valor pegado como "$ 1.000" entra ya limpio.
+            if (texto !== original) {
+                event.preventDefault();
+                input.setRangeText(texto, inicio, fin, 'end');
+                input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: event.inputType }));
+            }
+            return;
+        }
         if (!isMoney() || input.selectionStart !== input.selectionEnd) return;
         const at = input.selectionStart;
         let from, to;
@@ -52,6 +76,18 @@ export function bindMoneyGrouping(input, { isMoney = () => true } = {}) {
         input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: event.inputType }));
     });
     input.addEventListener('input', event => {
-        if (isMoney()) groupMoneyControl(input, input.value, event);
+        // Red de seguridad (autocompletar, arrastrar texto): vuelve al último valor válido.
+        if (cleanMoneyInsert(input.value, { allowNegative: permiteNegativo(), pasted: true }) === null) {
+            input.value = previousValues.get(input) ?? '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+        }
+        if (!isMoney()) return;
+        if (exceedsMoneyDigits(input.value, maxDecimals)) {
+            input.value = previousValues.get(input) ?? '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+        }
+        groupMoneyControl(input, input.value, event);
     });
 }

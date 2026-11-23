@@ -237,7 +237,8 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     /*
     | MOD-07 — Declaración de Renta (Característica E: RF-043 a RF-047)
     */
-    Route::prefix('renta')->name('renta.')->group(function () {
+    // CA-008.1: sin el perfil de ocupación completo tampoco se puede usar MOD-07.
+    Route::middleware('perfil.completo')->prefix('renta')->name('renta.')->group(function () {
         Route::get('/', [DeclaracionRentaController::class, 'index'])->name('index');
         Route::get('/{anio}/consolidado', [DeclaracionRentaController::class, 'consolidado'])->whereNumber('anio')->name('consolidado');
         Route::get('/{anio}/complementaria', [DeclaracionRentaController::class, 'complementaria'])->whereNumber('anio')->name('complementaria');

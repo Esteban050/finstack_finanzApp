@@ -9,37 +9,57 @@ use Illuminate\Support\Facades\Request;
 
 class SecurityTokenService
 {
+    /** RN-002.2 y RN-012.4: espera mínima entre reenvíos. */
+    public const ESPERA_REENVIO_SEGUNDOS = 60;
+
+    /** RN-002.2: reenvíos del correo de verificación permitidos en 24 horas. */
+    public const MAX_REENVIOS_VERIFICACION = 5;
+
     /**
      * Generar token de verificación de correo (RF-002, RN-002.1, RN-002.2)
      * Retorna array con ['token_plano' => ..., 'error' => ...]
      */
     public static function generarTokenVerificacion(Usuario $usuario): array
     {
+        $ahora = now();
         $ultimoToken = TokenSeguridad::where('usuario_id', $usuario->id)
             ->where('tipo', 'VERIFICACION_CORREO')
             ->orderByDesc('creado_en')
             ->first();
+        $reenviosEnVentana = 0;
 
         if ($ultimoToken) {
-            // RN-002.2: Reenvío máx cada 60 segundos
-            $segundosPasados = now()->diffInSeconds($ultimoToken->creado_en);
-            if ($segundosPasados < 60) {
-                $segundosFaltantes = 60 - $segundosPasados;
+            // RN-002.2: Reenvío máx cada 60 segundos. La diferencia se toma en valor
+            // absoluto: en Carbon 3 now()->diffInSeconds(pasado) es negativa.
+            $segundosPasados = (int) floor($ultimoToken->creado_en->diffInSeconds($ahora, true));
+            if ($segundosPasados < self::ESPERA_REENVIO_SEGUNDOS) {
+                $segundosFaltantes = self::ESPERA_REENVIO_SEGUNDOS - $segundosPasados;
                 return [
                     'error' => "Debes esperar {$segundosFaltantes} segundos antes de solicitar otro correo.",
                     'segundos_faltantes' => $segundosFaltantes,
                 ];
             }
 
-            // RN-002.2: Máximo 5 veces en 24 horas
-            $reenvios24h = TokenSeguridad::where('usuario_id', $usuario->id)
+            // RN-002.2: Máximo 5 reenvíos en 24 horas. El correo del registro (el
+            // primer token de la cuenta) no cuenta como reenvío.
+            $primerTokenId = TokenSeguridad::where('usuario_id', $usuario->id)
                 ->where('tipo', 'VERIFICACION_CORREO')
-                ->where('creado_en', '>=', now()->subHours(24))
-                ->count();
+                ->orderBy('creado_en')
+                ->value('id');
+            $reenvios = TokenSeguridad::where('usuario_id', $usuario->id)
+                ->where('tipo', 'VERIFICACION_CORREO')
+                ->where('id', '!=', $primerTokenId)
+                ->where('creado_en', '>', $ahora->copy()->subHours(24))
+                ->orderBy('creado_en')
+                ->get(['creado_en']);
+            $reenviosEnVentana = $reenvios->count();
 
-            if ($reenvios24h >= 5) {
+            if ($reenviosEnVentana >= self::MAX_REENVIOS_VERIFICACION) {
+                $disponible = $reenvios->first()->creado_en->copy()->addHours(24)->timezone('America/Bogota');
                 return [
-                    'error' => 'Has alcanzado el límite máximo de 5 solicitudes de verificación en 24 horas.',
+                    'error' => 'Ya no hay más reenvíos permitidos: alcanzaste el máximo de 5 en 24 horas. Podrás solicitar otro correo el '
+                        . $disponible->format('d/m/Y') . ' a las ' . $disponible->format('H:i') . '.',
+                    'limite_alcanzado' => true,
                 ];
             }
 
@@ -47,7 +67,7 @@ class SecurityTokenService
             TokenSeguridad::where('usuario_id', $usuario->id)
                 ->where('tipo', 'VERIFICACION_CORREO')
                 ->whereNull('usado_en')
-                ->update(['usado_en' => now()]);
+                ->update(['usado_en' => $ahora]);
         }
 
         // RN-002.1: Token de al menos 128 bits (16 bytes = 128 bits = 32 caracteres hexadecimales)
@@ -59,10 +79,12 @@ class SecurityTokenService
             'tipo' => 'VERIFICACION_CORREO',
             'token_hash' => $tokenHash,
             'intentos' => 0,
-            'reenvios_contador' => ($ultimoToken?->reenvios_contador ?? 0) + 1,
-            'expira_en' => now()->addHours(24),
+            // 0 en el registro; 1 a 5 en los reenvíos de la ventana de 24 h (la
+            // columna solo admite 0–5).
+            'reenvios_contador' => $ultimoToken ? $reenviosEnVentana + 1 : 0,
+            'expira_en' => $ahora->copy()->addHours(24),
             'ip_origen' => Request::ip(),
-            'creado_en' => now(),
+            'creado_en' => $ahora,
         ]);
 
         return ['token_plano' => $tokenPlano];
@@ -183,15 +205,16 @@ class SecurityTokenService
 
         if ($esReenvio) {
             if ($ultimoCodigo) {
-                $segundos = now()->diffInSeconds($ultimoCodigo->creado_en);
-                if ($segundos < 60) {
+                $segundos = (int) floor($ultimoCodigo->creado_en->diffInSeconds(now(), true));
+                if ($segundos < self::ESPERA_REENVIO_SEGUNDOS) {
                     return [
-                        'error' => 'Debes esperar ' . (60 - $segundos) . ' segundos para solicitar un nuevo código.',
+                        'error' => 'Debes esperar ' . (self::ESPERA_REENVIO_SEGUNDOS - $segundos) . ' segundos para solicitar un nuevo código.',
                     ];
                 }
                 if ($ultimoCodigo->reenvios_contador >= 3) {
                     return [
-                        'error' => 'Has alcanzado el límite máximo de 3 reenvíos de código.',
+                        'error' => 'Ya no hay más reenvíos de código permitidos: alcanzaste el máximo de 3. Vuelve a iniciar sesión para recibir un código nuevo.',
+                        'limite_alcanzado' => true,
                     ];
                 }
                 $contadorReenvios = $ultimoCodigo->reenvios_contador + 1;

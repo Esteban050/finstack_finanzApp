@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { passwordChecks, validateAuth, secondsRemaining, validateProfilePresentation } from '../auth/rules.js';
+import { passwordChecks, validateAuth, secondsRemaining, validateProfilePresentation, nameFieldError, documentFieldError } from '../auth/rules.js';
 import { contrastCases } from '../utils/contrast.js';
 
 const valid = {nombres:'María José', apellidos:'Gómez', tipo_documento:'CC',numero_documento:'ABC12345',correo:'prueba@example.invalid',password:'ClaveDistinta!9',password_confirmation:'ClaveDistinta!9',acepta_politica:'1'};
@@ -74,4 +74,30 @@ test('F6-57: ambos apellidos y nombres admiten letras Unicode y rechazan número
         for(const value of ['Áñ','María José','Ñ'.repeat(60)]) assert.equal(validateAuth('register',{...valid,[field]:value})[field],undefined);
         for(const value of ['A','Ñ'.repeat(61),'Gómez2','Muñoz😀']) assert.ok(validateAuth('register',{...valid,[field]:value})[field]);
     }
+});
+
+test('RN-001.1: nombres y apellidos de 2 a 60 caracteres con mensaje por cada regla',()=>{
+    assert.equal(nameFieldError(''),'Este campo es obligatorio.');
+    assert.equal(nameFieldError('   '),'Este campo es obligatorio.');
+    assert.equal(nameFieldError('A'),'Debe tener mínimo 2 caracteres.');
+    assert.equal(nameFieldError(' A '),'Debe tener mínimo 2 caracteres.');
+    assert.equal(nameFieldError('Al'),'');
+    assert.equal(nameFieldError('Ñ'.repeat(59)),'');
+    assert.equal(nameFieldError('Ñ'.repeat(60)),'');
+    assert.equal(nameFieldError('Ñ'.repeat(61)),'Debe tener máximo 60 caracteres.');
+    assert.equal(nameFieldError('Ana2'),'Solo se permiten letras y espacios.');
+    for(const field of ['nombres','apellidos']) assert.equal(validateAuth('register',{...valid,[field]:'A'})[field],'Debe tener mínimo 2 caracteres.');
+    const view=fs.readFileSync(new URL('../../views/auth/register.blade.php',import.meta.url),'utf8');
+    for(const field of ['nombres','apellidos']) assert.match(view,new RegExp('name="'+field+'"[^>]*minlength="2" maxlength="60"'));
+});
+
+test('RN-001.1: número de documento de 5 a 15 caracteres alfanuméricos',()=>{
+    assert.equal(documentFieldError(''),'Este campo es obligatorio.');
+    assert.equal(documentFieldError('1234'),'Debe tener mínimo 5 caracteres.');
+    assert.equal(documentFieldError('12345'),'');
+    assert.equal(documentFieldError('A'.repeat(15)),'');
+    assert.equal(documentFieldError('1'.repeat(16)),'Debe tener máximo 15 caracteres.');
+    assert.equal(documentFieldError('12.345'),'Solo letras y números, sin puntos, guiones ni espacios.');
+    assert.equal(documentFieldError('12345-6'),'Solo letras y números, sin puntos, guiones ni espacios.');
+    assert.equal(validateAuth('register',{...valid,numero_documento:'1234'}).numero_documento,'Debe tener mínimo 5 caracteres.');
 });

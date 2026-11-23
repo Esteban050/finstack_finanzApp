@@ -9,15 +9,33 @@ export function passwordChecks(password, {correo = '', documento = ''} = {}) {
         personal: email && doc ? !lower.includes(email) && !(local.length >= 3 && lower.includes(local)) && !lower.includes(doc) : null,
     };
 }
+// RN-001.1: nombres y apellidos obligatorios, de 2 a 60 caracteres, solo letras y espacios.
+export function nameFieldError(value) {
+    const text = String(value ?? '').trim(), length = [...text].length;
+    if (!length) return 'Este campo es obligatorio.';
+    if (length < 2) return 'Debe tener mínimo 2 caracteres.';
+    if (length > 60) return 'Debe tener máximo 60 caracteres.';
+    if (!/^[\p{L} ]+$/u.test(text)) return 'Solo se permiten letras y espacios.';
+    return '';
+}
+// RN-001.1: número de documento obligatorio, de 5 a 15 caracteres alfanuméricos, sin puntos.
+export function documentFieldError(value) {
+    const text = String(value ?? '').trim(), length = [...text].length;
+    if (!length) return 'Este campo es obligatorio.';
+    if (!/^[\p{L}\p{N}]+$/u.test(text)) return 'Solo letras y números, sin puntos, guiones ni espacios.';
+    if (length < 5) return 'Debe tener mínimo 5 caracteres.';
+    if (length > 15) return 'Debe tener máximo 15 caracteres.';
+    return '';
+}
 export function validateAuth(kind, values, context = {}) {
     const errors = {}, passwords = ['register', 'reset', 'change'].includes(kind);
     if (['login', 'register', 'recovery', 'verification-resend'].includes(kind)) {
         if (!values.correo || values.correo.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(values.correo)) errors.correo = 'Indica un correo electrónico válido, de máximo 254 caracteres.';
     }
     if (kind === 'register') {
-        for (const name of ['nombres', 'apellidos']) if (!/^[\p{L} ]{2,60}$/u.test((values[name] ?? '').trim())) errors[name] = 'Debe tener entre 2 y 60 caracteres, solo letras y espacios.';
+        for (const name of ['nombres', 'apellidos']) { const message = nameFieldError(values[name]); if (message) errors[name] = message; }
         if (!['CC', 'CE', 'PA', 'PPT'].includes(values.tipo_documento)) errors.tipo_documento = 'Selecciona el tipo de documento.';
-        if (!/^[\p{L}\p{N}]{5,15}$/u.test(values.numero_documento ?? '')) errors.numero_documento = 'El documento debe tener de 5 a 15 caracteres alfanuméricos, sin puntos.';
+        { const message = documentFieldError(values.numero_documento); if (message) errors.numero_documento = message; }
         if (values.acepta_politica !== '1') errors.acepta_politica = 'Debes aceptar la política de datos y los términos de uso.';
     }
     if (passwords) {

@@ -4,7 +4,7 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-clase-arl="{{ (int) ($perfil?->clase_riesgo_arl ?? 0) }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
 <p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
@@ -77,7 +77,8 @@
                 {{-- INGRESOS REGISTRADOS DEL MES (INDEPENDIENTE Y RENTISTA): el usuario decide con qué monto calcular --}}
                 <div x-show="tipoCotizante !== 'ASALARIADO'" style="margin-bottom: 1rem;" aria-live="polite">
                     <p class="ui-help" x-show="buscandoIngresos" role="status">Buscando tus ingresos registrados del mes anterior…</p>
-                    <p class="ui-error" x-show="errorIngresos" x-text="'No pudimos consultar tus ingresos del mes. ' + errorIngresos + ' Puedes digitar el monto manualmente.'" role="alert"></p>
+                    {{-- Si el problema es el periodo, el motivo se muestra debajo de ese campo. --}}
+                    <p class="ui-error" x-show="errorIngresos && !errorEsDePeriodo" x-text="'No pudimos consultar tus ingresos del mes. ' + errorIngresos + ' Puedes digitar el monto manualmente.'" role="alert"></p>
 
                     <template x-if="!buscandoIngresos && ingresosMes && ingresosMes.cantidad > 0">
                         <div class="ui-notice social-ingresos" role="status" style="border-left: 4px solid var(--ui-warning); display: grid; gap: 0.75rem;">

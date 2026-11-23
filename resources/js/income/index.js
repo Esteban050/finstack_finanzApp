@@ -130,8 +130,12 @@ export function mountIncome() {
             // Relectura del listado y sus totales autoritativos, sin sumas locales.
             window.location.assign(form.dataset.returnUrl || window.location.href);
         } catch (error) {
-            mapFieldErrors(form, normalizedErrors(error.errors || {}));
-            showRequestError(status, error);
+            const errors = normalizedErrors(error.errors || {});
+            mapFieldErrors(form, errors);
+            // Un error de un campo que este formulario no tiene (p. ej. reanudar una
+            // recurrencia con la fuente inactiva) se muestra tal cual, no como el genérico.
+            const withoutField = Object.entries(errors).filter(([name]) => !form.querySelector(`[data-field="${name}"]`)).flatMap(([, messages]) => messages);
+            showRequestError(status, withoutField.length ? { status: error.status, message: withoutField[0] } : error);
         } finally {
             if (succeeded) return;
             submit?.removeAttribute('disabled'); submit?.removeAttribute('aria-busy'); form.setAttribute('aria-busy', 'false');

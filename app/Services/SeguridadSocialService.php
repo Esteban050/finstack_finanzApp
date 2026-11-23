@@ -59,6 +59,9 @@ class SeguridadSocialService
     /** RN-033.6 */
     public const OCUPACION_PENSIONADO = 'Pensionado';
 
+    /** CST art. 132: mínimo del salario integral, en SMMLV (10 + 30 % prestacional). */
+    public const SMMLV_SALARIO_INTEGRAL_MINIMO = '13';
+
     /** Cálculo exacto al peso (sin redondeo a múltiplos de $ 100). */
     private const MULTIPLO_APORTE = 1;
 
@@ -586,6 +589,7 @@ class SeguridadSocialService
             : true;
 
         if ($tieneLaboral) {
+            self::validarSalarioIntegral($salarioRaw, $esIntegral, $parametro);
             $baseLaboral = $esIntegral ? self::porcentaje($salarioRaw, (string) $parametro->porc_ibc_integral) : $salarioRaw;
             if (bccomp($baseLaboral, $tope25, 2) > 0) {
                 $ibcLaboral = $tope25;
@@ -942,6 +946,27 @@ class SeguridadSocialService
      * RN-033.5 (múltiplos de $ 100) es una regla de la PILA del independiente:
      * acá los valores se redondean a 2 decimales (RNG-02), como en CA-034.1.
      */
+    /**
+     * CST art. 132: el salario integral no puede ser inferior a 10 SMMLV más el
+     * 30 % de factor prestacional, es decir 13 SMMLV. Un valor menor no es un
+     * salario integral válido y se rechaza.
+     */
+    public static function validarSalarioIntegral(string $salario, bool $esIntegral, ParametroNormativo $parametro): void
+    {
+        if (!$esIntegral) {
+            return;
+        }
+
+        $minimo = bcmul((string) $parametro->valor_smmlv, self::SMMLV_SALARIO_INTEGRAL_MINIMO, 2);
+        if (bccomp($salario, $minimo, 2) < 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'salario' => 'El salario integral no puede ser inferior a 13 SMMLV ($ '
+                    . number_format((float) $minimo, 0, ',', '.')
+                    . '): 10 salarios mínimos más el 30 % de factor prestacional. Si tu salario es menor, no es integral: márcalo como "No" en tu perfil.',
+            ]);
+        }
+    }
+
     public static function calcularAsalariado(
         string $salario,
         bool $esIntegral,
@@ -950,6 +975,8 @@ class SeguridadSocialService
         bool $exoneradoParafiscales = true,
         int $claseRiesgoArl = 1
     ): array {
+        self::validarSalarioIntegral($salario, $esIntegral, $parametro);
+
         $smmlv = (string) $parametro->valor_smmlv;
         $tope25 = bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2);
 

@@ -36,14 +36,25 @@ class ScfpAuthController extends Controller
         // RN-001.1: Validaciones de campos obligatorios y formatos
         $validated = $request->validate([
             'nombres' => ['required', 'string', 'min:2', 'max:60', 'regex:/^[\pL\s]+$/u'],
-            'apellidos' => ['required', 'string', 'min:2', 'max:60'],
+            'apellidos' => ['required', 'string', 'min:2', 'max:60', 'regex:/^[\pL\s]+$/u'],
             'tipo_documento' => ['required', 'string', 'in:CC,CE,PA,PPT'],
             'numero_documento' => ['required', 'string', 'min:5', 'max:15', 'alpha_num'],
             'correo' => ['required', 'string', 'email:rfc', 'max:254'],
             'password' => ['required', 'string', 'confirmed', new PasswordPolicyRule($request->correo, $request->numero_documento)],
             'acepta_politica' => ['required', 'accepted'],
         ], [
+            'nombres.required' => 'Los nombres son obligatorios.',
+            'nombres.min' => 'Los nombres deben tener mínimo 2 caracteres.',
+            'nombres.max' => 'Los nombres deben tener máximo 60 caracteres.',
             'nombres.regex' => 'Los nombres solo deben contener letras y espacios.',
+            'apellidos.required' => 'Los apellidos son obligatorios.',
+            'apellidos.min' => 'Los apellidos deben tener mínimo 2 caracteres.',
+            'apellidos.max' => 'Los apellidos deben tener máximo 60 caracteres.',
+            'apellidos.regex' => 'Los apellidos solo deben contener letras y espacios.',
+            'numero_documento.required' => 'El número de documento es obligatorio.',
+            'numero_documento.min' => 'El número de documento debe tener mínimo 5 caracteres.',
+            'numero_documento.max' => 'El número de documento debe tener máximo 15 caracteres.',
+            'numero_documento.alpha_num' => 'El número de documento solo puede tener letras y números, sin puntos, guiones ni espacios.',
             'password.confirmed' => 'Las contraseñas no coinciden',
             'acepta_politica.accepted' => 'Debes aceptar la política de tratamiento de datos personales para continuar.',
         ]);
@@ -158,7 +169,11 @@ class ScfpAuthController extends Controller
 
         $res = SecurityTokenService::generarTokenVerificacion($usuario);
         if (isset($res['error'])) {
-            return back()->withErrors(['correo' => $res['error']]);
+            // El error va al formulario de reenvío, no al campo de correo del inicio de sesión.
+            return back()->withInput($request->only('correo'))
+                ->withErrors(['reenvio' => $res['error']])
+                ->with('reenvio_bloqueado', $res['limite_alcanzado'] ?? false)
+                ->with('reenvio_espera', $res['segundos_faltantes'] ?? null);
         }
 
         $this->enviarCorreoVerificacion($usuario, $res['token_plano']);
@@ -307,7 +322,8 @@ class ScfpAuthController extends Controller
         $res = SecurityTokenService::generarCodigoMFA($usuario, esReenvio: true);
 
         if (isset($res['error'])) {
-            return back()->withErrors(['codigo' => $res['error']]);
+            return back()->withErrors(['reenvio' => $res['error']])
+                ->with('reenvio_bloqueado', $res['limite_alcanzado'] ?? false);
         }
 
         $this->enviarCodigoMfaPorCorreo($usuario, $res['codigo']);
@@ -325,8 +341,10 @@ class ScfpAuthController extends Controller
         $correoLower = strtolower(trim($request->correo));
         $usuario = Usuario::whereRaw('LOWER(correo) = ?', [$correoLower])->first();
 
-        // RN-005.2: Siempre responde el mismo mensaje
-        if ($usuario && $usuario->estado === 'ACTIVA') {
+        // RN-005.2: Siempre responde el mismo mensaje.
+        // RN-004.4: una cuenta bloqueada por intentos también puede recuperar la
+        // contraseña; al restablecerla queda desbloqueada (resetPassword).
+        if ($usuario && in_array($usuario->estado, ['ACTIVA', 'BLOQUEADA'], true)) {
             $tokenPlano = SecurityTokenService::generarTokenRecuperacion($usuario);
             $this->enviarCorreoRecuperacion($usuario, $tokenPlano);
         }
@@ -428,6 +446,8 @@ class ScfpAuthController extends Controller
 
         // RN-007.2: Cerrar las demás sesiones activas excepto la actual
         AuthSecurityService::cerrarOtrasSesiones($usuario);
+        // RN-012.6: el cambio de contraseña anula los dispositivos recordados.
+        AuthSecurityService::olvidarDispositivosRecordados($usuario);
 
         BitacoraService::registrar(
             accion: 'CAMBIO_CONTRASENA_VOLUNTARIO',

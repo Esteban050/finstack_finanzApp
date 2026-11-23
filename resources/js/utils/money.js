@@ -59,6 +59,33 @@ export function formatQuantity(amount) {
 export function normalizeMoneyInput(value) {
     return typeof value === 'string' ? value.replace(/[$\s\u00a0\u202f]/g, '').replace(/[’']/g, '.') : value;
 }
+// RNG-09: el máximo es $ 999.999.999.999,99, es decir, 12 dígitos enteros y 2 decimales.
+// Con ese límite de dígitos el valor nunca puede pasarse del tope.
+export const MAX_INTEGER_DIGITS = 12;
+export const MAX_DECIMAL_DIGITS = 2;
+
+/** true si el texto que quedaría en el campo supera los dígitos permitidos. */
+export function exceedsMoneyDigits(value, maxDecimals = MAX_DECIMAL_DIGITS) {
+    const raw = normalizeMoneyInput(String(value ?? ''));
+    const [whole, ...rest] = raw.split(',');
+    const enteros = whole.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const decimales = rest.join('').replace(/\D/g, '');
+    return enteros.length > MAX_INTEGER_DIGITS || decimales.length > maxDecimals;
+}
+
+/**
+ * Texto que se puede insertar en un campo de dinero: solo dígitos, puntos y comas
+ * (y el signo menos si el campo admite negativos). Al pegar se quitan el símbolo $
+ * y los espacios de un valor copiado como "$ 1.000"; cualquier otro carácter
+ * (letras, símbolos) hace que se rechace. Devuelve el texto limpio o null.
+ */
+export function cleanMoneyInsert(text, { allowNegative = false, pasted = false } = {}) {
+    let limpio = String(text ?? '');
+    if (pasted) limpio = normalizeMoneyInput(limpio);
+    const permitido = allowNegative ? /^[\d.,-]*$/ : /^[\d.,]*$/;
+    return permitido.test(limpio) ? limpio : null;
+}
+
 export function parseMoneyInput(value) {
     value = normalizeMoneyInput(value);
     if (typeof value !== 'string' || !/^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(value)) {

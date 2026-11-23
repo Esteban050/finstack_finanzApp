@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\FuenteIngreso;
 use App\Models\Gasto;
 use App\Models\Ingreso;
 use App\Models\PlantillaRecurrencia;
@@ -227,18 +228,78 @@ class RecurrenciaService
      * RN-022.2 / CA-022.2: Generar las ocurrencias de una plantilla hasta la fecha
      * dada, deteniéndose en el tope de fecha de fin o de número de ocurrencias.
      */
+    /** true si la fuente de una recurrencia de ingreso existe y está activa. */
+    public static function fuenteActiva(PlantillaRecurrencia $plantilla): bool
+    {
+        $fuenteId = $plantilla->datos_plantilla['fuente_id'] ?? null;
+
+        return $fuenteId !== null && FuenteIngreso::withoutGlobalScopes()
+            ->where('id', $fuenteId)
+            ->where('usuario_id', $plantilla->usuario_id)
+            ->where('activa', true)
+            ->exists();
+    }
+
+    /**
+     * Pausa las recurrencias de ingreso activas que usan la fuente dada. Se llama
+     * al inactivar la fuente: sin ella no deben seguir generándose ingresos.
+     * Devuelve cuántas se pausaron.
+     */
+    public static function pausarDeFuente(FuenteIngreso $fuente): int
+    {
+        $plantillas = PlantillaRecurrencia::withoutGlobalScopes()
+            ->deIngresos()
+            ->where('usuario_id', $fuente->usuario_id)
+            ->where('activa', true)
+            ->where('datos_plantilla->fuente_id', $fuente->id)
+            ->get();
+
+        foreach ($plantillas as $plantilla) {
+            self::pausarPorFuenteInactiva($plantilla, "Se inactivó la fuente de ingreso \"{$fuente->nombre}\".");
+        }
+
+        return $plantillas->count();
+    }
+
+    private static function pausarPorFuenteInactiva(PlantillaRecurrencia $plantilla, string $motivo): void
+    {
+        $plantilla->activa = false;
+        $plantilla->save();
+
+        BitacoraService::registrar(
+            accion: 'PAUSAR_INGRESO_RECURRENTE',
+            entidadAfectada: 'plantillas_recurrencia',
+            entidadId: $plantilla->id,
+            valorNuevo: ['activa' => false],
+            justificacion: $motivo,
+            usuarioId: $plantilla->usuario_id
+        );
+    }
+
     public static function generarPara(PlantillaRecurrencia $plantilla, CarbonImmutable $hasta): int
     {
         $generados = 0;
 
         DB::transaction(function () use ($plantilla, $hasta, &$generados) {
             // Se recarga con bloqueo para que dos ejecuciones simultáneas del job
-            // no generen la misma ocurrencia dos veces.
-            $plantilla = PlantillaRecurrencia::where('id', $plantilla->id)
+            // no generen la misma ocurrencia dos veces. Sin el filtro por usuario:
+            // el job corre sin sesión.
+            $plantilla = PlantillaRecurrencia::withoutGlobalScopes()
+                ->where('id', $plantilla->id)
                 ->lockForUpdate()
                 ->first();
 
             if ($plantilla === null || ! $plantilla->activa) {
+                return;
+            }
+
+            // Una recurrencia de ingreso no genera con una fuente inactiva o que
+            // ya no existe: la pausa (así no ocurren ingresos de una fuente que el
+            // usuario dio de baja). Al inactivar la fuente ya se pausan; esto cubre
+            // datos anteriores a esa regla.
+            if ($plantilla->tipo_movimiento === 'INGRESO' && ! self::fuenteActiva($plantilla)) {
+                self::pausarPorFuenteInactiva($plantilla, 'La fuente de ingreso está inactiva o no existe; no se generó la ocurrencia.');
+
                 return;
             }
 

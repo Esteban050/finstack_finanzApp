@@ -94,7 +94,7 @@
                             <input type="text" id="doc_no_editable" disabled value="{{ $usuario->tipo_documento }} - {{ $usuario->numero_documento }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
                         </x-ui.field>
                         <x-ui.field name="fecha_nacimiento" label="Fecha de Nacimiento (Mayor de 18)" :required="true">
-                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" max="{{ now('America/Bogota')->subYears(18)->toDateString() }}" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('d/m/Y'))" required class="w-full mt-1" />
+                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" max="{{ now('America/Bogota')->subYears(18)->toDateString() }}" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('Y-m-d'))" required class="w-full mt-1" />
                         </x-ui.field>
                     </div>
 
@@ -103,9 +103,12 @@
                             <x-text-input id="ciudad_residencia" type="text" name="ciudad_residencia" :value="old('ciudad_residencia', $perfilActivo?->ciudad_residencia)" required class="w-full mt-1" />
                         </x-ui.field>
                         <x-ui.field name="telefono" label="Teléfono (10 dígitos)">
-                            <x-text-input id="telefono" type="text" name="telefono" maxlength="10" :value="old('telefono', $perfilActivo?->telefono)" class="w-full mt-1" />
+                            <x-text-input id="telefono" type="text" name="telefono" inputmode="numeric" maxlength="10" :value="old('telefono', $perfilActivo?->telefono)" class="w-full mt-1" />
                         </x-ui.field>
-                        <input type="hidden" name="ultimos_digitos_nit" value="{{ substr(preg_replace('/\D/', '', (string) $usuario->numero_documento), -2) }}">
+                        {{-- RN-008.1: últimos dos dígitos del NIT o del documento, para el calendario tributario (RF-016). --}}
+                        <x-ui.field name="ultimos_digitos_nit" label="Últimos 2 dígitos del NIT o documento" help="Se usan para tus fechas de vencimiento con la DIAN.">
+                            <x-text-input id="ultimos_digitos_nit" type="text" name="ultimos_digitos_nit" inputmode="numeric" pattern="[0-9]{2}" minlength="2" maxlength="2" :value="old('ultimos_digitos_nit', $perfilActivo?->ultimos_digitos_nit ?? substr(preg_replace('/\D/', '', (string) $usuario->numero_documento), -2))" class="w-full mt-1" />
+                        </x-ui.field>
                     </div>
 
                     <!-- Personas a cargo y Responsable IVA -->
@@ -157,6 +160,14 @@
                                 <option value="1" @selected(in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Obligatoria</option>
                                 <option value="0" @selected(!in_array(old('arl_obligatoria', $perfilActivo?->arl_obligatoria), [1, '1', true], true))>Voluntaria</option>
                             </select>
+                        </x-ui.field>
+                    </div>
+
+                    {{-- CA-008.2 / RN-008.6: los cambios se aplican desde la fecha de vigencia indicada. --}}
+                    @php($vigenciaMinima = $perfilActivo?->vigente_desde?->toDateString())
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <x-ui.field name="vigente_desde" label="Aplicar cambios desde" :required="true" help="Fecha desde la que rigen estos datos para tus cálculos. Por defecto, hoy.">
+                            <x-text-input id="vigente_desde" type="date" name="vigente_desde" :min="$vigenciaMinima" max="{{ now('America/Bogota')->toDateString() }}" :value="old('vigente_desde', now('America/Bogota')->toDateString())" required class="w-full mt-1" />
                         </x-ui.field>
                     </div>
 
@@ -241,15 +252,46 @@
                     <div>
                         <x-input-label for="supresion_pass" value="Ingresa tu Contraseña Actual *" />
                         <x-text-input id="supresion_pass" type="password" name="password" required class="w-full mt-1" />
+                        @unless(old('revocar_autorizacion'))<x-input-error :messages="$errors->get('password')" class="mt-1" />@endunless
                     </div>
                     <div>
                         <x-input-label for="confirmacion_palabra" value="Escribe exactamente la palabra ELIMINAR para confirmar *" />
-                        <x-text-input id="confirmacion_palabra" type="text" name="confirmacion_palabra" required class="w-full mt-1 font-mono uppercase" placeholder="ELIMINAR" />
+                        <x-text-input id="confirmacion_palabra" type="text" name="confirmacion_palabra" required autocomplete="off" class="w-full mt-1 font-mono" placeholder="ELIMINAR" />
+                        @unless(old('revocar_autorizacion'))<x-input-error :messages="$errors->get('confirmacion_palabra')" class="mt-1" />@endunless
                     </div>
                     <button type="submit" data-confirm-delete class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow">
                         Confirmar Solicitud de Supresión
                     </button>
                 </form>
+
+                {{-- RN-009.4: revocar la autorización implica pedir la supresión; se advierte antes de confirmar. --}}
+                <details class="mt-6 border-t border-red-100 pt-4" @if(old('revocar_autorizacion')) open @endif>
+                    <summary class="text-sm font-bold text-red-600 cursor-pointer">Revocar la autorización de tratamiento de datos</summary>
+                    <div role="alert" class="mt-3 text-sm text-gray-700">
+                        <p><strong>Importante:</strong> sin tu autorización no podemos tratar tus datos, así que revocarla implica solicitar la supresión de tu cuenta.</p>
+                        <p class="mt-1">Tu cuenta se bloqueará y tendrás 15 días calendario para cancelar la solicitud con el enlace que recibirás por correo. Si la cancelas, deberás aceptar de nuevo la política de tratamiento de datos.</p>
+                    </div>
+                    <form method="POST" action="{{ route('profile.delete.account') }}" class="space-y-4 max-w-xl mt-4"
+                          data-confirm-title="Revocar autorización"
+                          data-confirm-label="Revocar y solicitar supresión"
+                          data-confirm-description="Revocar la autorización implica solicitar la supresión de tu cuenta. Se cerrará tu sesión y la cuenta quedará bloqueada; tendrás 15 días para cancelar la solicitud. ¿Deseas continuar?">
+                        @csrf
+                        <input type="hidden" name="revocar_autorizacion" value="1">
+                        <div>
+                            <x-input-label for="revocacion_pass" value="Ingresa tu Contraseña Actual *" />
+                            <x-text-input id="revocacion_pass" type="password" name="password" required class="w-full mt-1" />
+                            @if(old('revocar_autorizacion'))<x-input-error :messages="$errors->get('password')" class="mt-1" />@endif
+                        </div>
+                        <div>
+                            <x-input-label for="revocacion_palabra" value="Escribe exactamente la palabra ELIMINAR para confirmar *" />
+                            <x-text-input id="revocacion_palabra" type="text" name="confirmacion_palabra" required autocomplete="off" class="w-full mt-1 font-mono" placeholder="ELIMINAR" />
+                            @if(old('revocar_autorizacion'))<x-input-error :messages="$errors->get('confirmacion_palabra')" class="mt-1" />@endif
+                        </div>
+                        <button type="submit" data-confirm-delete class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow">
+                            Revocar autorización y solicitar supresión
+                        </button>
+                    </form>
+                </details>
             </div>
         </div>
     </div>

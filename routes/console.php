@@ -14,6 +14,7 @@ use App\Services\TrmService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -53,7 +54,8 @@ Artisan::command('scfp:purgar-supresiones', function () {
             'accion' => 'SUPRESION_DEFINITIVA_CUENTA',
             'entidad_afectada' => 'usuarios',
             'entidad_id' => null,
-            'justificacion' => "Supresión física definitiva cumplidos 15 días calendario (ID anónimo procesado: {$uuidAnonimo})",
+            // RN-010.3: solo un identificador anónimo del evento; nunca el id del titular.
+            'justificacion' => 'Supresión física definitiva cumplidos 15 días calendario (evento ' . Str::uuid() . ')',
             'fecha_evento' => now(),
         ]);
 

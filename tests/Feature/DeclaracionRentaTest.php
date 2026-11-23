@@ -65,6 +65,8 @@ class DeclaracionRentaTest extends TestCase
 
         $this->actingAs($this->usuario);
         $this->withoutMiddleware(\App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class);
+        // El requisito de perfil completo (CA-008.1) se prueba en DefectosModuloGeneralTest.
+        $this->withoutMiddleware(\App\Http\Middleware\PerfilCompletoMiddleware::class);
 
         $this->consolidadoService = app(ConsolidadoRentaService::class);
         $this->complementariaService = app(InformacionComplementariaService::class);

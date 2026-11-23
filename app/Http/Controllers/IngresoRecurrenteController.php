@@ -218,6 +218,13 @@ class IngresoRecurrenteController extends Controller
         // CA-022.2: al reanudar, el cursor se adelanta hasta la primera ocurrencia
         // que aún no ha llegado, para no generar de golpe las del periodo pausado.
         // Las saltadas consumen cupo de max_ocurrencias: el calendario sí avanzó.
+        // Sin fuente activa la recurrencia no puede reanudarse: no generaría nada.
+        if ($nuevoEstado && ! RecurrenciaService::fuenteActiva($plantilla)) {
+            throw ValidationException::withMessages([
+                'fuente_id' => 'La fuente de ingreso de esta recurrencia está inactiva. Actívala en Fuentes para poder reanudarla.',
+            ]);
+        }
+
         $cambios = ['activa' => $nuevoEstado];
         if ($nuevoEstado) {
             $indice = RecurrenciaService::adelantarCursor($plantilla);
