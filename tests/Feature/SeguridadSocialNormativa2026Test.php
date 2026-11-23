@@ -6,6 +6,8 @@ use App\Models\EsquemaCostoPresunto;
 use App\Models\ParametroNormativo;
 use App\Models\PerfilTributario;
 use App\Models\Usuario;
+use Illuminate\Support\Str;
+use App\Models\AceptacionPolitica;
 use App\Services\SeguridadSocialService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -28,26 +30,27 @@ class SeguridadSocialNormativa2026Test extends TestCase
 
         $this->service = app(SeguridadSocialService::class);
 
-        $this->usuario = Usuario::where('correo', 'estebansalazar1407@metabiblioteca.com')->first()
-            ?? Usuario::where('correo', 'admin@scfp.com')->first()
-            ?? Usuario::first();
+        // Usuario propio de la prueba: antes se tomaba el primer usuario real de la base,
+        // y el resultado dependía de sus datos y de si había aceptado la política.
+        $this->usuario = Usuario::create([
+            'nombres' => 'Tester',
+            'apellidos' => 'Normativa2026',
+            'correo' => 'ss.' . Str::lower(Str::random(8)) . '@scfp.test',
+            'password_hash' => bcrypt('Secret123!'),
+            'tipo_documento' => 'CC',
+            'numero_documento' => (string) random_int(10000000, 99999999),
+            'rol' => 'USUARIO',
+            'estado' => 'ACTIVA',
+        ]);
+        AceptacionPolitica::create(['usuario_id' => $this->usuario->id, 'version_politica' => config('app.version_politica_datos', 'v1.0'),
+            'fecha_aceptacion' => now(), 'ip_origen' => '127.0.0.1', 'medio' => 'WEB_REGISTRO']);
 
-        if (! $this->usuario) {
-            $this->usuario = Usuario::create([
-                'nombres' => 'Tester',
-                'apellidos' => 'Normativa2026',
-                'correo' => 'tester.normativa2026@finanzapp.local',
-                'password_hash' => bcrypt('Secret123!'),
-                'tipo_documento' => 'CC',
-                'numero_documento' => '9988776655',
-                'rol' => 'USUARIO',
-                'estado' => 'ACTIVA',
-            ]);
-        }
-
-        $this->perfil = PerfilTributario::where('usuario_id', $this->usuario->id)->orderByDesc('vigente_desde')->first()
+        $this->perfil = PerfilTributario::where('usuario_id', $this->usuario->id)->whereNull('vigente_hasta')->orderByDesc('vigente_desde')->first()
             ?? PerfilTributario::create([
                 'usuario_id' => $this->usuario->id,
+                // Obligatorios en la tabla: sin ellos la preparación fallaba (not null).
+                'fecha_nacimiento' => '1990-01-01',
+                'ciudad_residencia' => 'Medellín',
                 'vigente_desde' => '2026-01-01',
                 'ocupaciones' => ['Empleado dependiente', 'Contratista por prestación de servicios', 'Rentista de capital'],
                 'clase_riesgo_arl' => 1,

@@ -2,57 +2,46 @@
 
 namespace Tests\Feature\Auth;
 
-use App\Models\User;
-use Illuminate\Auth\Events\Verified;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\URL;
+use App\Services\SecurityTokenService;
+use Tests\Concerns\UsaBaseLocal;
 use Tests\TestCase;
 
+/** RF-002: verificación del correo con el enlace (adaptada de Breeze a SCFP). */
 class EmailVerificationTest extends TestCase
 {
-    use RefreshDatabase;
+    use UsaBaseLocal;
 
-    public function test_email_verification_screen_can_be_rendered(): void
+    protected function setUp(): void
     {
-        $user = User::factory()->unverified()->create();
-
-        $response = $this->actingAs($user)->get('/verify-email');
-
-        $response->assertStatus(200);
+        parent::setUp();
+        $this->iniciarBaseLocal();
     }
 
-    public function test_email_can_be_verified(): void
+    protected function tearDown(): void
     {
-        $user = User::factory()->unverified()->create();
-
-        Event::fake();
-
-        $verificationUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes(60),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
-        );
-
-        $response = $this->actingAs($user)->get($verificationUrl);
-
-        Event::assertDispatched(Verified::class);
-        $this->assertTrue($user->fresh()->hasVerifiedEmail());
-        $response->assertRedirect(route('dashboard', absolute: false).'?verified=1');
+        $this->cerrarBaseLocal();
+        parent::tearDown();
     }
 
-    public function test_email_is_not_verified_with_invalid_hash(): void
+    public function test_email_can_be_verified_with_the_link(): void
     {
-        $user = User::factory()->unverified()->create();
+        $usuario = $this->crearUsuario(null, ['estado' => 'PENDIENTE_VERIFICACION']);
+        $token = SecurityTokenService::generarTokenVerificacion($usuario)['token_plano'];
 
-        $verificationUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes(60),
-            ['id' => $user->id, 'hash' => sha1('wrong-email')]
-        );
+        $this->get(route('verification.verify.token', ['token' => $token]))
+            ->assertRedirect(route('login'))
+            ->assertSessionHas('status', 'Cuenta verificada');
+        $this->assertSame('ACTIVA', $usuario->fresh()->estado);
+    }
 
-        $this->actingAs($user)->get($verificationUrl);
+    public function test_email_is_not_verified_with_an_invalid_link(): void
+    {
+        $usuario = $this->crearUsuario(null, ['estado' => 'PENDIENTE_VERIFICACION']);
+        SecurityTokenService::generarTokenVerificacion($usuario);
 
-        $this->assertFalse($user->fresh()->hasVerifiedEmail());
+        $this->get(route('verification.verify.token', ['token' => str_repeat('0', 32)]))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors();
+        $this->assertSame('PENDIENTE_VERIFICACION', $usuario->fresh()->estado);
     }
 }

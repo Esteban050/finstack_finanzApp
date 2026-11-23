@@ -38,8 +38,11 @@ class DeclaracionRentaRecalculoTest extends TestCase
             'estado' => 'ACTIVA',
         ]);
 
+
         $this->actingAs($this->usuario);
         $this->withoutMiddleware(\App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class);
+        // El requisito de perfil completo (CA-008.1) se prueba en PerfilLimitesTest.
+        $this->withoutMiddleware(\App\Http\Middleware\PerfilCompletoMiddleware::class);
     }
 
     private function categoriaIngreso(): string

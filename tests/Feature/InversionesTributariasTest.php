@@ -1617,7 +1617,8 @@ class InversionesTributariasTest extends TestCase
         $show1M->assertDontSee('Unidades acumuladas');
         $show1M->assertDontSee('$ 5.50 COP');
         $show1M->assertDontSee('-$ 999,994.50');
-        $show1M->assertSee('1,000,000.00');
+        // Formato de Colombia ($ 1.000.000): la guía del proyecto prohíbe el formato inglés.
+        $show1M->assertSee('1.000.000');
 
         $presentacion1M = InversionService::presentar($fic1M, CarbonImmutable::parse('2026-05-01'));
         $this->assertEquals('1000000.00', (string) $presentacion1M['valor_actual']);
