@@ -12,7 +12,7 @@ use Carbon\CarbonImmutable;
  *   umbral. Una por umbral, categoría y mes.
  * - PRESUPUESTO_TOTAL: la ejecución total llega a un umbral.
  * - PROYECCION_LINEA (RN-057.3): desde la mitad del mes, la proyección al
- *   cierre de una línea llega al umbral y la línea aún no llegó al 100 %.
+ *   cierre de una línea supera el umbral y la línea aún no llegó al 100 %.
  *
  * CA-057.2: si una evaluación cruza varios umbrales a la vez se emite una
  * alerta por cada uno; la clave (RN-057.2) evita repetir los ya emitidos.
@@ -78,9 +78,10 @@ class AlertaPresupuestoService
 
             foreach ($ejecucion['lineas'] as $linea) {
                 $yaExcedida = bccomp((string) $linea['ejecucion_porc'], '100', 2) >= 0;
-                $llega = bccomp((string) $linea['proyeccion_porc'], (string) $umbral, 2) >= 0;
+                // RN-057.3 / CP-PRE-021: la proyección debe superar el umbral; 110 % exacto no alerta.
+                $supera = bccomp((string) $linea['proyeccion_porc'], (string) $umbral, 2) === 1;
 
-                if (! $yaExcedida && $llega && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
+                if (! $yaExcedida && $supera && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
                     ...self::datosLinea($ejecucion, $linea),
                     'umbral' => $umbral,
                     'proyeccion' => $linea['proyeccion'],
