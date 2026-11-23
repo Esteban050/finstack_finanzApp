@@ -193,8 +193,8 @@ class ReglaAlertaService
         return match ($tipo) {
             // RN-057.1: de 1 a 3 umbrales entre 50 % y 150 %.
             self::UMBRAL_LINEA, self::PRESUPUESTO_TOTAL => self::umbrales($parametros, "{$campo}.umbrales", $cfg['umbral_min'], $cfg['umbral_max'], $cfg['umbrales_max'], $errores),
-            // Verde / amarillo / rojo: hasta 2 cortes de % del ingreso.
-            self::ENDEUDAMIENTO => self::umbrales($parametros, "{$campo}.umbrales", 1, 100, 2, $errores),
+            // RN-053.2: hasta 2 cortes del indicador, entre 10 % y 80 %.
+            self::ENDEUDAMIENTO => self::umbrales($parametros, "{$campo}.umbrales", $cfg['endeudamiento_umbral_min'], $cfg['endeudamiento_umbral_max'], 2, $errores),
             // RN-057.3
             self::PROYECCION_LINEA => self::unEntero($parametros, 'umbral', $campo, $cfg['proyeccion_min'], $cfg['proyeccion_max'], '%', $errores),
             self::GASTO_PROYECTADO_ALTO => self::unEntero($parametros, 'umbral', $campo, 1, 200, '%', $errores),

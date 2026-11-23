@@ -177,6 +177,10 @@ return [
         'proyeccion_min' => 100,
         'proyeccion_max' => 200,
 
+        // RN-053.2: cortes del indicador de endeudamiento que el usuario puede fijar.
+        'endeudamiento_umbral_min' => 10,
+        'endeudamiento_umbral_max' => 80,
+
         // Las notificaciones archivadas se borran a los 180 días.
         'dias_archivadas' => 180,
     ],
