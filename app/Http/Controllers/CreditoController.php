@@ -699,7 +699,8 @@ class CreditoController extends Controller
 
         if ($conIdentificacion) {
             $reglas['banco'] = ['required', 'string', 'max:80'];
-            $reglas['proposito'] = ['required', 'string', 'min:3', 'max:120'];
+            // RN-048.1 / CP-CRE-003: el propósito es el nombre del crédito, entre 3 y 60 caracteres.
+            $reglas['proposito'] = ['required', 'string', 'min:3', 'max:60'];
         }
 
         $validated = Validator::make($entrada, $reglas, $this->mensajes())->validate();
@@ -861,9 +862,9 @@ class CreditoController extends Controller
         return [
             'banco.required' => 'Indique el nombre del banco.',
             'banco.max' => 'El nombre del banco admite máximo 80 caracteres.',
-            'proposito.required' => 'Indique el propósito del préstamo.',
-            'proposito.min' => 'El propósito debe tener al menos 3 caracteres.',
-            'proposito.max' => 'El propósito admite máximo 120 caracteres.',
+            'proposito.required' => 'Indique el nombre del crédito del préstamo.',
+            'proposito.min' => 'El nombre del crédito debe tener al menos 3 caracteres.',
+            'proposito.max' => 'El nombre del crédito admite máximo 60 caracteres.',
             'monto.required' => 'Indique el monto del préstamo.',
             'monto.numeric' => 'El monto debe ser un número.',
             'monto.gt' => 'El monto debe ser mayor que cero.',
