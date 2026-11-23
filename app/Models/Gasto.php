@@ -82,6 +82,7 @@ class Gasto extends Model
         'plantilla_recurrencia_id',
         'credito_id',
         'movimiento_gmf_id',
+        'genera_credito',
         'fecha',
         'moneda',
         'monto_original',
@@ -106,6 +107,7 @@ class Gasto extends Model
             'monto_original' => 'decimal:2',
             'tasa_cambio_usada' => 'decimal:4',
             'monto_cop' => 'decimal:2',
+            'genera_credito' => 'boolean',
             // La columna es varchar(30)[] de Postgres, no jsonb (RN-026.1, etiquetas).
             'etiquetas' => PgsqlArrayCast::class,
             'creado_en' => 'datetime',
@@ -154,6 +156,12 @@ class Gasto extends Model
     public function scopeConTarjetaCredito(Builder $query): Builder
     {
         return $query->where('medio_pago', 'TARJETA_CREDITO');
+    }
+
+    /** Gasto con tarjeta de crédito: el crédito (MOD-08) vinculado, creado por el gasto o ya existente. */
+    public function credito(): BelongsTo
+    {
+        return $this->belongsTo(Credito::class, 'credito_id');
     }
 
     public function scopeConsumosConTarjeta(Builder $query): Builder

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Credito;
 use App\Models\Gasto;
 use App\Models\PagoCredito;
 use App\Models\PagoSeguridadSocial;
@@ -16,6 +17,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -31,6 +33,9 @@ class GastoController extends Controller
 {
     /** RNG-10: Tamaños de página admitidos. */
     private const POR_PAGINA = [10, 20, 50, 100];
+
+    /** Máximo de cuotas de una compra a cuotas con tarjeta de crédito (6 años). */
+    private const MAX_CUOTAS_TARJETA = 72;
 
     /** RN-029.3: "se pueden seleccionar hasta 100 gastos". */
     private const MAX_EDICION_MASIVA = 100;
@@ -136,12 +141,20 @@ class GastoController extends Controller
      */
     public function store(Request $request): RedirectResponse|JsonResponse
     {
-        $validated = $request->validate($this->reglas(), $this->mensajes());
+        $validated = $request->validate($this->reglas($this->esCompraNueva($request->all())), $this->mensajes());
 
         $atributos = $this->prepararAtributos($validated);
+        // Compra a cuotas: las condiciones del crédito se validan antes de guardar nada.
+        $datosCredito = $this->esCompraNueva($validated) ? $this->datosCredito($validated, $atributos) : null;
 
-        $gasto = DB::transaction(function () use ($atributos, $validated) {
-            $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos);
+        $gasto = DB::transaction(function () use ($atributos, $validated, $datosCredito) {
+            if ($datosCredito !== null) {
+                // El monto del crédito ya es la compra: no se suma de nuevo a su capital.
+                $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
+                $atributos['genera_credito'] = true;
+            } else {
+                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos);
+            }
 
             return Gasto::create(array_merge($atributos, [
                 'usuario_id' => Auth::id(),
@@ -168,7 +181,7 @@ class GastoController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'mensaje' => 'Gasto registrado exitosamente.',
-                'data' => $gasto->load(['categoria', 'subcategoria']),
+                'data' => $gasto->load(['categoria', 'subcategoria', 'credito']),
             ], 201);
         }
 
@@ -182,7 +195,7 @@ class GastoController extends Controller
      */
     public function edit(Request $request, string $id): View|JsonResponse
     {
-        $gasto = $this->gastoPropio($id);
+        $gasto = $this->gastoPropio($id)->load('credito');
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -206,9 +219,13 @@ class GastoController extends Controller
      */
     public function update(Request $request, string $id): RedirectResponse|JsonResponse
     {
-        $validated = $request->validate($this->reglas(), $this->mensajes());
+        $actual = $this->gastoPropio($id);
+        // Un gasto que ya generó su crédito no crea otro: el crédito se gestiona en /creditos.
+        $nueva = ! ($actual->genera_credito && $actual->credito_id !== null) && $this->esCompraNueva($request->all());
+        $validated = $request->validate($this->reglas($nueva), $this->mensajes());
         $atributos = $this->prepararAtributos($validated);
-        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated) {
+        $datosCredito = $nueva ? $this->datosCredito($validated, $atributos) : null;
+        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated, $datosCredito) {
             $gasto = $this->gastoPropio($id, bloquear: true);
             $this->rechazarSiEsAutomatico($gasto);
             $anterior = $gasto->toArray();
@@ -216,7 +233,15 @@ class GastoController extends Controller
             if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
                 $atributos['credito_id'] = $gasto->credito_id;
             }
-            $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), $gasto, $atributos);
+            if ($datosCredito !== null) {
+                // Devuelve a la tarjeta anterior su consumo y crea el crédito de la compra.
+                ConsumoTarjetaService::aplicar(Auth::id(), $gasto, []);
+                $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
+                $atributos['genera_credito'] = true;
+            } else {
+                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), $gasto, $atributos);
+                $atributos['genera_credito'] = $gasto->genera_credito && $atributos['credito_id'] !== null;
+            }
             $gasto->update(array_merge($atributos, [
                 'fecha' => $validated['fecha'],
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
@@ -494,6 +519,70 @@ class GastoController extends Controller
         ]);
     }
 
+    /** Compra a cuotas: pagada con tarjeta de crédito y con la opción "nueva" en credito_id. */
+    private function esCompraNueva(array $entrada): bool
+    {
+        return ($entrada['medio_pago'] ?? null) === 'TARJETA_CREDITO'
+            && ConsumoTarjetaService::esCreditoNuevo($entrada['credito_id'] ?? null);
+    }
+
+    /**
+     * Compra a cuotas: condiciones del crédito, validadas con las mismas reglas
+     * del módulo de créditos (CreditoController::validarDatos). Monto en pesos,
+     * tasa como E.A., pago mensual y sistema francés; el desembolso es la fecha
+     * del gasto y la cuota 1 vence en la fecha de pago.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws ValidationException
+     */
+    private function datosCredito(array $validated, array $atributos): array
+    {
+        $comercio = trim((string) ($validated['comercio_beneficiario'] ?? ''));
+        $proposito = Str::limit('Compra con tarjeta de crédito'.($comercio !== '' ? ': '.$comercio : ''), 120, '');
+
+        try {
+            return app(CreditoController::class)->validarDatos([
+                'tipo_credito' => 'TARJETA_CREDITO',
+                'banco' => $validated['banco_tarjeta'],
+                'proposito' => $proposito,
+                'monto' => (string) $atributos['monto_cop'],
+                'tipo_tasa' => 'EA',
+                'tasa' => (string) $validated['tasa_interes_anual'],
+                'numero_cuotas' => (int) $validated['numero_cuotas'],
+                'periodicidad' => 'MENSUAL',
+                'sistema_amortizacion' => 'FRANCES',
+                'fecha_inicio' => $validated['fecha'],
+                'fecha_primer_pago' => $validated['fecha_pago'],
+            ]);
+        } catch (ValidationException $e) {
+            // Los errores del crédito se informan con los nombres del formulario de gasto.
+            $campos = [
+                'banco' => 'banco_tarjeta',
+                'tasa' => 'tasa_interes_anual',
+                'fecha_primer_pago' => 'fecha_pago',
+                'plazo_meses' => 'numero_cuotas',
+                'monto' => 'monto_original',
+                'proposito' => 'comercio_beneficiario',
+            ];
+
+            throw ValidationException::withMessages(collect($e->errors())
+                ->mapWithKeys(fn ($mensajes, $campo) => [$campos[$campo] ?? $campo => $mensajes])
+                ->all());
+        }
+    }
+
+    /** Crea el crédito de la compra con el plan de cuotas de MOD-08. */
+    private function registrarCredito(array $datosCredito, array $validated): Credito
+    {
+        return app(CreditoController::class)->registrar(
+            $datosCredito,
+            Auth::id(),
+            ['fecha_corte' => $validated['fecha_corte']],
+            'RF-025: crédito generado por una compra a cuotas con tarjeta de crédito.'
+        );
+    }
+
     /**
      * RF-026 / RN-025.1: Convertir la petición validada en los atributos de las
      * seis dimensiones más los montos en pesos.
@@ -515,7 +604,7 @@ class GastoController extends Controller
             [
                 'categoria_id' => $subcategoria->categoria_padre_id,
                 'subcategoria_id' => $subcategoria->id,
-                'credito_id' => $validated['credito_id'] ?? null,
+                'credito_id' => ConsumoTarjetaService::esCreditoNuevo($validated['credito_id'] ?? null) ? null : ($validated['credito_id'] ?? null),
                 'medio_pago' => $validated['medio_pago'],
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
             ]
@@ -607,9 +696,18 @@ class GastoController extends Controller
      * bcmath como una cadena decimal plana, sin pasar por punto flotante (RNG-02),
      * y encaja exactamente en NUMERIC(18,2).
      */
-    private function reglas(): array
+    private function reglas(bool $compraNueva = false): array
     {
+        // Compra a cuotas (credito_id = NUEVA): los cinco campos del crédito (MOD-08).
+        // En cualquier otro caso se descartan.
+        $condicion = $compraNueva ? ['required'] : ['exclude'];
+
         return [
+            'banco_tarjeta' => [...$condicion, 'string', 'max:80'],
+            'numero_cuotas' => [...$condicion, 'integer', 'min:1', 'max:'.self::MAX_CUOTAS_TARJETA],
+            'fecha_corte' => [...$condicion, 'date'],
+            'fecha_pago' => [...$condicion, 'date', 'after:fecha'],
+            'tasa_interes_anual' => [...$condicion, 'numeric', 'min:0', 'max:100', 'regex:/^\d{1,3}(\.\d{1,6})?$/'],
             // RN-025.1: la fecha no puede ser posterior a la fecha actual.
             'fecha' => ['required', 'date', 'before_or_equal:today'],
             // CA-025.1 / RNG-09: un gasto con monto 0 o negativo se rechaza.
@@ -618,7 +716,12 @@ class GastoController extends Controller
             'tasa_cambio_usada' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,4})?$/'],
             'categoria_id' => ['required', 'uuid'],
             'subcategoria_id' => ['required', 'uuid'],
-            'credito_id' => ['exclude_unless:medio_pago,TARJETA_CREDITO', 'nullable', 'uuid'],
+            // Una tarjeta registrada (uuid) o NUEVA para crear el crédito de la compra.
+            'credito_id' => ['exclude_unless:medio_pago,TARJETA_CREDITO', 'nullable', 'string', function (string $atributo, mixed $valor, \Closure $fallar) {
+                if (! ConsumoTarjetaService::esCreditoNuevo($valor) && ! (is_string($valor) && Str::isUuid($valor))) {
+                    $fallar('Seleccione una tarjeta válida.');
+                }
+            }],
             // RN-026.1 (4): medio de pago, obligatorio.
             'medio_pago' => ['required', Rule::in(Gasto::MEDIOS_PAGO)],
             // RN-026.1 (2) y (3): si no se envían, se toma la sugerencia de la
@@ -662,7 +765,24 @@ class GastoController extends Controller
             'categoria_id.uuid' => 'La categoría seleccionada no es válida.',
             'subcategoria_id.required' => 'Seleccione la subcategoría del gasto.',
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
-            'credito_id.uuid' => 'Seleccione una tarjeta válida.',
+            'credito_id.string' => 'Seleccione una tarjeta válida.',
+            'banco_tarjeta.required' => 'Indique el banco de la tarjeta de crédito.',
+            'banco_tarjeta.string' => 'El banco debe ser texto.',
+            'banco_tarjeta.max' => 'El banco no puede superar los 80 caracteres.',
+            'numero_cuotas.required' => 'Indique el número de cuotas.',
+            'numero_cuotas.integer' => 'El número de cuotas debe ser un número entero.',
+            'numero_cuotas.min' => 'El número de cuotas debe ser al menos 1.',
+            'numero_cuotas.max' => 'El número de cuotas no puede superar '.self::MAX_CUOTAS_TARJETA.'.',
+            'fecha_corte.required' => 'Indique la fecha de corte de la tarjeta.',
+            'fecha_corte.date' => 'La fecha de corte no tiene un formato válido.',
+            'fecha_pago.required' => 'Indique la fecha de pago de la tarjeta.',
+            'fecha_pago.date' => 'La fecha de pago no tiene un formato válido.',
+            'fecha_pago.after' => 'La fecha de pago debe ser posterior a la fecha del gasto.',
+            'tasa_interes_anual.required' => 'Indique el interés anual (% E.A.).',
+            'tasa_interes_anual.numeric' => 'El interés anual debe ser un número.',
+            'tasa_interes_anual.min' => 'El interés anual no puede ser negativo.',
+            'tasa_interes_anual.max' => 'El interés anual no puede superar 100 %.',
+            'tasa_interes_anual.regex' => 'El interés anual admite hasta 3 dígitos enteros y 6 decimales.',
             'medio_pago.required' => 'Seleccione el medio de pago.',
             'medio_pago.in' => 'El medio de pago debe ser EFECTIVO, TARJETA_DEBITO, TARJETA_CREDITO, TRANSFERENCIA, BILLETERA_DIGITAL u OTRO.',
             'naturaleza.in' => 'La naturaleza debe ser FIJO o VARIABLE.',

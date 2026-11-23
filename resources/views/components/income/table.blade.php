@@ -13,7 +13,7 @@
 <td data-label="Fecha"><time data-date="{{ $date }}">{{ implode('/', array_reverse(explode('-', $date))) }}</time></td>
 <td data-label="Fuente de ingreso">{{ $income->fuente?->nombre ?? '—' }}</td>
 <td data-label="Clasificación tributaria"><x-income.classification-label :code="$income->clasificacion_tributaria" /></td>
-<td data-label="Monto bruto"><span data-money="{{ $income->monto_bruto_cop }}">{{ $income->monto_bruto_cop }}</span></td>
+<td data-label="Monto bruto"><span data-money="{{ $income->monto_bruto_cop }}">{{ $income->monto_bruto_cop }}</span><x-ui.trm-used :currency="$income->moneda" :amount="$income->monto_original" :rate="$income->tasa_cambio_usada" /></td>
 <td data-label="Retención"><span data-money="{{ $income->retencion_fuente_cop }}">{{ $income->retencion_fuente_cop }}</span></td>
 <td data-label="Aportes"><span data-money="{{ $income->aportes_descontados_cop }}">{{ $income->aportes_descontados_cop }}</span></td>
 <td data-label="Neto"><strong data-money="{{ $income->monto_neto_cop }}">{{ $income->monto_neto_cop }}</strong></td>

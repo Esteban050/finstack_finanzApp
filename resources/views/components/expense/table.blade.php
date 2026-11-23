@@ -9,7 +9,7 @@
     <td>{{ $expense->fecha->format('d/m/Y') }}<div><x-ui.badge :tone="$expense->estado === 'PENDIENTE' ? 'warning' : 'neutral'">{{ $expense->estado === 'PENDIENTE' ? 'Pendiente' : 'Confirmado' }}</x-ui.badge></div></td>
     <td><div class="ui-inline"><span data-source-visual data-nombre="{{ $expense->categoria?->nombre }}" data-icono="{{ $expense->categoria?->icono }}" data-color_hex="{{ $expense->categoria?->color_hex }}" aria-hidden="true"></span><strong>{{ $expense->categoria?->nombre ?? '—' }}</strong></div><span>{{ $expense->subcategoria?->nombre ?? '—' }}</span>@if($expense->comercio_beneficiario)<p>{{ $expense->comercio_beneficiario }}</p>@endif @if($expense->descripcion)<p class="ui-help">{{ $expense->descripcion }}</p>@endif</td>
     <td>{{ $labels[$expense->naturaleza] ?? '—' }} · {{ $labels[$expense->necesidad] ?? '—' }}<p class="ui-help">{{ $labels[$expense->relevancia_tributaria] ?? '—' }}</p>@foreach(($expense->etiquetas ?? []) as $tag)<x-ui.badge>{{ $tag }}</x-ui.badge>@endforeach</td>
-    <td>{{ $labels[$expense->medio_pago] ?? '—' }}</td><td class="ui-number"><span data-money="{{ $expense->monto_cop }}">{{ $expense->monto_cop }}</span></td>
+    <td>{{ $labels[$expense->medio_pago] ?? '—' }}@if($expense->credito_id)<p class="ui-help"><a href="{{ route('creditos.show', $expense->credito_id) }}">Ver crédito vinculado</a></p>@endif</td><td class="ui-number"><span data-money="{{ $expense->monto_cop }}">{{ $expense->monto_cop }}</span><x-ui.trm-used :currency="$expense->moneda" :amount="$expense->monto_original" :rate="$expense->tasa_cambio_usada" /></td>
     <td>@if($expense->movimiento_gmf_id)
     <span class="ui-help">Generado desde Inversiones</span>
     @else

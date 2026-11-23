@@ -10,6 +10,14 @@ use Illuminate\Validation\ValidationException;
 
 class ConsumoTarjetaService
 {
+    /** Valor de credito_id que pide crear, en el propio gasto, el crédito de una compra a cuotas. */
+    public const CREDITO_NUEVO = 'NUEVA';
+
+    public static function esCreditoNuevo(mixed $valor): bool
+    {
+        return $valor === self::CREDITO_NUEVO;
+    }
+
     public static function tarjetas(string $usuarioId): Builder
     {
         return Credito::where('usuario_id', $usuarioId)->where('tipo_credito', 'TARJETA_CREDITO');
@@ -21,6 +29,11 @@ class ConsumoTarjetaService
      */
     public static function aplicar(string $usuarioId, ?Gasto $anterior, array $nuevo): ?string
     {
+        // El crédito creado por el propio gasto ya tiene la compra como capital: nunca se ajusta aquí.
+        if ($anterior?->genera_credito && $anterior->credito_id !== null) {
+            return ($nuevo['medio_pago'] ?? null) === 'TARJETA_CREDITO' ? $anterior->credito_id : null;
+        }
+
         $vinculoAnterior = $anterior?->credito_id;
         $vinculo = $nuevo['credito_id'] ?? null;
 

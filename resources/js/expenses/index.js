@@ -62,12 +62,20 @@ export function mountExpenses() {
         const cardField = editor.querySelector('[data-expense-card]');
         const cardSelect = cardField?.querySelector('select');
         const payment = editor.querySelector('[name=medio_pago]');
+        const newCard = cardField?.querySelector('[data-credit-card-fields]');
         const updateCard = () => {
             if (!cardField) return;
             cardField.hidden = payment.value !== 'TARJETA_CREDITO';
             if (cardSelect) cardSelect.disabled = cardField.hidden;
+            // Compra a cuotas nueva: los campos del crédito se muestran, habilitan y exigen solo con esa opción.
+            if (newCard) {
+                const enabled = !cardField.hidden && cardSelect?.value === 'NUEVA';
+                newCard.hidden = !enabled;
+                for (const input of newCard.querySelectorAll('input')) { input.disabled = !enabled; input.required = enabled; }
+            }
         };
         payment.addEventListener('change', updateCard);
+        cardSelect?.addEventListener('change', updateCard);
         updateCard();
         const summary = () => {
             for (const output of editor.querySelectorAll('[data-expense-summary]')) { const select = editor.querySelector(`[name="${output.dataset.expenseSummary}"]`); output.textContent = select.value ? select.selectedOptions[0]?.textContent ?? '—' : '—'; }

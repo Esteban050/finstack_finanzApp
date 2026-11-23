@@ -23,18 +23,34 @@
             @if(!$recurrent)<x-ui.field name="fecha" :id="$prefix.'-date'" label="Fecha" :required="true" help="No puede ser posterior a hoy."><input type="date" name="fecha" id="{{ $prefix }}-date" data-expense-date value="{{ old('fecha', $record['fecha'] ?? '') }}" required aria-describedby="{{ $prefix }}-date-help {{ $prefix }}-date-error"></x-ui.field>@endif
             <x-expense.select name="medio_pago" label="Medio de pago" :prefix="$prefix" :options="['EFECTIVO', 'TARJETA_DEBITO', 'TARJETA_CREDITO', 'TRANSFERENCIA', 'BILLETERA_DIGITAL', 'OTRO']" :value="$record['medio_pago'] ?? ''" :required="true" />
             @unless($recurrent)
+                @php($creditoVinculado = ($record['genera_credito'] ?? false) ? ($record['credito'] ?? null) : null)
                 <div data-expense-card @if(old('medio_pago', $record['medio_pago'] ?? '') !== 'TARJETA_CREDITO') hidden @endif>
-                    @if(count($cards))
-                        <x-ui.field name="credito_id" :id="$prefix.'-card'" label="Tarjeta de crédito" :required="!$eraConsumoSinVinculo">
-                            <select id="{{ $prefix }}-card" name="credito_id" @unless($eraConsumoSinVinculo) data-card-required @endunless>
-                                <option value="">{{ $eraConsumoSinVinculo ? 'Sin tarjeta vinculada' : 'Selecciona la tarjeta' }}</option>
+                    @if($creditoVinculado)
+                        <p class="ui-help">Esta compra ya generó su crédito. Para ver el plan de cuotas o modificarlo, ve a <a href="{{ route('creditos.show', $creditoVinculado['id']) }}">{{ $creditoVinculado['banco'] }} · Tarjeta de crédito</a>.</p>
+                    @else
+                        @php($seleccion = old('credito_id', $record['credito_id'] ?? (!$eraConsumoSinVinculo && count($cards) === 1 ? collect($cards)->first()->id : '')))
+                        <x-ui.field name="credito_id" :id="$prefix.'-card'" label="Tarjeta de crédito" :required="!$eraConsumoSinVinculo && count($cards) > 0" help="Elige una tarjeta registrada para sumarle este consumo, o registra una compra a cuotas nueva.">
+                            <select id="{{ $prefix }}-card" name="credito_id" data-card-select @if(!$eraConsumoSinVinculo && count($cards) > 0) data-card-required @endif>
+                                <option value="">{{ $eraConsumoSinVinculo || !count($cards) ? 'Sin tarjeta vinculada' : 'Selecciona la tarjeta' }}</option>
                                 @foreach($cards as $card)
-                                    <option value="{{ $card->id }}" @selected(old('credito_id', $record['credito_id'] ?? (!$eraConsumoSinVinculo && count($cards) === 1 ? $card->id : '')) === $card->id)>{{ $card->banco }} · {{ $card->proposito }}</option>
+                                    <option value="{{ $card->id }}" @selected($seleccion === $card->id)>{{ $card->banco }} · {{ $card->proposito }}</option>
                                 @endforeach
+                                <option value="NUEVA" @selected($seleccion === 'NUEVA')>Nueva compra a cuotas</option>
                             </select>
                         </x-ui.field>
-                    @else
-                        <p class="ui-help">No tienes tarjetas registradas. Puedes guardar el gasto sin vincularlo a una tarjeta.</p>
+                        <fieldset data-credit-card-fields hidden>
+                            <legend>Crédito de la compra</legend>
+                            <p class="ui-help">Al guardar, se crea un crédito de tarjeta con el monto en pesos y el plan de cuotas.</p>
+                            <div class="income-two-fields">
+                                <x-ui.field name="banco_tarjeta" :id="$prefix.'-card-bank'" label="Banco" :required="true"><input id="{{ $prefix }}-card-bank" name="banco_tarjeta" maxlength="80" value="{{ old('banco_tarjeta') }}" disabled></x-ui.field>
+                                <x-ui.field name="numero_cuotas" :id="$prefix.'-card-installments'" label="Número de cuotas" :required="true" help="Entre 1 y 72."><input id="{{ $prefix }}-card-installments" type="number" name="numero_cuotas" min="1" max="72" step="1" inputmode="numeric" value="{{ old('numero_cuotas') }}" disabled></x-ui.field>
+                            </div>
+                            <div class="income-two-fields">
+                                <x-ui.field name="fecha_corte" :id="$prefix.'-card-cutoff'" label="Fecha de corte" :required="true"><input id="{{ $prefix }}-card-cutoff" type="date" name="fecha_corte" value="{{ old('fecha_corte') }}" disabled></x-ui.field>
+                                <x-ui.field name="fecha_pago" :id="$prefix.'-card-due'" label="Fecha de pago" :required="true" help="Vencimiento de la primera cuota; posterior a la fecha del gasto."><input id="{{ $prefix }}-card-due" type="date" name="fecha_pago" value="{{ old('fecha_pago') }}" disabled></x-ui.field>
+                            </div>
+                            <x-ui.field name="tasa_interes_anual" :id="$prefix.'-card-rate'" label="Interés anual (% E.A.)" :required="true" help="Tasa efectiva anual, entre 0 y 100."><input id="{{ $prefix }}-card-rate" type="number" name="tasa_interes_anual" data-value-input data-precision="6" min="0" max="100" step="any" inputmode="decimal" value="{{ old('tasa_interes_anual') }}" disabled></x-ui.field>
+                        </fieldset>
                     @endif
                 </div>
             @endunless

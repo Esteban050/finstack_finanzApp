@@ -216,17 +216,21 @@ class CreditoController extends Controller
     }
 
     /**
-     * RF-048 / Créditos RF-22: Registrar el crédito y guardar su plan de pagos
-     * como versión 1.
+     * RF-048: Persiste un crédito ya validado (validarDatos) con su plan de
+     * cuotas y su bitácora. Lo usan el registro desde Créditos y la compra a
+     * cuotas con tarjeta de crédito desde un gasto (MOD-04), para que el plan
+     * sea el mismo en ambos.
+     *
+     * @param  array<string, mixed>  $datos  Salida de validarDatos().
+     * @param  array<string, mixed>  $extra  Columnas adicionales del crédito (p. ej. fecha_corte).
      */
-    public function store(Request $request): JsonResponse
+    public function registrar(array $datos, string $usuarioId, array $extra = [], string $justificacion = 'RF-048: registro de un crédito.'): Credito
     {
-        $validated = $this->validar($request);
-
-        $credito = DB::transaction(function () use ($validated) {
+        return DB::transaction(function () use ($datos, $usuarioId, $extra, $justificacion) {
             $credito = Credito::create([
-                ...$validated,
-                'usuario_id' => Auth::id(),
+                ...$datos,
+                ...$extra,
+                'usuario_id' => $usuarioId,
             ]);
 
             PagoCreditoService::crearPlan($credito->fresh(), 1);
@@ -236,13 +240,23 @@ class CreditoController extends Controller
                 entidadAfectada: 'creditos',
                 entidadId: $credito->id,
                 valorNuevo: $credito->fresh()->toArray(),
-                justificacion: 'RF-048: registro de un crédito.',
-                usuarioId: Auth::id()
+                justificacion: $justificacion,
+                usuarioId: $usuarioId
             );
 
             return $credito->fresh();
         });
+    }
 
+    /**
+     * RF-048 / Créditos RF-22: Registrar el crédito y guardar su plan de pagos
+     * como versión 1.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $this->validar($request);
+
+        $credito = $this->registrar($validated, Auth::id());
         return response()->json([
             'mensaje' => 'Crédito registrado.',
             'data' => $this->presentar($credito, conTabla: false),
@@ -652,7 +666,7 @@ class CreditoController extends Controller
      *
      * @throws ValidationException
      */
-    private function validarDatos(array $entrada, bool $conIdentificacion = true, bool $conMonto = true): array
+    public function validarDatos(array $entrada, bool $conIdentificacion = true, bool $conMonto = true): array
     {
         $periodicidades = array_keys(CreditoService::PERIODICIDADES);
 
