@@ -7,6 +7,7 @@ use App\Models\Gasto;
 use App\Models\PagoCredito;
 use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
+use App\Services\AlertaCreditoService;
 use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
 use App\Services\ConsumoTarjetaService;
@@ -178,15 +179,19 @@ class GastoController extends Controller
             usuarioId: Auth::id()
         );
 
+        $avisos = $this->avisosCupo($gasto);
+        $mensaje = $this->conAvisos('Gasto registrado exitosamente.', $avisos);
+
         if ($request->expectsJson()) {
             return response()->json([
-                'mensaje' => 'Gasto registrado exitosamente.',
+                'mensaje' => $mensaje,
                 'data' => $gasto->load(['categoria', 'subcategoria', 'credito']),
+                'advertencias' => $avisos,
             ], 201);
         }
 
         return redirect()->route('gastos.index')
-            ->with('status', 'Gasto registrado exitosamente.');
+            ->with('status', $mensaje);
     }
 
     /**
@@ -266,14 +271,44 @@ class GastoController extends Controller
             usuarioId: Auth::id()
         );
 
+        $avisos = $this->avisosCupo($gasto->fresh());
+        $mensaje = $this->conAvisos('Gasto actualizado.', $avisos);
+
         if ($request->expectsJson()) {
             return response()->json([
-                'mensaje' => 'Gasto actualizado.',
+                'mensaje' => $mensaje,
                 'data' => $gasto->fresh()->load(['categoria', 'subcategoria']),
+                'advertencias' => $avisos,
             ]);
         }
 
-        return redirect()->route('gastos.index')->with('status', 'Gasto actualizado.');
+        return redirect()->route('gastos.index')->with('status', $mensaje);
+    }
+
+    /**
+     * CP-CRE-013: si el gasto quedó en una tarjeta con cupo y el saldo de la
+     * tarjeta lo supera, el aviso de la tarjeta. Avisa, no bloquea.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function avisosCupo(Gasto $gasto): array
+    {
+        if ($gasto->medio_pago !== 'TARJETA_CREDITO' || $gasto->credito_id === null) {
+            return [];
+        }
+
+        $tarjeta = Credito::find($gasto->credito_id);
+
+        return $tarjeta === null ? [] : array_map(
+            fn (array $alerta) => [...$alerta, 'mensaje' => 'La tarjeta '.$tarjeta->banco.' supera su cupo en $ '.number_format((float) $alerta['exceso'], 0, ',', '.').'.'],
+            AlertaCreditoService::cupoDeCredito($tarjeta)
+        );
+    }
+
+    /** El mensaje de éxito seguido de los avisos (CP-CRE-013). */
+    private function conAvisos(string $mensaje, array $avisos): string
+    {
+        return trim($mensaje.' '.implode(' ', array_column($avisos, 'mensaje')));
     }
 
     /**
