@@ -139,6 +139,14 @@
                             <p class="ui-help" style="margin-top: 0.25rem;">El empleador asume el pago de ARL y los aportes patronales; estos no se descuentan de tu salario.</p>
                         </div>
 
+                        {{-- Aviso de tope de 25 SMMLV para asalariado --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu salario supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu base de cotización (IBC) se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y FSP.
+                            </p>
+                        </div>
+
                         <x-ui.field name="retencion_fuente" label="Retención en la fuente informada (opcional)" :required="false" help="Monto retenido por el empleador si aplica retención en la fuente en tu colilla de pago.">
                             <div class="ui-money">
                                 <input type="text" inputmode="decimal" x-model="retencionDisplay" @input="onRetencionInput" placeholder="0">
@@ -179,6 +187,21 @@
                             </div>
                         </div>
 
+                        {{-- Aviso de tope de 25 SMMLV antes de la casilla de ARL --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu base de cotización supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu IBC se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y ARL.
+                            </p>
+                        </div>
+
+                        <div x-show="montoSupera25SmmlvPeroIbcNo" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-border); display: grid; gap: 0.25rem;">
+                            <strong style="font-size: var(--ui-text-small);">Información sobre el tope de 25 SMMLV</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                El valor del contrato supera los 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Para trabajadores independientes el tope legal aplica sobre tu base de cotización (IBC = 40 %, actualmente <span style="font-weight: 600;" x-text="formatMoney(resultados.ibc || decimal(montoContratoCanonico || '0').times('0.40').toFixed(2))"></span>), por lo que aún no se limita tu aporte ni aplica excedente exento.
+                            </p>
+                        </div>
+
                         <x-ui.field name="clase_riesgo_arl" label="Nivel de riesgo ARL" :required="false" help="Tarifa de riesgos laborales según la actividad contratada.">
                             <select name="clase_riesgo_arl" x-model="claseRiesgoArl" @change="calcularEnVivo">
                                 <option value="0">Sin afiliación ARL o no obligatoria (0,00%)</option>
@@ -202,6 +225,21 @@
                                 <input type="hidden" name="monto_contrato" :value="montoContratoCanonico">
                             </div>
                         </x-ui.field>
+
+                        {{-- Aviso de tope de 25 SMMLV antes de la casilla de ARL --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu base de cotización supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu IBC se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y ARL.
+                            </p>
+                        </div>
+
+                        <div x-show="montoSupera25SmmlvPeroIbcNo" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-border); display: grid; gap: 0.25rem;">
+                            <strong style="font-size: var(--ui-text-small);">Información sobre el tope de 25 SMMLV</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Los ingresos brutos de capital superan los 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Para rentistas de capital el tope aplica sobre tu base de cotización (IBC = 40 % tras deducir costos), por lo que aún no se limita tu aporte ni aplica excedente exento.
+                            </p>
+                        </div>
 
                         <x-ui.field name="clase_riesgo_arl" label="Nivel de riesgo ARL (opcional)" :required="false" help="Tarifa de riesgos laborales si cotizas voluntariamente a ARL.">
                             <select name="clase_riesgo_arl" x-model="claseRiesgoArl" @change="calcularEnVivo">
@@ -301,7 +339,7 @@
                                     <dt>Aporte Pensión (<span x-text="tarifaPensionIndep"></span> %):</dt>
                                     <dd x-text="formatMoney(resultados.pension)"></dd>
 
-                                    <dt>Fondo Solidaridad Pensional (FSP):</dt>
+                                    <dt>Fondo Solidaridad Pensional (FSP<span x-show="resultados.fsp > 0" x-text="' (' + tarifaFspDisplay + ')'"></span>):</dt>
                                     <dd x-text="resultados.fsp > 0 ? formatMoney(resultados.fsp) : 'No aplica ($ 0)'"></dd>
 
                                     <dt>Riesgos Laborales ARL (<span x-text="tarifaArlCalculada"></span> %):</dt>
@@ -332,7 +370,7 @@
                                     <dt>Aporte Pensión (<span x-text="tarifaPensionIndep"></span> %):</dt>
                                     <dd x-text="formatMoney(resultados.pension)"></dd>
 
-                                    <dt>Fondo Solidaridad Pensional (FSP):</dt>
+                                    <dt>Fondo Solidaridad Pensional (FSP<span x-show="resultados.fsp > 0" x-text="' (' + tarifaFspDisplay + ')'"></span>):</dt>
                                     <dd x-text="resultados.fsp > 0 ? formatMoney(resultados.fsp) : 'No aplica ($ 0)'"></dd>
 
                                     <dt>Riesgos Laborales ARL (<span x-text="tarifaArlCalculada"></span> %):</dt>

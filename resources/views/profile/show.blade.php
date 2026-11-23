@@ -94,7 +94,7 @@
                             <input type="text" id="doc_no_editable" disabled value="{{ $usuario->tipo_documento }} - {{ $usuario->numero_documento }}" class="w-full mt-1 bg-gray-100 text-gray-500 border-gray-300 rounded-md text-sm" />
                         </x-ui.field>
                         <x-ui.field name="fecha_nacimiento" label="Fecha de Nacimiento (Mayor de 18)" :required="true">
-                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" max="{{ now('America/Bogota')->subYears(18)->toDateString() }}" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('d/m/Y'))" required class="w-full mt-1" />
+                            <x-text-input id="fecha_nacimiento" type="date" name="fecha_nacimiento" max="{{ now('America/Bogota')->subYears(18)->toDateString() }}" :value="old('fecha_nacimiento', $perfilActivo?->fecha_nacimiento?->format('Y-m-d'))" required class="w-full mt-1" />
                         </x-ui.field>
                     </div>
 
@@ -124,12 +124,20 @@
                     <!-- Perfil de Ocupación RN-008.2 -->
                     <x-ui.field :group="true" name="ocupaciones" label="Perfil de ocupación (puedes seleccionar varias)" :required="true">
                         @php
-                            $ocupacionesActuales = old('ocupaciones', $perfilActivo?->ocupaciones ?? []);
+                            // Los datos antiguos pueden venir en mayúsculas o con otro nombre (p. ej. "ASALARIADO",
+                            // "INVERSIONISTA"): se normalizan a las opciones vigentes para marcarlas en el formulario.
+                            $equivalenciasOcupacion = ['inversionista' => 'rentista de capital', 'rentista' => 'rentista de capital'];
+                            $ocupacionesActuales = collect(old('ocupaciones', $perfilActivo?->ocupaciones ?? []))
+                                ->map(function ($valor) use ($equivalenciasOcupacion) {
+                                    $clave = mb_strtolower(trim((string) $valor));
+                                    return $equivalenciasOcupacion[$clave] ?? $clave;
+                                })
+                                ->all();
                         @endphp
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2 text-sm">
                             @foreach (['Asalariado', 'Independiente por cuenta propia', 'Contratista por prestación de servicios', 'Rentista de capital', 'Pensionado'] as $oc)
                                 <label class="inline-flex items-center p-2 rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer">
-                                    <input type="checkbox" name="ocupaciones[]" value="{{ $oc }}" {{ in_array($oc, $ocupacionesActuales) ? 'checked' : '' }} class="rounded border-gray-300 text-indigo-600">
+                                    <input type="checkbox" name="ocupaciones[]" value="{{ $oc }}" {{ in_array(mb_strtolower($oc), $ocupacionesActuales, true) ? 'checked' : '' }} class="rounded border-gray-300 text-indigo-600">
                                     <span class="ms-2 text-gray-700 text-xs font-medium">{{ $oc }}</span>
                                 </label>
                             @endforeach

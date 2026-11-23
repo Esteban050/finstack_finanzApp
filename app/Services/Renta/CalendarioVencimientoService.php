@@ -29,15 +29,12 @@ class CalendarioVencimientoService
     }
 
     /**
-     * Calcula la fecha límite de vencimiento según los dos últimos dígitos del documento.
-     * Para año gravable YYYY, la declaración de personas naturales vence en el año YYYY + 1 (agosto a octubre).
+     * Busca en calendario_tributario (cargado por el administrador, RF-016) el vencimiento de renta
+     * para los dos últimos dígitos del documento en el año de presentación.
      */
-    public static function calcularFechaVencimiento(string $ultimosDigitos, int $anioGravable): CarbonImmutable
+    protected static function registroCalendario(string $ultimosDigitos, int $anioPresentacion): ?CalendarioTributario
     {
-        $anioPresentacion = $anioGravable + 1;
-
-        // 1. Intentar consultar en la tabla calendario_tributario si fue configurada por el admin (RF-016)
-        $registroBd = CalendarioTributario::where('anio_vigencia', $anioPresentacion)
+        return CalendarioTributario::where('anio_vigencia', $anioPresentacion)
             ->where(function ($query) {
                 $query->where('tipo_obligacion', 'RENTA_PERSONA_NATURAL')
                     ->orWhere('tipo_obligacion', 'like', '%RENTA%');
@@ -45,21 +42,38 @@ class CalendarioVencimientoService
             ->where('digito_desde', '<=', $ultimosDigitos)
             ->where('digito_hasta', '>=', $ultimosDigitos)
             ->first();
+    }
+
+    /**
+     * Indica si la fecha límite proviene del calendario tributario cargado (true) o es una
+     * estimación calculada por la aplicación porque no hay calendario de renta cargado (false).
+     */
+    public static function calendarioCargado(string $ultimosDigitos, int $anioGravable): bool
+    {
+        $registro = self::registroCalendario($ultimosDigitos, $anioGravable + 1);
+
+        return (bool) ($registro && $registro->fecha_vencimiento);
+    }
+
+    /**
+     * Calcula la fecha límite de vencimiento según los dos últimos dígitos del documento.
+     * Para año gravable YYYY, la declaración de personas naturales vence en el año YYYY + 1 (agosto a octubre).
+     */
+    public static function calcularFechaVencimiento(string $ultimosDigitos, int $anioGravable): CarbonImmutable
+    {
+        $anioPresentacion = $anioGravable + 1;
+
+        $registroBd = self::registroCalendario($ultimosDigitos, $anioPresentacion);
 
         if ($registroBd && $registroBd->fecha_vencimiento) {
             return CarbonImmutable::parse($registroBd->fecha_vencimiento);
         }
 
-        // 2. Si no existe registro en BD, aplicar el calendario oficial de la DIAN para personas naturales
-        // Los vencimientos inician a mediados de agosto y culminan a finales de octubre.
+        // 2. Sin calendario cargado en BD se estima la fecha (2 dígitos por día hábil desde mediados de agosto).
+        //    No es la fecha oficial: la pantalla la marca como "Fecha estimada" hasta cargar el calendario RENTA_PN.
         $num = (int) $ultimosDigitos;
         if ($num === 0) {
             $num = 100; // '00' es el último turno
-        }
-
-        // Caso exacto de referencia en ERS y Mockups (Dígito 37 para año gravable 2025 vence el 15/09/2026)
-        if ($anioGravable === 2025 && $ultimosDigitos === '37') {
-            return CarbonImmutable::create(2026, 9, 15);
         }
 
         // Regla general de 2 dígitos por día hábil a partir del segundo martes de agosto
@@ -90,6 +104,7 @@ class CalendarioVencimientoService
 
         $digitos = self::obtenerUltimosDigitos($usuario);
         $fechaLimite = self::calcularFechaVencimiento($digitos, $anioGravable);
+        $calendarioCargado = self::calendarioCargado($digitos, $anioGravable);
         $ahora = CarbonImmutable::now();
 
         $diasRestantes = $ahora->startOfDay()->diffInDays($fechaLimite->startOfDay(), false);
@@ -137,6 +152,8 @@ class CalendarioVencimientoService
             'ultimos_digitos' => $digitos,
             'fecha_limite' => $fechaLimite->toDateString(),
             'fecha_limite_formateada' => $fechaLimite->format('d/m/Y'),
+            'calendario_cargado' => $calendarioCargado,
+            'fecha_estimada' => ! $calendarioCargado,
             'dias_restantes' => (int) $diasRestantes,
             'estado_evaluacion' => $declaracion->estado_evaluacion,
             'estado_declaracion' => $declaracion->estado_declaracion,

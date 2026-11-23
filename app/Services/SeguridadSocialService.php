@@ -28,7 +28,7 @@ class SeguridadSocialService
     public const AVISO_BAJO_SMMLV = 'Con ingresos inferiores a 1 SMMLV no existe obligación de cotizar como independiente; el cálculo mostrado es voluntario sobre 1 SMMLV.';
 
     /** RF-03, RF-05, RF-07: Alerta del tope legal de 25 SMMLV */
-    public const AVISO_TOPE_25_SMMLV = 'Se ha alcanzado el tope legal máximo de cotización de 25 SMMLV ($ %s). Conforme al Art. 18 de la Ley 100 de 1993 y la Sentencia C-1089 de 2003, la cotización se limita exactamente a 25 SMMLV y el excedente devengado de $ %s queda legalmente EXENTO de aportes a salud, pensión, FSP y ARL.';
+    public const AVISO_TOPE_25_SMMLV = 'Has alcanzado el tope legal máximo de cotización de 25 SMMLV ($ %s). Tu base de cotización (IBC) se limita a este valor, por lo que el excedente de $ %s queda exento de aportes a salud, pensión y ARL.';
 
     public const AVISO_CUPO_COPAL_LABORAL = 'Tu contrato laboral cubre el tope máximo legal de 25 SMMLV ($ %s). Tus actividades independientes tienen un cupo disponible de $ 0 y están 100%% EXENTAS de cotizar en este mes.';
 
@@ -399,10 +399,15 @@ class SeguridadSocialService
         // RN-033.2: IBC = ingreso base × 40 %, entre 1 y 25 SMMLV, al peso superior.
         $ibcSinAcotar = self::porcentaje($ingresoBase, (string) $parametro->porc_ibc_indep);
         $ibcMinimo = bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2);
+        $ibcMaximo = bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2);
+
+        $superoTope25 = bccomp($ibcSinAcotar, $ibcMaximo, 2) > 0;
+        $excedenteTope = $superoTope25 ? bcsub($ibcSinAcotar, $ibcMaximo, 2) : '0.00';
+
         $ibc = self::acotar(
             $ibcSinAcotar,
             $ibcMinimo,
-            bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2)
+            $ibcMaximo
         );
         $ibc = self::redondearArriba($ibc, 1);
 
@@ -423,11 +428,29 @@ class SeguridadSocialService
                 : self::redondearArriba(self::porcentaje($ibc, $tarifaArl), self::MULTIPLO_APORTE),
         ];
 
+        $avisos = match (true) {
+            bccomp($ingresoBase, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
+            bccomp($ibcSinAcotar, $ibcMinimo, 2) < 0 => [self::AVISO_IBC_MINIMO],
+            default => [],
+        };
+
+        if ($superoTope25) {
+            $avisos[] = sprintf(
+                self::AVISO_TOPE_25_SMMLV,
+                number_format((float) $ibcMaximo, 0, ',', '.'),
+                number_format((float) $excedenteTope, 0, ',', '.')
+            );
+        }
+
         return [
             'tipo_cotizante' => 'INDEPENDIENTE',
             'monto_contrato' => bcadd($ingresoBase, '0', 2),
             'ingreso_base' => bcadd($ingresoBase, '0', 2),
             'ibc' => $ibc,
+            'ibc_max_smmlv' => $ibcMaximo,
+            'supero_tope_25_smmlv' => $superoTope25,
+            'tope_25_smmlv_alcanzado' => $superoTope25,
+            'excedente_desafectado_tope' => $excedenteTope,
             'porcentaje_salud' => (string) $parametro->tarifa_salud_indep,
             'porcentaje_pension' => $pensionado ? '0.00' : (string) $parametro->tarifa_pension_indep,
             'porcentaje_fsp' => $tarifaFsp,
@@ -436,11 +459,7 @@ class SeguridadSocialService
             ...$aportes,
             // RN-033.5: total = suma de los aportes redondeados.
             'total' => array_reduce($aportes, fn ($total, $aporte) => bcadd($total, $aporte, 2), '0.00'),
-            'avisos' => match (true) {
-                bccomp($ingresoBase, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
-                bccomp($ibcSinAcotar, $ibcMinimo, 2) < 0 => [self::AVISO_IBC_MINIMO],
-                default => [],
-            },
+            'avisos' => $avisos,
             'parametros_usados' => self::parametrosUsados($parametro, $ibc, [
                 'porc_ibc' => (string) $parametro->porc_ibc_indep,
                 'tarifa_salud' => (string) $parametro->tarifa_salud_indep,
@@ -499,6 +518,10 @@ class SeguridadSocialService
             'ingreso_neto' => $baseNeta,
             'ingreso_base' => $baseNeta,
             'ibc' => $calculo['ibc'],
+            'ibc_max_smmlv' => $calculo['ibc_max_smmlv'] ?? bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2),
+            'supero_tope_25_smmlv' => $calculo['supero_tope_25_smmlv'] ?? false,
+            'tope_25_smmlv_alcanzado' => $calculo['tope_25_smmlv_alcanzado'] ?? false,
+            'excedente_desafectado_tope' => $calculo['excedente_desafectado_tope'] ?? '0.00',
             'porcentaje_salud' => $calculo['porcentaje_salud'],
             'salud' => $calculo['salud'],
             'porcentaje_pension' => $calculo['porcentaje_pension'],
@@ -513,11 +536,21 @@ class SeguridadSocialService
             // de costos (o gastos). Si la base neta es inferior a 1 SMMLV, no existe obligación
             // (cálculo voluntario sobre 1 SMMLV). Si la base neta es >= 1 SMMLV pero su 40% queda por debajo
             // de 1 SMMLV, se cotiza sobre 1 SMMLV.
-            'avisos' => match (true) {
-                bccomp($baseNeta, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
-                bccomp(self::porcentaje($baseNeta, (string) $parametro->porc_ibc_indep), bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2), 2) < 0 => [self::AVISO_IBC_MINIMO],
-                default => [],
-            },
+            'avisos' => (function () use ($baseNeta, $smmlv, $parametro, $calculo) {
+                $avisos = match (true) {
+                    bccomp($baseNeta, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
+                    bccomp(self::porcentaje($baseNeta, (string) $parametro->porc_ibc_indep), bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2), 2) < 0 => [self::AVISO_IBC_MINIMO],
+                    default => [],
+                };
+                if ($calculo['supero_tope_25_smmlv'] ?? false) {
+                    $avisos[] = sprintf(
+                        self::AVISO_TOPE_25_SMMLV,
+                        number_format((float) ($calculo['ibc_max_smmlv'] ?? bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2)), 0, ',', '.'),
+                        number_format((float) ($calculo['excedente_desafectado_tope'] ?? '0'), 0, ',', '.')
+                    );
+                }
+                return $avisos;
+            })(),
             'parametros_usados' => array_merge($calculo['parametros_usados'], [
                 'tipo_cotizante' => 'Rentista de capital',
                 'ingresos_brutos' => $brutos,
@@ -741,12 +774,16 @@ class SeguridadSocialService
         // 5. FONDO DE SOLIDARIDAD PENSIONAL (RF-09)
         // Evaluar si el consolidado total supera 20 SMMLV
         $supera20Smmlv = bccomp($ibcConsolidadoTotal, $umbral20, 2) > 0;
-        $tarifaFsp = $supera20Smmlv ? '2.00' : self::tarifaFsp($ibcConsolidadoTotal, $smmlv, $parametro);
+        // RN-033.6: un Pensionado no paga pensión (propia ni patronal) ni FSP.
+        $pensionado = self::tieneOcupacion($perfil, [self::OCUPACION_PENSIONADO]);
+        $tarifaFsp = $pensionado
+            ? '0'
+            : ($supera20Smmlv ? '2.00' : self::tarifaFsp($ibcConsolidadoTotal, $smmlv, $parametro));
 
         // 6. LIQUIDACIÓN LABORAL (TIPO E)
         if ($tieneLaboral) {
             $saludEmp = self::redondearArriba(self::porcentaje($ibcLaboral, (string) $parametro->tarifa_salud_emp), 1);
-            $pensionEmp = self::redondearArriba(self::porcentaje($ibcLaboral, (string) $parametro->tarifa_pension_emp), 1);
+            $pensionEmp = $pensionado ? '0.00' : self::redondearArriba(self::porcentaje($ibcLaboral, (string) $parametro->tarifa_pension_emp), 1);
             $fspLaboral = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaFsp), 1);
             $totalAportesEmpleado = bcadd(bcadd($saludEmp, $pensionEmp, 2), $fspLaboral, 2);
             $salarioNetoEstimado = bcsub(bcsub($salarioRaw, $totalAportesEmpleado, 2), $retencionFuente, 2);
@@ -760,7 +797,7 @@ class SeguridadSocialService
             $tarifaArlLab = self::tarifaArlPorClase($claseArlLaboral);
 
             $saludPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaSaludPatronal), 1);
-            $pensionPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaPensionPatronal), 1);
+            $pensionPatronal = $pensionado ? '0.00' : self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaPensionPatronal), 1);
             $arlPatronal = self::redondearArriba(self::porcentaje($ibcLaboral, $tarifaArlLab), 1);
 
             // Parafiscales (RF-11: sobre nómina 100% u 70% integral OMITIENDO TOPE)
@@ -801,7 +838,7 @@ class SeguridadSocialService
         // 7. LIQUIDACIÓN INDEPENDIENTE (TIPO I)
         if ($tieneIndependiente && bccomp($ibcIndepCotizado, '0', 2) > 0) {
             $saludIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, (string) $parametro->tarifa_salud_indep), 1);
-            $pensionIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, (string) $parametro->tarifa_pension_indep), 1);
+            $pensionIndep = $pensionado ? '0.00' : self::redondearArriba(self::porcentaje($ibcIndepCotizado, (string) $parametro->tarifa_pension_indep), 1);
             $fspIndep = self::redondearArriba(self::porcentaje($ibcIndepCotizado, $tarifaFsp), 1);
 
             // RF-10: ARL ÚNICAMENTE sobre la porción de prestación de servicios cotizada
@@ -841,7 +878,7 @@ class SeguridadSocialService
                 number_format((float) $excedenteIndep, 0, ',', '.')
             );
         }
-        if ($supera20Smmlv) {
+        if ($supera20Smmlv && ! $pensionado) {
             $avisos[] = sprintf(
                 self::AVISO_FSP_20_SMMLV,
                 number_format((float) $umbral20, 0, ',', '.')
@@ -941,7 +978,7 @@ class SeguridadSocialService
             'ibc_independiente_aprobado' => $ibcIndepCotizado,
             'excedente_desafectado_tope' => $excedenteTotalExento,
             'tarifa_fsp_aplicada' => $tarifaFsp,
-            'aplica_fsp_20_smmlv' => $supera20Smmlv,
+            'aplica_fsp_20_smmlv' => $supera20Smmlv && ! $pensionado,
             'laboral' => $laboral,
             'liquidacion_laboral_tipo_e' => $laboral,
             'independiente' => $independiente,
@@ -978,7 +1015,8 @@ class SeguridadSocialService
         ParametroNormativo $parametro,
         ?string $retencion = null,
         bool $exoneradoParafiscales = true,
-        int $claseRiesgoArl = 1
+        int $claseRiesgoArl = 1,
+        bool $pensionado = false
     ): array {
         $smmlv = (string) $parametro->valor_smmlv;
         $tope25 = bcmul($smmlv, (string) $parametro->ibc_max_smmlv, 2);
@@ -1001,11 +1039,14 @@ class SeguridadSocialService
         }
 
         // RN-034.3: salud 4 %, pensión 4 % y FSP desde 4 SMMLV.
-        $tarifaFsp = self::tarifaFsp($ibc, $smmlv, $parametro);
+        // RN-033.6: un Pensionado no aporta a pensión ni a FSP (Ley 100 art. 17), ni él ni el empleador.
+        $tarifaFsp = $pensionado ? '0' : self::tarifaFsp($ibc, $smmlv, $parametro);
 
         $aportes = [
             'salud' => IngresoService::redondear(self::porcentaje($ibc, (string) $parametro->tarifa_salud_emp)),
-            'pension' => IngresoService::redondear(self::porcentaje($ibc, (string) $parametro->tarifa_pension_emp)),
+            'pension' => $pensionado
+                ? '0.00'
+                : IngresoService::redondear(self::porcentaje($ibc, (string) $parametro->tarifa_pension_emp)),
             'fsp' => IngresoService::redondear(self::porcentaje($ibc, $tarifaFsp)),
         ];
 
@@ -1017,11 +1058,13 @@ class SeguridadSocialService
 
         // RF-01, RF-08, RF-09, RF-10: Aportes patronales del empleador
         $tarifaSaludPatronal = (string) ($parametro->tarifa_salud_patronal ?? '8.50');
-        $tarifaPensionPatronal = (string) ($parametro->tarifa_pension_patronal ?? '12.00');
+        $tarifaPensionPatronal = $pensionado ? '0.00' : (string) ($parametro->tarifa_pension_patronal ?? '12.00');
         $tarifaArlPatronal = self::tarifaArlPorClase($claseRiesgoArl);
 
         $saludPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaSaludPatronal));
-        $pensionPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaPensionPatronal));
+        $pensionPatronal = $pensionado
+            ? '0.00'
+            : IngresoService::redondear(self::porcentaje($ibc, $tarifaPensionPatronal));
         $arlPatronal = IngresoService::redondear(self::porcentaje($ibc, $tarifaArlPatronal));
 
         // RF-11: Parafiscales calculados sobre nómina 100 % (o 70 % en integral), OMITIENDO el tope de 25 SMMLV
@@ -1051,13 +1094,15 @@ class SeguridadSocialService
             'es_salario_integral' => $esIntegral,
             'base_salarial' => bcadd($base, '0', 2),
             'ibc' => $ibc,
+            'ibc_max_smmlv' => $tope25,
             'tope_25_smmlv_alcanzado' => $topeAlcanzado,
             'supero_tope_25_smmlv' => $topeAlcanzado,
             'excedente_desafectado_tope' => $excedenteTope,
             'porcentaje_salud' => (string) $parametro->tarifa_salud_emp,
-            'porcentaje_pension' => (string) $parametro->tarifa_pension_emp,
+            'porcentaje_pension' => $pensionado ? '0.00' : (string) $parametro->tarifa_pension_emp,
             'porcentaje_fsp' => $tarifaFsp,
             'aplica_fsp' => bccomp($tarifaFsp, '0', 2) > 0,
+            'pensionado' => $pensionado,
             ...$aportes,
             'total_aportes' => $total,
             // CA-034.1: "neto sin retención".
@@ -1104,10 +1149,11 @@ class SeguridadSocialService
             'parametros_usados' => self::parametrosUsados($parametro, $ibc, [
                 'porc_ibc' => $esIntegral ? (string) $parametro->porc_ibc_integral : '100.00',
                 'tarifa_salud' => (string) $parametro->tarifa_salud_emp,
-                'tarifa_pension' => (string) $parametro->tarifa_pension_emp,
+                'tarifa_pension' => $pensionado ? '0' : (string) $parametro->tarifa_pension_emp,
                 'tarifa_fsp' => $tarifaFsp,
                 'tarifa_salud_patronal' => $tarifaSaludPatronal,
                 'tarifa_pension_patronal' => $tarifaPensionPatronal,
+                'pensionado' => $pensionado,
             ]),
             'aviso_legal' => self::AVISO_LEGAL,
         ];
@@ -1340,10 +1386,11 @@ class SeguridadSocialService
     }
 
     /**
-     * RN-014.2: tarifa del FSP según el IBC expresado en SMMLV. Cada tramo
-     * incluye su límite inferior y excluye el superior, así que 4,00 SMMLV ya
-     * aporta (RN-034.3: "4 SMMLV o más") y por debajo de 4 la tarifa es 0 %
-     * (RN-033.4).
+     * RN-014.2: tarifa del FSP según el IBC expresado en SMMLV. Los límites
+     * inferiores de 4 y 16 SMMLV son inclusivos ("igual o superior"), así que
+     * 4,00 SMMLV ya aporta (RN-034.3) y por debajo de 4 la tarifa es 0 %
+     * (RN-033.4). Entre 16 y 20 SMMLV el límite superior de cada tramo también
+     * es inclusivo: exactamente 17, 18, 19 o 20 SMMLV queda en el tramo inferior.
      */
     public static function tarifaFsp(string $ibc, string $smmlv, ParametroNormativo $parametro): string
     {

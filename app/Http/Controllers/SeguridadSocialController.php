@@ -254,7 +254,8 @@ class SeguridadSocialController extends Controller
                 $parametro,
                 $retencionLimpia,
                 $exoneradoParafiscales,
-                $claseArl
+                $claseArl,
+                pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
             );
         } else { // INDEPENDIENTE o RENTISTA_CAPITAL
             $smmlv = (string) $parametro->valor_smmlv;
@@ -587,7 +588,8 @@ class SeguridadSocialController extends Controller
             (string) $validated['salario'],
             (bool) $perfil->es_salario_integral,
             $parametro,
-            isset($validated['retencion_fuente']) ? (string) $validated['retencion_fuente'] : null
+            isset($validated['retencion_fuente']) ? (string) $validated['retencion_fuente'] : null,
+            pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
         );
 
         // RN-021.2: como en el ingreso, el neto no puede quedar negativo.
@@ -645,7 +647,8 @@ class SeguridadSocialController extends Controller
             (string) $ingreso->monto_bruto_cop,
             (bool) $perfil->es_salario_integral,
             $parametro,
-            (string) $ingreso->retencion_fuente_cop
+            (string) $ingreso->retencion_fuente_cop,
+            pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
         );
 
         // RN-021.2: el neto (bruto − retención − aportes) no puede quedar negativo.

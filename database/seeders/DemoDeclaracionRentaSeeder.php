@@ -64,7 +64,7 @@ class DemoDeclaracionRentaSeeder extends Seeder
             $perfil->responsable_iva = false;
             $perfil->ultimos_digitos_nit = '37';
             $perfil->personas_a_cargo = 0;
-            $perfil->ocupaciones = ['ASALARIADO', 'INVERSIONISTA'];
+            $perfil->ocupaciones = ['Asalariado', 'Rentista de capital'];
             $perfil->es_salario_integral = false;
             $perfil->vigente_desde = '2025-01-01';
             $perfil->vigente_hasta = null;

@@ -311,7 +311,7 @@
 </div>
 
 <script>
-const benefitsBase = @json(['uvt'=>(string)$estimacion['uvt'],'rlg'=>(string)$estimacion['paso6']['rlg_cop'],'impuesto'=>(string)$estimacion['paso7']['impuesto_redondeado_cop'],'retenciones'=>(string)$estimacion['paso8']['retenciones_totales_cop']]);
+const benefitsBase = {!! json_encode(['uvt'=>(string)$estimacion['uvt'],'rlg'=>(string)$estimacion['paso6']['rlg_cop'],'impuesto'=>(string)$estimacion['paso7']['impuesto_redondeado_cop'],'retenciones'=>(string)$estimacion['paso8']['retenciones_totales_cop']], JSON_HEX_TAG|JSON_HEX_AMP) !!};
 const benefitsState = {dependientes:true, factura:true, donaciones:false, icetex:false};
 function toggleBenefit(key) {
     benefitsState[key] = !benefitsState[key];

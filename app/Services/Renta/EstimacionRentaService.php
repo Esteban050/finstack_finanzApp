@@ -15,9 +15,17 @@ class EstimacionRentaService
     /**
      * Calcula el impuesto según la tabla progresiva marginal del Artículo 241 del Estatuto Tributario.
      * Retorna el impuesto en COP redondeado al múltiplo de $1.000 más cercano (RN-046.2).
+     *
+     * Si se informa $rlgCop, la base se convierte a UVT con toda su precisión: la conversión a 2 decimales
+     * (RN-043.2) es solo para mostrar y, aplicada antes de la tarifa, desplaza el impuesto hasta ~$500
+     * (p. ej. base $54.330.910 → exacto $9.500 y no $9.461,81, que redondea a $10.000 y no a $9.000).
      */
-    public static function calcularImpuestoArt241(float $rlgUvt, float $uvt): array
+    public static function calcularImpuestoArt241(float $rlgUvt, float $uvt, ?float $rlgCop = null): array
     {
+        if ($rlgCop !== null && $uvt > 0) {
+            $rlgUvt = $rlgCop / $uvt;
+        }
+
         $impUvt = 0.0;
         $tarifaMarginal = '0%';
         $rangoTexto = '0 a 1.090 UVT';
@@ -52,7 +60,8 @@ class EstimacionRentaService
             $rangoTexto = '> 31.000 UVT';
         }
 
-        $impCopExacto = $impUvt * $uvt;
+        // Se limpia el ruido de punto flotante (…9999999) antes de redondear al millar.
+        $impCopExacto = round($impUvt * $uvt, 2);
         $impCopRedondeado = round($impCopExacto / 1000.0) * 1000;
 
         return [
@@ -134,7 +143,7 @@ class EstimacionRentaService
         $paso6RlgUvt = ConsolidadoRentaService::aUvt($paso6RlgCop, $uvt);
 
         // PASO 7: Impuesto según Tabla Progresiva Art. 241 E.T.
-        $calculoImpuesto = self::calcularImpuestoArt241($paso6RlgUvt, $uvt);
+        $calculoImpuesto = self::calcularImpuestoArt241($paso6RlgUvt, $uvt, $paso6RlgCop);
         $paso7ImpuestoRedondeadoCop = $calculoImpuesto['impuesto_cop'];
         $paso7ImpuestoUvt = $calculoImpuesto['impuesto_uvt'];
 
@@ -168,7 +177,7 @@ class EstimacionRentaService
         $rlgSinBeneficiosInvCop = max(0.0, $rentaLiquidaSinBeneficiosInvCop - min($exenta25SinInvCop, $limiteGlobalSinInvCop));
         $rlgSinBeneficiosInvUvt = ConsolidadoRentaService::aUvt($rlgSinBeneficiosInvCop, $uvt);
 
-        $impuestoSinBeneficios = self::calcularImpuestoArt241($rlgSinBeneficiosInvUvt, $uvt);
+        $impuestoSinBeneficios = self::calcularImpuestoArt241($rlgSinBeneficiosInvUvt, $uvt, $rlgSinBeneficiosInvCop);
         $impuestoSinBeneficiosCop = $impuestoSinBeneficios['impuesto_cop'];
 
         $ahorroImpuestoDirectoCop = max(0.0, $impuestoSinBeneficiosCop - $paso7ImpuestoRedondeadoCop);

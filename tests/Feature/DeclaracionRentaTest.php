@@ -369,11 +369,25 @@ class DeclaracionRentaTest extends TestCase
      */
     public function test_calendario_genera_fecha_limite_y_cuatro_recordatorios(): void
     {
+        // Calendario DIAN 2026 (comunicado 090-2026): dígitos 37-38 vencen el 8 de septiembre de 2026.
+        \DB::table('calendario_tributario')->where('anio_vigencia', 2026)->where('tipo_obligacion', 'RENTA_PN')->delete();
+        \DB::table('calendario_tributario')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'anio_vigencia' => 2026,
+            'tipo_obligacion' => 'RENTA_PN',
+            'digito_desde' => '37',
+            'digito_hasta' => '38',
+            'fecha_vencimiento' => '2026-09-08',
+            'creado_por' => $this->usuario->id,
+        ]);
+
         // Con documento que termina en 37 para el año gravable 2025
         $vencimiento = $this->vencimientoService->obtenerVencimientoYRecordatorios($this->usuario, 2025);
 
         $this->assertEquals('37', $vencimiento['ultimos_digitos']);
-        $this->assertEquals('2026-09-15', $vencimiento['fecha_limite']);
+        $this->assertEquals('2026-09-08', $vencimiento['fecha_limite']);
+        $this->assertTrue($vencimiento['calendario_cargado']);
+        $this->assertFalse($vencimiento['fecha_estimada']);
 
         $this->assertCount(4, $vencimiento['recordatorios']);
         $diasEsperados = [30, 15, 5, 1];
