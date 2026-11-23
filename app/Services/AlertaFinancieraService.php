@@ -6,9 +6,9 @@ use App\Models\Categoria;
 use App\Models\Credito;
 use App\Models\Gasto;
 use App\Models\Ingreso;
+use App\Models\ParametroNormativo;
 use App\Models\PlantillaRecurrencia;
 use App\Models\Scopes\DelUsuarioAutenticado;
-use App\Services\Renta\ConsolidadoRentaService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -65,9 +65,15 @@ class AlertaFinancieraService
             $emitidas += self::discrecional($usuarioId, $reglas[ReglaAlertaService::GASTO_DISCRECIONAL_ALTO], $mes);
         }
 
-        foreach ([ReglaAlertaService::TOPE_DIAN_TARJETA, ReglaAlertaService::TOPE_DIAN_COMPRAS] as $tipo) {
-            if ($activa($tipo)) {
-                $emitidas += self::topeDian($usuarioId, $reglas[$tipo], $hoy->year);
+        $tiposDian = array_filter([ReglaAlertaService::TOPE_DIAN_TARJETA, ReglaAlertaService::TOPE_DIAN_COMPRAS], $activa);
+        if ($tiposDian !== []) {
+            $anio = $hoy->year;
+            $parametros = ParametroNormativo::where('anio_vigencia', $anio)->where('es_activa', true)
+                ->first(['valor_uvt', 'tope_tc_uvt', 'tope_compras_uvt']);
+            if ($parametros !== null) {
+                foreach ($tiposDian as $tipo) {
+                    $emitidas += self::topeDian($usuarioId, $reglas[$tipo], $anio, $parametros);
+                }
             }
         }
 
@@ -310,17 +316,16 @@ class AlertaFinancieraService
      * compras y consumos totales) llega al umbral % del tope para declarar
      * (1.400 UVT, de parametros_normativos del año).
      */
-    private static function topeDian(string $usuarioId, array $regla, int $anio): int
+    private static function topeDian(string $usuarioId, array $regla, int $anio, ParametroNormativo $parametros): int
     {
         $tarjeta = $regla['tipo'] === ReglaAlertaService::TOPE_DIAN_TARJETA;
-        $parametros = ConsolidadoRentaService::obtenerParametros($anio);
-        $uvt = (string) (int) round($parametros['uvt']);
-        $topeUvt = (int) ($tarjeta ? $parametros['tope_tarjetas_uvt'] : $parametros['tope_compras_uvt']);
+        $uvt = CreditoService::alPeso((string) $parametros->valor_uvt);
+        $topeUvt = (int) ($tarjeta ? $parametros->tope_tc_uvt : $parametros->tope_compras_uvt);
         $tope = bcmul($uvt, (string) $topeUvt, 0);
 
         $acumulado = self::gastos($usuarioId)
             ->whereBetween('fecha', ["{$anio}-01-01", "{$anio}-12-31"])
-            ->when($tarjeta, fn ($q) => $q->where('medio_pago', 'TARJETA_CREDITO'));
+            ->when($tarjeta, fn ($q) => $q->consumosConTarjeta());
         $acumulado = self::suma($acumulado);
 
         $porcentaje = self::porcentaje($acumulado, $tope);

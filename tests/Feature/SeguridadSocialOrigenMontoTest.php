@@ -191,4 +191,59 @@ class SeguridadSocialOrigenMontoTest extends TestCase
                 ->assertJsonPath('data.avisos.0', SeguridadSocialService::AVISO_IBC_MINIMO);
         }
     }
+
+    public function test_rentista_con_ingreso_bruto_superior_al_minimo_pero_neto_inferior_no_debe_pagar(): void
+    {
+        // Ingreso bruto de 1.2 SMMLV (superior al SMMLV en bruto).
+        // Con presunción del 28.08%, el ingreso neto es 1.2 * (1 - 0.2808) = 0.863 SMMLV (< 1 SMMLV).
+        // Por regla solicitada: al ser el neto inferior a 1 SMMLV, NO debe pagar.
+        $montoBruto = bcmul($this->smmlv, '1.20', 2);
+
+        $respuesta = $this->calcular([
+            'tipo_cotizante' => 'RENTISTA_CAPITAL',
+            'origen_monto' => 'MANUAL',
+            'monto_contrato' => $montoBruto,
+        ]);
+
+        $respuesta->assertOk()
+            ->assertJsonPath('data.obligado', false)
+            ->assertJsonPath('data.total', '0.00')
+            ->assertJsonPath('data.ibc', '0.00')
+            ->assertJsonPath('data.avisos.0', SeguridadSocialService::AVISO_NO_OBLIGADO);
+    }
+
+    public function test_rentista_con_gastos_reales_que_dejan_el_neto_bajo_el_minimo_no_debe_pagar(): void
+    {
+        // Ingreso bruto de 3 SMMLV con costos reales de 2.5 SMMLV -> neto 0.5 SMMLV (< 1 SMMLV)
+        $montoBruto = bcmul($this->smmlv, '3.00', 2);
+        $costosReales = bcmul($this->smmlv, '2.50', 2);
+
+        $respuesta = $this->calcular([
+            'tipo_cotizante' => 'RENTISTA_CAPITAL',
+            'origen_monto' => 'MANUAL',
+            'monto_contrato' => $montoBruto,
+            'costos_reales' => $costosReales,
+            'usar_costos_reales' => true,
+        ]);
+
+        $respuesta->assertOk()
+            ->assertJsonPath('data.obligado', false)
+            ->assertJsonPath('data.total', '0.00')
+            ->assertJsonPath('data.ibc', '0.00');
+    }
+
+    public function test_rentista_con_ingresos_registrados_cuyo_neto_es_inferior_al_minimo_no_esta_obligado(): void
+    {
+        $montoBruto = bcmul($this->smmlv, '1.20', 2);
+        $this->registrarIngreso($montoBruto);
+
+        $respuesta = $this->actingAs($this->usuario)->getJson(route('seguridad-social.ingresos-mes', [
+            'periodo' => $this->periodo,
+            'tipo_cotizante' => 'RENTISTA_CAPITAL',
+        ]));
+
+        $respuesta->assertOk()
+            ->assertJsonPath('data.cantidad', 1)
+            ->assertJsonPath('data.obligado', false);
+    }
 }

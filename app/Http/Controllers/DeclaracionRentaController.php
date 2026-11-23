@@ -43,7 +43,8 @@ class DeclaracionRentaController extends Controller
     {
         $usuario = auth()->user();
         $consolidado = $this->consolidadoService->consolidar($usuario, $anio);
-        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio);
+        // Se sincroniza la declaración con lo registrado (ingresos, inversiones, perfil) antes de evaluar.
+        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio, true);
         $evaluacion = $this->evaluacionService->evaluar($usuario, $anio);
         $estimacion = $this->estimacionService->estimar($usuario, $anio);
         $parametros = $consolidado['parametros'];
@@ -57,7 +58,7 @@ class DeclaracionRentaController extends Controller
     public function complementaria(Request $request, int $anio): View
     {
         $usuario = auth()->user();
-        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio);
+        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio, true);
         $consolidado = $declaracion->datos_consolidado_cache ?? $this->consolidadoService->consolidar($usuario, $anio);
         $ajustes = $declaracion->ajustes;
 
@@ -108,8 +109,8 @@ class DeclaracionRentaController extends Controller
     public function estimacion(Request $request, int $anio): View
     {
         $usuario = auth()->user();
+        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio, true);
         $estimacion = $this->estimacionService->estimar($usuario, $anio);
-        $declaracion = $this->complementariaService->obtenerDeclaracion($usuario, $anio);
 
         return view('renta.estimacion', compact('usuario', 'anio', 'estimacion', 'declaracion'));
     }
@@ -120,6 +121,7 @@ class DeclaracionRentaController extends Controller
     public function vencimiento(Request $request, int $anio): View
     {
         $usuario = auth()->user();
+        $this->complementariaService->obtenerDeclaracion($usuario, $anio, true);
         $vencimiento = $this->vencimientoService->obtenerVencimientoYRecordatorios($usuario, $anio);
         $declaracion = $vencimiento['declaracion'];
 
@@ -158,6 +160,7 @@ class DeclaracionRentaController extends Controller
     public function descargarPdf(Request $request, int $anio): Response
     {
         $usuario = auth()->user();
+        $this->complementariaService->obtenerDeclaracion($usuario, $anio, true);
         $evaluacion = $this->evaluacionService->evaluar($usuario, $anio);
         $estimacion = $this->estimacionService->estimar($usuario, $anio);
         $declaracion = $evaluacion['declaracion'];
@@ -185,9 +188,11 @@ class DeclaracionRentaController extends Controller
     public function calculadora(Request $request, int $anio): View
     {
         $usuario = auth()->user();
-        $parametros = ConsolidadoRentaService::obtenerParametros($anio);
+        $vigencias = \App\Models\ParametroNormativo::where('es_activa', true)
+            ->orderByDesc('anio_vigencia')->pluck('anio_vigencia')->map(fn ($year) => (int) $year)->all();
+        $sinVigencia = ! in_array($anio, $vigencias, true);
 
-        return view('renta.calculadora', compact('usuario', 'anio', 'parametros'));
+        return view('renta.calculadora', compact('usuario', 'anio', 'vigencias', 'sinVigencia'));
     }
 
     /**
@@ -212,7 +217,11 @@ class DeclaracionRentaController extends Controller
             'retenciones_fuente_cop' => ['nullable', 'numeric', 'min:0'],
         ])->validate();
 
-        $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
+        try {
+            $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
+        } catch (\Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json($resultado);
     }

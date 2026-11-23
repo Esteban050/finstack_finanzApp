@@ -4,7 +4,7 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-clase-arl="{{ (int) ($perfil?->clase_riesgo_arl ?? 0) }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::porcentajePresuncionRentista(old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m')))) }}" data-initial="{{ json_encode(session('calculo_reciente')) }}" data-clase-arl="{{ $perfil?->clase_riesgo_arl ?? 0 }}">
 <p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
@@ -92,7 +92,8 @@
                                 </template>
                             </ul>
                             <p x-show="!ingresosMes.obligado" style="margin: 0; font-size: var(--ui-text-small);">
-                                Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.
+                                <span x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tras la presunción de costos (<span x-text="porcentajePresuncionDisplay"></span>%), estos ingresos quedan por debajo de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
+                                <span x-show="tipoCotizante !== 'RENTISTA_CAPITAL'">Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
                             </p>
                             <div class="ui-inline" role="group" aria-label="Monto para calcular" style="gap: 0.5rem; flex-wrap: wrap;">
                                 <button type="button" class="ui-button" :class="origenMonto === 'INGRESOS' ? 'ui-button--primary' : 'ui-button--secondary'" :aria-pressed="origenMonto === 'INGRESOS'" @click="usarIngresos()">Usar estos ingresos</button>
@@ -139,6 +140,14 @@
                             <p class="ui-help" style="margin-top: 0.25rem;">El empleador asume el pago de ARL y los aportes patronales; estos no se descuentan de tu salario.</p>
                         </div>
 
+                        {{-- Aviso de tope de 25 SMMLV para asalariado --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu salario supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu base de cotización (IBC) se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y FSP.
+                            </p>
+                        </div>
+
                         <x-ui.field name="retencion_fuente" label="Retención en la fuente informada (opcional)" :required="false" help="Monto retenido por el empleador si aplica retención en la fuente en tu colilla de pago.">
                             <div class="ui-money">
                                 <input type="text" inputmode="decimal" x-model="retencionDisplay" @input="onRetencionInput" placeholder="0">
@@ -179,6 +188,21 @@
                             </div>
                         </div>
 
+                        {{-- Aviso de tope de 25 SMMLV antes de la casilla de ARL --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu base de cotización supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu IBC se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y ARL.
+                            </p>
+                        </div>
+
+                        <div x-show="montoSupera25SmmlvPeroIbcNo" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-border); display: grid; gap: 0.25rem;">
+                            <strong style="font-size: var(--ui-text-small);">Información sobre el tope de 25 SMMLV</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                El valor del contrato supera los 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Para trabajadores independientes el tope legal aplica sobre tu base de cotización (IBC = 40 %, actualmente <span style="font-weight: 600;" x-text="formatMoney(resultados.ibc || decimal(montoContratoCanonico || '0').times('0.40').toFixed(2))"></span>), por lo que aún no se limita tu aporte ni aplica excedente exento.
+                            </p>
+                        </div>
+
                         <x-ui.field name="clase_riesgo_arl" label="Nivel de riesgo ARL" :required="false" help="Tarifa de riesgos laborales según la actividad contratada.">
                             <select name="clase_riesgo_arl" x-model="claseRiesgoArl" @change="calcularEnVivo">
                                 <option value="0">Sin afiliación ARL o no obligatoria (0,00%)</option>
@@ -202,6 +226,21 @@
                                 <input type="hidden" name="monto_contrato" :value="montoContratoCanonico">
                             </div>
                         </x-ui.field>
+
+                        {{-- Aviso de tope de 25 SMMLV antes de la casilla de ARL --}}
+                        <div x-show="superoTope25EnVivo" class="ui-notice" role="status" style="border-left: 4px solid var(--accent, #0284c7); display: grid; gap: 0.25rem;">
+                            <strong>Tope legal alcanzado (25 SMMLV)</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Tu base de cotización supera el tope máximo de 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Conforme a la ley, tu IBC se limita a este valor, por lo que <strong style="color: var(--ui-success);" x-text="formatMoney(excedenteExentoEnVivo)"></strong> queda exento de aportes a salud, pensión y ARL.
+                            </p>
+                        </div>
+
+                        <div x-show="montoSupera25SmmlvPeroIbcNo" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-border); display: grid; gap: 0.25rem;">
+                            <strong style="font-size: var(--ui-text-small);">Información sobre el tope de 25 SMMLV</strong>
+                            <p style="margin: 0; font-size: var(--ui-text-small);">
+                                Los ingresos brutos de capital superan los 25 salarios mínimos (<span x-text="formatMoney(tope25Smmlv)"></span>). Para rentistas de capital el tope aplica sobre tu base de cotización (IBC = 40 % tras deducir costos), por lo que aún no se limita tu aporte ni aplica excedente exento.
+                            </p>
+                        </div>
 
                         <x-ui.field name="clase_riesgo_arl" label="Nivel de riesgo ARL (opcional)" :required="false" help="Tarifa de riesgos laborales si cotizas voluntariamente a ARL.">
                             <select name="clase_riesgo_arl" x-model="claseRiesgoArl" @change="calcularEnVivo">
@@ -231,7 +270,8 @@
                         {{-- Sin obligación: ingresos del mes por debajo de 1 salario mínimo --}}
                         <div x-show="resultados.obligado === false" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-success); display: grid; gap: 0.25rem;">
                             <strong>No debes pagar seguridad social este mes.</strong>
-                            <p style="margin: 0;">Tus ingresos del mes (<span x-text="formatMoney(resultados.montoContrato)"></span>) son menores que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como <span x-text="tipoCotizante === 'RENTISTA_CAPITAL' ? 'rentista de capital' : 'independiente'"></span>.</p>
+                            <p style="margin: 0;" x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tu ingreso neto del mes tras restar la presunción de costos (<span x-text="formatMoney(resultados.baseNeta)"></span>) es menor que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como rentista de capital.</p>
+                            <p style="margin: 0;" x-show="tipoCotizante !== 'RENTISTA_CAPITAL'">Tus ingresos del mes (<span x-text="formatMoney(resultados.montoContrato)"></span>) son menores que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como independiente.</p>
                         </div>
 
                         <template x-for="aviso in (resultados.obligado === false ? [] : resultados.avisos)" :key="aviso">
@@ -300,7 +340,7 @@
                                     <dt>Aporte Pensión (<span x-text="tarifaPensionIndep"></span> %):</dt>
                                     <dd x-text="formatMoney(resultados.pension)"></dd>
 
-                                    <dt>Fondo Solidaridad Pensional (FSP):</dt>
+                                    <dt>Fondo Solidaridad Pensional (FSP<span x-show="resultados.fsp > 0" x-text="' (' + tarifaFspDisplay + ')'"></span>):</dt>
                                     <dd x-text="resultados.fsp > 0 ? formatMoney(resultados.fsp) : 'No aplica ($ 0)'"></dd>
 
                                     <dt>Riesgos Laborales ARL (<span x-text="tarifaArlCalculada"></span> %):</dt>
@@ -316,7 +356,7 @@
                                     <dt>Monto ingresos brutos de capital:</dt>
                                     <dd x-text="formatMoney(resultados.montoContrato)"></dd>
 
-                                    <dt>Presunción de costos (28,08 %):</dt>
+                                    <dt>Presunción de costos (<span x-text="porcentajePresuncionDisplay"></span> %):</dt>
                                     <dd style="color: var(--ui-danger);" x-text="'- ' + formatMoney(resultados.presuncionCostos)"></dd>
 
                                     <dt>Base neta después de costos:</dt>
@@ -331,7 +371,7 @@
                                     <dt>Aporte Pensión (<span x-text="tarifaPensionIndep"></span> %):</dt>
                                     <dd x-text="formatMoney(resultados.pension)"></dd>
 
-                                    <dt>Fondo Solidaridad Pensional (FSP):</dt>
+                                    <dt>Fondo Solidaridad Pensional (FSP<span x-show="resultados.fsp > 0" x-text="' (' + tarifaFspDisplay + ')'"></span>):</dt>
                                     <dd x-text="resultados.fsp > 0 ? formatMoney(resultados.fsp) : 'No aplica ($ 0)'"></dd>
 
                                     <dt>Riesgos Laborales ARL (<span x-text="tarifaArlCalculada"></span> %):</dt>
@@ -407,6 +447,10 @@
                     <input type="hidden" name="pension" :value="resultados.pension">
                     <input type="hidden" name="fsp" :value="resultados.fsp">
                     <input type="hidden" name="arl" :value="resultados.arl">
+                    <input type="hidden" name="porcentaje_salud" :value="_data?.porcentaje_salud || 0">
+                    <input type="hidden" name="porcentaje_pension" :value="_data?.porcentaje_pension || 0">
+                    <input type="hidden" name="porcentaje_fsp" :value="_data?.porcentaje_fsp || 0">
+                    <input type="hidden" name="porcentaje_arl" :value="_data?.porcentaje_arl || 0">
                     <input type="hidden" name="intereses_mora" value="0">
 
                     <div style="background: rgba(var(--accent-rgb, 14, 165, 233), 0.08); padding: 1rem; border-radius: var(--ui-radius); margin-bottom: 1rem; border: 1px solid var(--ui-border);">

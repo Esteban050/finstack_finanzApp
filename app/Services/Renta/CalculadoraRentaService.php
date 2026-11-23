@@ -269,7 +269,7 @@ class CalculadoraRentaService
         $paso6RlgUvt = ConsolidadoRentaService::aUvt($paso6RlgCop, $uvt);
 
         // 7. Impuesto según Tabla Progresiva Marginal Art. 241 E.T.
-        $calculoImpuesto = EstimacionRentaService::calcularImpuestoArt241($paso6RlgUvt, $uvt);
+        $calculoImpuesto = EstimacionRentaService::calcularImpuestoArt241($paso6RlgUvt, $uvt, $paso6RlgCop);
         $paso7ImpuestoRedondeadoCop = (float) $calculoImpuesto['impuesto_cop'];
         $paso7ImpuestoUvt = (float) $calculoImpuesto['impuesto_uvt'];
         $tarifaMarginal = $calculoImpuesto['tarifa_marginal'];

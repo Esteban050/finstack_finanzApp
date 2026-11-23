@@ -14,6 +14,7 @@ const valuesOf = (form) => {
     delete values['etiquetas[]'];
     return values;
 };
+const cardRequired = (form) => Boolean(form.querySelector('[data-card-required]'));
 const catalogOf = (form) => JSON.parse(form.querySelector('[data-catalog]')?.dataset.catalog ?? document.querySelector('[data-category-catalog]')?.dataset.categoryCatalog ?? '[]');
 function errorMessages(errors) {
     return Object.fromEntries(Object.entries(errors).map(([key, messages]) => [key.replace(/^etiquetas\.\d+$/, 'etiquetas'), (Array.isArray(messages) ? messages : [messages]).map((value) => String(value).replace(/\s*\((?:RF|RN|RNG|CA)-\d+(?:\.\d+)?\)/g, '').replace(/^Alcanzaste el máximo de 50 categorías\.$/, 'Alcanzaste el máximo de 50 categorías'))]));
@@ -21,7 +22,7 @@ function errorMessages(errors) {
 export function mountExpenses() {
     document.querySelectorAll('[data-expense-form]').forEach((form) => bindErrorRevalidation(form, () => {
         const recurrence = form.querySelector('[data-recurrence-fields]');
-        return {...validateExpense(valuesOf(form), catalogOf(form), {recurrent: Boolean(recurrence), limit: recurrence?.dataset.limit, frozen: recurrence ? {fecha_inicio: recurrence.querySelector('[name=fecha_inicio]').value, periodicidad: recurrence.querySelector('[name=periodicidad]').value} : {}}), ...moneyInputErrors(form)};
+        return {...validateExpense(valuesOf(form), catalogOf(form), {recurrent: Boolean(recurrence), cardRequired: cardRequired(form), limit: recurrence?.dataset.limit, frozen: recurrence ? {fecha_inicio: recurrence.querySelector('[name=fecha_inicio]').value, periodicidad: recurrence.querySelector('[name=periodicidad]').value} : {}}), ...moneyInputErrors(form)};
     }));
     const palette = categoryPalette(getComputedStyle(document.documentElement));
     document.querySelectorAll('[data-expense-categories]').forEach((root) => {
@@ -58,6 +59,24 @@ export function mountExpenses() {
         const relevance = editor.querySelector('[name=relevancia_tributaria]'), panel = editor.querySelector('[data-deduction-panel]'), subtype = panel.querySelector('select');
         const deduction = () => { const enabled = relevance.value === 'POTENCIALMENTE_DEDUCIBLE'; panel.hidden = !enabled; subtype.disabled = !enabled; subtype.required = enabled; };
         relevance.addEventListener('change', deduction); deduction();
+        const cardField = editor.querySelector('[data-expense-card]');
+        const cardSelect = cardField?.querySelector('select');
+        const payment = editor.querySelector('[name=medio_pago]');
+        const newCard = cardField?.querySelector('[data-credit-card-fields]');
+        const updateCard = () => {
+            if (!cardField) return;
+            cardField.hidden = payment.value !== 'TARJETA_CREDITO';
+            if (cardSelect) cardSelect.disabled = cardField.hidden;
+            // Compra a cuotas nueva: los campos del crédito se muestran, habilitan y exigen solo con esa opción.
+            if (newCard) {
+                const enabled = !cardField.hidden && cardSelect?.value === 'NUEVA';
+                newCard.hidden = !enabled;
+                for (const input of newCard.querySelectorAll('input')) { input.disabled = !enabled; input.required = enabled; }
+            }
+        };
+        payment.addEventListener('change', updateCard);
+        cardSelect?.addEventListener('change', updateCard);
+        updateCard();
         const summary = () => {
             for (const output of editor.querySelectorAll('[data-expense-summary]')) { const select = editor.querySelector(`[name="${output.dataset.expenseSummary}"]`); output.textContent = select.value ? select.selectedOptions[0]?.textContent ?? '—' : '—'; }
             try { const amount = editor.querySelector('[name=monto_original]').value; editor.querySelector('[data-expense-amount]').textContent = validateAmount(amount) ? formatMoney(amount) : '—'; } catch { editor.querySelector('[data-expense-amount]').textContent = '—'; }
@@ -103,13 +122,17 @@ export function mountExpenses() {
         const errors = {...validateExpenseFilters(valuesOf(form)), ...moneyInputErrors(form)}; mapFieldErrors(form, errors); if (Object.keys(errors).length) event.preventDefault();
     }));
     document.querySelectorAll('[data-expense-form], [data-expense-action], [data-expense-confirm], [data-expense-bulk], [data-expense-category-form], [data-expense-merge]').forEach((form) => form.addEventListener('submit', async (event) => {
-        event.preventDefault(); if (form.getAttribute('aria-busy') === 'true') return;
+        if (form.getAttribute('aria-busy') === 'true') {
+            event.preventDefault();
+            return;
+        }
         let values = valuesOf(form); const catalog = catalogOf(form); let errors = {}, optionalWarnings = [];
+        const nativeSave = form.hasAttribute('data-expense-native') && (ENABLE_FOREIGN_CURRENCY || values.moneda === 'COP');
         if ('moneda' in values && !ENABLE_FOREIGN_CURRENCY) values.moneda = 'COP';
         if (form.hasAttribute('data-expense-form')) {
             const recurrence = form.querySelector('[data-recurrence-fields]');
             const frozen = recurrence ? {fecha_inicio: recurrence.querySelector('[name=fecha_inicio]').value, periodicidad: recurrence.querySelector('[name=periodicidad]').value} : {};
-            errors = validateExpense(values, catalog, {recurrent: Boolean(recurrence), limit: recurrence?.dataset.limit, frozen});
+            errors = validateExpense(values, catalog, {recurrent: Boolean(recurrence), cardRequired: cardRequired(form), limit: recurrence?.dataset.limit, frozen});
             if (recurrence) values.es_monto_estimado = Boolean(form.querySelector('[name=es_monto_estimado]:checked'));
         }
         if (form.hasAttribute('data-expense-confirm') && !validateAmount(values.monto_original)) errors.monto_original = ['Indica el monto real, mayor que $ 0 y dentro del límite permitido.'];
@@ -133,11 +156,17 @@ export function mountExpenses() {
         if (tagDraft && !tagDraft.disabled) { const message = validateTagDraft(tagDraft.value, values.etiquetas ?? []); if (message) errors.etiquetas = [message]; }
         errors = {...errors, ...moneyInputErrors(form)}; mapFieldErrors(form, errors);
         const status = form.querySelector('[data-expense-status]'); if (status) {status.hidden = !optionalWarnings.length; status.textContent = optionalWarnings.join(' ');}
-        if (Object.keys(errors).length) return;
+        if (Object.keys(errors).length) {
+            event.preventDefault();
+            return;
+        }
         // Solo el envío válido convierte las etiquetas en la lista del contrato.
         if (values.relevancia_tributaria === 'NO_DEDUCIBLE') delete values.subtipo_deduccion;
         const submit = event.submitter; submit?.setAttribute('disabled', ''); form.setAttribute('aria-busy', 'true');
         const loading = form.querySelector('[data-expense-loading]'); if (loading) loading.hidden = false;
+        if (nativeSave) return;
+
+        event.preventDefault();
         let success = false;
         try {
             const method = values._method || 'POST'; delete values._method;

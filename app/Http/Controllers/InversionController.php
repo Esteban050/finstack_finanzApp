@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\EntidadFinanciera;
 use App\Models\FicCatalogo;
 use App\Models\Inversion;
+use App\Models\Gasto;
 use App\Models\MovimientoInversion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\UsuarioPerfilTributario;
@@ -686,7 +687,10 @@ class InversionController extends Controller
         }
 
         DB::transaction(function () use ($inversion) {
+            $inversion = Inversion::whereKey($inversion->id)->lockForUpdate()->firstOrFail();
             $anterior = $inversion->toArray();
+            Gasto::whereIn('movimiento_gmf_id', $inversion->movimientos()->select('id'))
+                ->eachById(fn (Gasto $gasto) => $gasto->delete());
             $inversion->delete();
 
             BitacoraService::registrar(

@@ -5,14 +5,18 @@
 @else
 <table class="ui-table"><caption>{{ $records->total() }} registros · Del más reciente al más antiguo</caption><thead><tr><th scope="col">Seleccionar</th><th scope="col">Fecha</th><th scope="col">Categoría y subcategoría</th><th scope="col">Clasificación</th><th scope="col">Medio de pago</th><th scope="col" data-align="right">Monto</th><th scope="col">Acciones</th></tr></thead><tbody>
 @foreach($records as $expense)<tr>
-    <td><label class="expense-row-selector"><input type="checkbox" data-expense-select value="{{ $expense->id }}" aria-label="Seleccionar gasto del {{ $expense->fecha->format('d/m/Y') }} en {{ $expense->categoria?->nombre }}"></label></td>
+    <td>@unless($expense->movimiento_gmf_id)<label class="expense-row-selector"><input type="checkbox" data-expense-select value="{{ $expense->id }}" aria-label="Seleccionar gasto del {{ $expense->fecha->format('d/m/Y') }} en {{ $expense->categoria?->nombre }}"></label>@endunless</td>
     <td>{{ $expense->fecha->format('d/m/Y') }}<div><x-ui.badge :tone="$expense->estado === 'PENDIENTE' ? 'warning' : 'neutral'">{{ $expense->estado === 'PENDIENTE' ? 'Pendiente' : 'Confirmado' }}</x-ui.badge></div></td>
     <td><div class="ui-inline"><span data-source-visual data-nombre="{{ $expense->categoria?->nombre }}" data-icono="{{ $expense->categoria?->icono }}" data-color_hex="{{ $expense->categoria?->color_hex }}" aria-hidden="true"></span><strong>{{ $expense->categoria?->nombre ?? '—' }}</strong></div><span>{{ $expense->subcategoria?->nombre ?? '—' }}</span>@if($expense->comercio_beneficiario)<p>{{ $expense->comercio_beneficiario }}</p>@endif @if($expense->descripcion)<p class="ui-help">{{ $expense->descripcion }}</p>@endif</td>
     <td>{{ $labels[$expense->naturaleza] ?? '—' }} · {{ $labels[$expense->necesidad] ?? '—' }}<p class="ui-help">{{ $labels[$expense->relevancia_tributaria] ?? '—' }}</p>@foreach(($expense->etiquetas ?? []) as $tag)<x-ui.badge>{{ $tag }}</x-ui.badge>@endforeach</td>
-    <td>{{ $labels[$expense->medio_pago] ?? '—' }}</td><td class="ui-number"><span data-money="{{ $expense->monto_cop }}">{{ $expense->monto_cop }}</span></td>
-    <td><div class="income-row-actions"><x-ui.button :href="route('gastos.edit', $expense->id)" variant="ghost">Editar</x-ui.button>
+    <td>{{ $labels[$expense->medio_pago] ?? '—' }}@if($expense->credito_id)<p class="ui-help"><a href="{{ route('creditos.show', $expense->credito_id) }}">Ver crédito vinculado</a></p>@endif</td><td class="ui-number"><span data-money="{{ $expense->monto_cop }}">{{ $expense->monto_cop }}</span><x-ui.trm-used :currency="$expense->moneda" :amount="$expense->monto_original" :rate="$expense->tasa_cambio_usada" /></td>
+    <td>@if($expense->movimiento_gmf_id)
+    <span class="ui-help">Generado desde Inversiones</span>
+    @else
+    <div class="income-row-actions"><x-ui.button :href="route('gastos.edit', $expense->id)" variant="ghost">Editar</x-ui.button>
     <form method="POST" action="{{ route('gastos.destroy', $expense->id) }}" data-expense-action data-confirm-delete data-confirm-date="{{ $expense->fecha->format('Y-m-d') }}" data-confirm-source="{{ $expense->categoria?->nombre }}" data-confirm-amount="{{ $expense->monto_cop }}">@csrf @method('DELETE')<x-ui.button type="submit" variant="ghost">Eliminar</x-ui.button><x-expense.status /></form></div>
-    @if($expense->estado === 'PENDIENTE')<details><summary>Confirmar monto real</summary><form method="POST" action="{{ route('gastos.confirmar', $expense->id) }}" data-expense-confirm novalidate>@csrf @method('PATCH')<input type="hidden" name="moneda" value="COP"><x-ui.money-input name="monto_original" :id="'confirm-'.$expense->id" label="Monto real" :value="(string) $expense->monto_cop" /><x-expense.status /><x-ui.button type="submit">Confirmar</x-ui.button></form></details>@endif</td>
+    @if($expense->estado === 'PENDIENTE')<details><summary>Confirmar monto real</summary><form method="POST" action="{{ route('gastos.confirmar', $expense->id) }}" data-expense-confirm novalidate>@csrf @method('PATCH')<input type="hidden" name="moneda" value="COP"><x-ui.money-input name="monto_original" :id="'confirm-'.$expense->id" label="Monto real" :value="(string) $expense->monto_cop" /><x-expense.status /><x-ui.button type="submit">Confirmar</x-ui.button></form></details>@endif
+    @endif</td>
 </tr>@endforeach
 </tbody></table>
 @endif

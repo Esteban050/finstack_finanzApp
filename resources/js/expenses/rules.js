@@ -15,7 +15,19 @@ export function validateTagDraft(draft, tags) {
     if (!draft.trim()) return '';
     return validateTags([...tags, draft.trim()]) || 'Agrega la etiqueta con Enter o Agregar, o borra el texto antes de guardar.';
 }
-export function validateExpense(values, categories, { recurrent = false, limit = 'none', frozen = {} } = {}) {
+const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') && !Number.isNaN(Date.parse(value));
+export function validateCreditCard(values) {
+    const errors = {}, cuotas = Number(values.numero_cuotas), rate = Number(values.tasa_interes_anual);
+    if (!(values.banco_tarjeta ?? '').trim()) errors.banco_tarjeta = ['Indica el banco de la tarjeta de crédito.'];
+    else if ([...values.banco_tarjeta].length > 80) errors.banco_tarjeta = ['El banco no puede superar los 80 caracteres.'];
+    if (!/^\d+$/.test(String(values.numero_cuotas ?? '')) || cuotas < 1 || cuotas > 72) errors.numero_cuotas = ['Indica un número de cuotas entero entre 1 y 72.'];
+    if (!isDate(values.fecha_corte)) errors.fecha_corte = ['Indica la fecha de corte de la tarjeta.'];
+    if (!isDate(values.fecha_pago)) errors.fecha_pago = ['Indica la fecha de pago de la tarjeta.'];
+    else if (isDate(values.fecha) && values.fecha_pago <= values.fecha) errors.fecha_pago = ['La fecha de pago debe ser posterior a la fecha del gasto.'];
+    if ((values.tasa_interes_anual ?? '') === '' || Number.isNaN(rate) || rate < 0 || rate > 100) errors.tasa_interes_anual = ['Indica el interés anual (% E.A.), entre 0 y 100.'];
+    return errors;
+}
+export function validateExpense(values, categories, { recurrent = false, limit = 'none', frozen = {}, cardRequired = false } = {}) {
     const errors = {};
     if (!recurrent) {
         try { formatDate(values.fecha); if (!/^\d{4}-\d{2}-\d{2}$/.test(values.fecha)) throw new Error(); }
@@ -29,6 +41,11 @@ export function validateExpense(values, categories, { recurrent = false, limit =
     if (!children.length && category) errors.subcategoria_id = ['Esta categoría no tiene subcategorías activas. Crea o activa una subcategoría para continuar.'];
     else if (!children.some((sub) => sub.id === values.subcategoria_id)) errors.subcategoria_id = ['Selecciona una subcategoría activa de esta categoría.'];
     if (!has(Object.keys(PAYMENT_LABELS), values.medio_pago)) errors.medio_pago = ['Selecciona el medio de pago.'];
+    if (cardRequired && values.medio_pago === 'TARJETA_CREDITO' && !values.credito_id) {
+        errors.credito_id = ['Selecciona la tarjeta usada para pagar el gasto.'];
+    }
+    // Compra a cuotas nueva: los campos del crédito solo viajan (habilitados) con esa opción.
+    if (values.medio_pago === 'TARJETA_CREDITO' && values.credito_id === 'NUEVA') Object.assign(errors, validateCreditCard(values));
     if (!has(['FIJO', 'VARIABLE'], values.naturaleza)) errors.naturaleza = ['Selecciona la naturaleza: Fijo o Variable.'];
     if (!has(['ESENCIAL', 'DISCRECIONAL'], values.necesidad)) errors.necesidad = ['Selecciona la necesidad: Esencial o Discrecional.'];
     if (!has(['NO_DEDUCIBLE', 'POTENCIALMENTE_DEDUCIBLE'], values.relevancia_tributaria)) errors.relevancia_tributaria = ['Selecciona la relevancia tributaria.'];

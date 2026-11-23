@@ -21,6 +21,9 @@ class EsquemaCostoPresunto extends Model
     public const ACTIVIDAD_CAPITAL = 'RENTAS_CAPITAL';
     public const ACTIVIDAD_INMOBILIARIA = 'ACTIVIDADES_INMOBILIARIAS';
 
+    public const PORCENTAJE_CAPITAL_HASTA_ABRIL_2026 = '27.50';
+    public const PORCENTAJE_CAPITAL_DESDE_MAYO_2026 = '28.08';
+
     protected $fillable = [
         'codigo_actividad',
         'nombre_actividad',
@@ -44,28 +47,58 @@ class EsquemaCostoPresunto extends Model
     /**
      * Retorna todas las actividades activas indexadas por código.
      */
-    public static function catalogoActivo(): array
+    public static function catalogoActivo(?string $periodo = null): array
     {
-        return self::where('activo', true)
-            ->get()
-            ->keyBy('codigo_actividad')
-            ->toArray();
+        try {
+            $catalogo = self::where('activo', true)
+                ->get()
+                ->keyBy('codigo_actividad')
+                ->toArray();
+        } catch (\Throwable) {
+            $catalogo = [];
+        }
+
+        if ($periodo !== null && isset($catalogo[self::ACTIVIDAD_CAPITAL])) {
+            $catalogo[self::ACTIVIDAD_CAPITAL]['porcentaje_costo_presunto'] = self::porcentajePara(self::ACTIVIDAD_CAPITAL, $periodo);
+        }
+
+        return $catalogo;
     }
 
     /**
      * Obtiene el porcentaje de presunción para una actividad dada.
      */
-    public static function porcentajePara(string $codigoActividad): string
+    public static function porcentajePara(string $codigoActividad, ?string $periodo = null): string
     {
-        $esquema = self::where('codigo_actividad', $codigoActividad)->where('activo', true)->first();
+        $esCapital = in_array(strtoupper($codigoActividad), [
+            self::ACTIVIDAD_CAPITAL,
+            'RENTAS_CAPITAL',
+            'RENTISTA_CAPITAL',
+            'RENTISTA',
+        ], true);
 
-        if ($esquema !== null) {
-            return (string) $esquema->porcentaje_costo_presunto;
+        if ($esCapital && $periodo !== null) {
+            $periodoFormateado = substr(trim($periodo), 0, 7);
+            if ($periodoFormateado < '2026-05') {
+                return self::PORCENTAJE_CAPITAL_HASTA_ABRIL_2026;
+            }
+
+            return self::PORCENTAJE_CAPITAL_DESDE_MAYO_2026;
+        }
+
+        try {
+            $esquema = self::where('codigo_actividad', $codigoActividad)->where('activo', true)->first();
+
+            if ($esquema !== null) {
+                return (string) $esquema->porcentaje_costo_presunto;
+            }
+        } catch (\Throwable) {
+            // Tabla no disponible o entorno de prueba en memoria sin migración completa
         }
 
         return match ($codigoActividad) {
             self::ACTIVIDAD_SERVICIOS => '0.00',
-            self::ACTIVIDAD_CAPITAL => '28.08',
+            self::ACTIVIDAD_CAPITAL => self::PORCENTAJE_CAPITAL_DESDE_MAYO_2026,
             self::ACTIVIDAD_INMOBILIARIA => '65.70',
             default => '0.00',
         };

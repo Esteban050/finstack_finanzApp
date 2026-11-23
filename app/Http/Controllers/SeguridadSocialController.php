@@ -214,10 +214,16 @@ class SeguridadSocialController extends Controller
         $usuario = Auth::user();
         $perfil = SeguridadSocialService::perfilDelPeriodo($usuario->id, $inicioMes) ?? $usuario->perfilTributarioActivo;
 
-        if ($request->has('clase_riesgo_arl') && $perfil) {
-            $perfil = clone $perfil;
+        if ($request->has('clase_riesgo_arl')) {
             $clase = (int) $request->input('clase_riesgo_arl');
-            $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            if ($perfil) {
+                $perfil = clone $perfil;
+                $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            } elseif ($clase > 0) {
+                $perfil = new PerfilTributario();
+                $perfil->clase_riesgo_arl = $clase;
+                $perfil->arl_obligatoria = true;
+            }
         }
 
         if ($tipo === 'MULTI_INGRESO') {
@@ -248,7 +254,8 @@ class SeguridadSocialController extends Controller
                 $parametro,
                 $retencionLimpia,
                 $exoneradoParafiscales,
-                $claseArl
+                $claseArl,
+                pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
             );
         } else { // INDEPENDIENTE o RENTISTA_CAPITAL
             $smmlv = (string) $parametro->valor_smmlv;
@@ -272,10 +279,13 @@ class SeguridadSocialController extends Controller
 
             if ($tipo === 'INDEPENDIENTE') {
                 $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
+                $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
             } else {
                 $codigoActividad = $request->input('codigo_actividad') ?: EsquemaCostoPresunto::ACTIVIDAD_CAPITAL;
-                $porcentajePresuncion = $request->input('porcentaje_presuncion')
-                    ?: EsquemaCostoPresunto::porcentajePara($codigoActividad);
+                $porcentajePresuncion = $request->input('porcentaje_presuncion');
+                if (! $porcentajePresuncion || in_array($porcentajePresuncion, ['28.08', '28.08%', '28', '27.5', '27.50', '27.5%'], true)) {
+                    $porcentajePresuncion = EsquemaCostoPresunto::porcentajePara($codigoActividad, $periodo);
+                }
                 $costosReales = $request->filled('costos_reales')
                     ? PagoSeguridadSocialController::limpiarMonto((string) $request->input('costos_reales'))
                     : '0';
@@ -288,10 +298,13 @@ class SeguridadSocialController extends Controller
                     $perfil,
                     $usarReales ? null : (string) $porcentajePresuncion
                 );
+
+                // Para rentista de capital: si el ingreso neto tras descontar presunción de costos
+                // (o gastos procedentes) es menor a 1 SMMLV, no debe pagar seguridad social.
+                $obligado = SeguridadSocialService::estaObligadoACotizar($calculo['ingreso_neto'], $smmlv);
             }
 
             // Con ingresos del mes por debajo de 1 SMMLV no hay obligación de cotizar.
-            $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
             $calculo = $obligado ? $calculo + ['obligado' => true] : SeguridadSocialService::sinObligacion($calculo);
             $calculo['origen_monto'] = $usarIngresos ? 'INGRESOS' : 'MANUAL';
             $calculo['ingresos_mes'] = $ingresosMes;
@@ -478,9 +491,22 @@ class SeguridadSocialController extends Controller
             'es_rentista' => ['nullable'],
             'tipo_servicio' => ['nullable', 'string'],
             'gastos' => ['nullable'],
+            'clase_riesgo_arl' => ['nullable', 'integer', 'between:0,5'],
         ], $this->mensajes());
 
         [, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
+
+        if ($request->has('clase_riesgo_arl')) {
+            $clase = (int) $request->input('clase_riesgo_arl');
+            if ($perfil) {
+                $perfil = clone $perfil;
+                $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            } elseif ($clase > 0) {
+                $perfil = new PerfilTributario();
+                $perfil->clase_riesgo_arl = $clase;
+                $perfil->arl_obligatoria = true;
+            }
+        }
 
         $esRentista = $request->boolean('es_rentista')
             || in_array(strtoupper((string) $request->input('tipo_servicio')), ['RENTISTA_CAPITAL', 'RENTISTA'], true);
@@ -562,7 +588,8 @@ class SeguridadSocialController extends Controller
             (string) $validated['salario'],
             (bool) $perfil->es_salario_integral,
             $parametro,
-            isset($validated['retencion_fuente']) ? (string) $validated['retencion_fuente'] : null
+            isset($validated['retencion_fuente']) ? (string) $validated['retencion_fuente'] : null,
+            pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
         );
 
         // RN-021.2: como en el ingreso, el neto no puede quedar negativo.
@@ -620,7 +647,8 @@ class SeguridadSocialController extends Controller
             (string) $ingreso->monto_bruto_cop,
             (bool) $perfil->es_salario_integral,
             $parametro,
-            (string) $ingreso->retencion_fuente_cop
+            (string) $ingreso->retencion_fuente_cop,
+            pensionado: SeguridadSocialService::tieneOcupacion($perfil, [SeguridadSocialService::OCUPACION_PENSIONADO])
         );
 
         // RN-021.2: el neto (bruto − retención − aportes) no puede quedar negativo.

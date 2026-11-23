@@ -259,19 +259,67 @@ class SeguridadSocialNormativa2026Test extends TestCase
     }
 
     /**
-     * RF-09: FSP del 2% cuando el IBC consolidado total supera 20 SMMLV ($35.018.100).
+     * RF-09: FSP según escala progresiva (Ley 797 de 2003 / RN-014.2) y 2% cuando supera 20 SMMLV.
      */
     public function test_rf09_fsp_aplica_cuando_ibc_supera_20_smmlv(): void
     {
         $smmlv = (string) $this->parametro->valor_smmlv;
         $umbral20Smmlv = bcmul($smmlv, '20.00', 2);
 
-        // Por debajo de 20 SMMLV (ej. $30.000.000)
-        $this->assertEquals('0', $this->service->tarifaFsp('30000000.00', $smmlv, $this->parametro));
+        // Por debajo de 4 SMMLV (ej. $5.000.000 = 2.85 SMMLV) -> 0%
+        $this->assertEquals('0', $this->service->tarifaFsp('5000000.00', $smmlv, $this->parametro));
 
-        // Exactamente en el umbral y por encima (ej. $35.018.100 y $40.000.000)
-        $this->assertEquals('2.00', $this->service->tarifaFsp($umbral20Smmlv, $smmlv, $this->parametro));
+        // Entre 4 y 16 SMMLV (ej. $8.000.000 = 4.57 SMMLV) -> 1.0%
+        $this->assertEquals('1.000', $this->service->tarifaFsp('8000000.00', $smmlv, $this->parametro));
+
+        // Entre 17 y 18 SMMLV (ej. $30.000.000 = 17.13 SMMLV) -> 1.4%
+        $this->assertEquals('1.400', $this->service->tarifaFsp('30000000.00', $smmlv, $this->parametro));
+
+        // Exactamente 20 SMMLV ($35.018.100) aún es el tramo "de 19 a 20" -> 1.8% (la ley dice "superiores a 20")
+        $this->assertEquals('1.800', $this->service->tarifaFsp($umbral20Smmlv, $smmlv, $this->parametro));
+
+        // Un peso por encima de 20 SMMLV y valores mayores -> 2.0%
+        $this->assertEquals('2.00', $this->service->tarifaFsp(bcadd($umbral20Smmlv, '1.00', 2), $smmlv, $this->parametro));
         $this->assertEquals('2.00', $this->service->tarifaFsp('40000000.00', $smmlv, $this->parametro));
+    }
+
+    /**
+     * Verifica que para un trabajador independiente con contrato de $20.000.000 (IBC $8.000.000 >= 4 SMMLV),
+     * se liquide correctamente el 1% de FSP ($80.000) además de salud y pensión.
+     */
+    public function test_independiente_aplica_fsp_1_porciento_cuando_ibc_supera_4_smmlv(): void
+    {
+        // Sin ARL (idéntico al caso de la imagen: Contrato $20.000.000, IBC $8.000.000)
+        $perfilSinArl = clone $this->perfil;
+        $perfilSinArl->clase_riesgo_arl = null;
+        $resultadoSinArl = $this->service->calcularIndependiente(
+            ingresoBase: '20000000.00',
+            parametro: $this->parametro,
+            perfil: $perfilSinArl
+        );
+
+        $this->assertEquals('8000000.00', $resultadoSinArl['ibc']);
+        $this->assertEquals('1000000.00', $resultadoSinArl['salud']); // 12.5%
+        $this->assertEquals('1280000.00', $resultadoSinArl['pension']); // 16%
+        $this->assertEquals('80000.00', $resultadoSinArl['fsp']); // 1%
+        $this->assertEquals('0.00', $resultadoSinArl['arl']);
+        $this->assertTrue($resultadoSinArl['aplica_fsp']);
+        $this->assertEquals('1.000', (string) $resultadoSinArl['porcentaje_fsp']);
+        // Total = 1.000.000 + 1.280.000 + 80.000 = 2.360.000
+        $this->assertEquals('2360000.00', $resultadoSinArl['total']);
+
+        // Con ARL Clase 1 (0.522% = 41.800)
+        $perfilConArl = clone $this->perfil;
+        $perfilConArl->clase_riesgo_arl = 1;
+        $resultadoConArl = $this->service->calcularIndependiente(
+            ingresoBase: '20000000.00',
+            parametro: $this->parametro,
+            perfil: $perfilConArl
+        );
+        $this->assertEquals('80000.00', $resultadoConArl['fsp']);
+        $this->assertEquals('41800.00', $resultadoConArl['arl']);
+        // Total = 1.000.000 + 1.280.000 + 80.000 + 41.800 = 2.401.800
+        $this->assertEquals('2401800.00', $resultadoConArl['total']);
     }
 
     /**
@@ -383,5 +431,268 @@ class SeguridadSocialNormativa2026Test extends TestCase
         $this->assertNotEmpty($data['avisos']);
         $this->assertArrayHasKey('liquidacion_laboral_tipo_e', $data);
         $this->assertArrayHasKey('liquidacion_independiente_tipo_i', $data);
+    }
+
+    /**
+     * Decreto 0379 de 2026 / UGPP Resolución 532 de 2024:
+     * Regla dinámica de presunción de costos para Rentistas de Capital:
+     * Periodos hasta abril 2026 (<= 2026-04): 27.50%
+     * Periodos desde mayo 2026 (>= 2026-05): 28.08%
+     * Periodo null o no especificado: 28.08%
+     */
+    public function test_presuncion_costos_rentista_dinamica_decreto_0379_de_2026(): void
+    {
+        // 1. Verificación directa en el Modelo EsquemaCostoPresunto
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-04'));
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-01'));
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2025-10'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-05'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-08'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', null));
+
+        // 2. Verificación de catálogo activo por periodo
+        $catAbril = EsquemaCostoPresunto::catalogoActivo('2026-04');
+        $this->assertEquals('27.50', (string) $catAbril['RENTAS_CAPITAL']['porcentaje_costo_presunto']);
+
+        $catMayo = EsquemaCostoPresunto::catalogoActivo('2026-05');
+        $this->assertEquals('28.08', (string) $catMayo['RENTAS_CAPITAL']['porcentaje_costo_presunto']);
+
+        // 3. Verificación en el servicio SeguridadSocialService
+        $this->assertEquals('27.50', SeguridadSocialService::porcentajePresuncionRentista('2026-04'));
+        $this->assertEquals('28.08', SeguridadSocialService::porcentajePresuncionRentista('2026-05'));
+        $this->assertEquals('28.08', SeguridadSocialService::porcentajePresuncionRentista(null));
+
+        // 4. Verificación de cálculo individual de actividad independiente con periodo
+        // Sobre $20.000.000:
+        // Abril 2026 (27.5%): costo = $5.500.000, neto = $14.500.000, IBC = $5.800.000
+        $actividadAbril = $this->service->calcularActividadIndependiente(
+            ingresoBruto: '20000000.00',
+            codigoActividad: 'RENTAS_CAPITAL',
+            costosReales: '0.00',
+            usarCostosReales: false,
+            parametro: $this->parametro,
+            periodo: '2026-04'
+        );
+        $this->assertEquals('27.50', $actividadAbril['porcentaje_presuncion']);
+        $this->assertEquals('5500000.00', $actividadAbril['costos_aplicados']);
+        $this->assertEquals('14500000.00', $actividadAbril['ingreso_neto']);
+        $this->assertEquals('5800000.00', $actividadAbril['ibc_preliminar']);
+
+        // Mayo 2026 (28.08%): costo = $5.616.000, neto = $14.384.000, IBC = $5.753.600
+        $actividadMayo = $this->service->calcularActividadIndependiente(
+            ingresoBruto: '20000000.00',
+            codigoActividad: 'RENTAS_CAPITAL',
+            costosReales: '0.00',
+            usarCostosReales: false,
+            parametro: $this->parametro,
+            periodo: '2026-05'
+        );
+        $this->assertEquals('28.08', $actividadMayo['porcentaje_presuncion']);
+        $this->assertEquals('5616000.00', $actividadMayo['costos_aplicados']);
+        $this->assertEquals('14384000.00', $actividadMayo['ingreso_neto']);
+        $this->assertEquals('5753600.00', $actividadMayo['ibc_preliminar']);
+    }
+
+    /**
+     * Verificación del Endpoint API POST /seguridad-social/calcular para rentista de capital
+     * en periodo abril 2026 (27.50%) vs mayo 2026 (28.08%).
+     */
+    public function test_api_calcular_rentista_capital_aplica_presuncion_segun_periodo(): void
+    {
+        // 1. Periodo 2026-04 aplica 27.50%
+        $respAbril = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'RENTISTA_CAPITAL',
+                'periodo' => '2026-04',
+                'monto_contrato' => '20000000',
+            ]);
+
+        $respAbril->assertStatus(200);
+        $dataAbril = $respAbril->json('data');
+        $this->assertEquals('27.50', $dataAbril['porcentaje_presuncion_costos']);
+        $this->assertEquals('5500000.00', $dataAbril['presuncion_costos']);
+        $this->assertEquals('14500000.00', $dataAbril['ingreso_neto']);
+        $this->assertEquals('5800000.00', $dataAbril['ibc']);
+
+        // 2. Periodo 2026-05 aplica 28.08%
+        $respMayo = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'RENTISTA_CAPITAL',
+                'periodo' => '2026-05',
+                'monto_contrato' => '20000000',
+            ]);
+
+        $respMayo->assertStatus(200);
+        $dataMayo = $respMayo->json('data');
+        $this->assertEquals('28.08', $dataMayo['porcentaje_presuncion_costos']);
+        $this->assertEquals('5616000.00', $dataMayo['presuncion_costos']);
+        $this->assertEquals('14384000.00', $dataMayo['ingreso_neto']);
+        $this->assertEquals('5753600.00', $dataMayo['ibc']);
+    }
+
+    /**
+     * Verificación del tope legal de 25 SMMLV para cotizante independiente:
+     * IBC limitado a 25 SMMLV ($43.772.625), cálculo del excedente exento y aviso redactado.
+     */
+    public function test_independiente_tope_25_smmlv_aviso_y_excedente_exento(): void
+    {
+        // Contrato de $120.000.000 -> 40% = $48.000.000 > 25 SMMLV ($43.772.625)
+        $resultado = $this->service->calcularIndependiente(
+            ingresoBase: '120000000.00',
+            parametro: $this->parametro,
+            perfil: $this->perfil
+        );
+
+        $this->assertEquals('43772625.00', $resultado['ibc']);
+        $this->assertEquals('43772625.00', $resultado['ibc_max_smmlv']);
+        $this->assertTrue($resultado['supero_tope_25_smmlv']);
+        $this->assertTrue($resultado['tope_25_smmlv_alcanzado']);
+        // Excedente = 48.000.000 - 43.772.625 = 4.227.375
+        $this->assertEquals('4227375.00', $resultado['excedente_desafectado_tope']);
+
+        $this->assertNotEmpty($resultado['avisos']);
+        $aviso = $resultado['avisos'][0];
+        $this->assertStringContainsString('43.772.625', $aviso);
+        $this->assertStringContainsString('4.227.375', $aviso);
+        $this->assertStringContainsString('exento', $aviso);
+    }
+
+    /**
+     * Verificación del tope legal de 25 SMMLV para rentista de capital:
+     * IBC limitado a 25 SMMLV tras deducir presunción de costos y reporte de excedente.
+     */
+    public function test_rentista_capital_tope_25_smmlv_aviso_y_excedente_exento(): void
+    {
+        // Ingresos brutos de $160.000.000 en 2026-05 (28.08% costos)
+        // Costos = $44.928.000 -> Base neta = $115.072.000
+        // 40% IBC = $46.028.800 > 25 SMMLV ($43.772.625)
+        $resultado = $this->service->calcularRentistaCapital(
+            ingresosBrutos: '160000000.00',
+            gastos: '0.00',
+            parametro: $this->parametro,
+            perfil: $this->perfil,
+            porcentajePresuncion: '28.08'
+        );
+
+        $this->assertEquals('43772625.00', $resultado['ibc']);
+        $this->assertTrue($resultado['supero_tope_25_smmlv']);
+        // Excedente = 46.028.800 - 43.772.625 = 2.256.175
+        $this->assertEquals('2256175.00', $resultado['excedente_desafectado_tope']);
+
+        $avisosTexto = implode(' ', $resultado['avisos']);
+        $this->assertStringContainsString('43.772.625', $avisosTexto);
+        $this->assertStringContainsString('2.256.175', $avisosTexto);
+        $this->assertStringContainsString('exento', $avisosTexto);
+    }
+
+    /**
+     * Verificación del endpoint /seguridad-social/calcular para independiente que supera el tope.
+     */
+    public function test_api_calcular_unificado_independiente_tope_25_smmlv(): void
+    {
+        $response = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'INDEPENDIENTE',
+                'periodo' => '2026-05',
+                'monto_contrato' => '120000000',
+                'origen_monto' => 'MANUAL',
+            ]);
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+        $this->assertEquals('43772625.00', $data['ibc']);
+        $this->assertTrue($data['supero_tope_25_smmlv']);
+        $this->assertEquals('4227375.00', $data['excedente_desafectado_tope']);
+        $this->assertNotEmpty($data['avisos']);
+        $this->assertStringContainsString('43.772.625', $data['avisos'][0]);
+        $this->assertStringContainsString('4.227.375', $data['avisos'][0]);
+    }
+
+    /**
+     * Ley 797/2003 art. 8: límite inferior inclusivo en 4 y 16 SMMLV; un IBC de exactamente
+     * 17, 18, 19 o 20 SMMLV pertenece al tramo inferior (CP-SS-047/048/049).
+     */
+    public function test_fsp_limites_de_tramo_en_pesos(): void
+    {
+        $smmlv = (string) $this->parametro->valor_smmlv;
+
+        $casos = [
+            ['7003619', '0'], ['7003620', '1.0'], ['7003621', '1.0'],
+            ['28014479', '1.0'], ['28014480', '1.2'], ['28014481', '1.2'],
+            ['29765384', '1.2'], ['29765385', '1.2'], ['29765386', '1.4'],
+            ['31516289', '1.4'], ['31516290', '1.4'], ['31516291', '1.6'],
+            ['33267194', '1.6'], ['33267195', '1.6'], ['33267196', '1.8'],
+            ['35018099', '1.8'], ['35018100', '1.8'], ['35018101', '2.0'],
+        ];
+
+        foreach ($casos as [$ibc, $esperada]) {
+            $tarifa = $this->service->tarifaFsp($ibc.'.00', $smmlv, $this->parametro);
+            $this->assertSame(0, bccomp($tarifa, $esperada, 3), "IBC {$ibc}: se esperaba {$esperada} y fue {$tarifa}");
+        }
+    }
+
+    /**
+     * RN-033.6: un Pensionado asalariado no aporta pensión ni FSP; la salud no cambia.
+     */
+    public function test_asalariado_pensionado_no_paga_pension_ni_fsp(): void
+    {
+        $normal = $this->service->calcularAsalariado(
+            salario: '8000000.00',
+            esIntegral: false,
+            parametro: $this->parametro
+        );
+        $this->assertEquals('320000.00', $normal['pension']);
+        $this->assertEquals('80000.00', $normal['fsp']);
+
+        $pensionado = $this->service->calcularAsalariado(
+            salario: '8000000.00',
+            esIntegral: false,
+            parametro: $this->parametro,
+            pensionado: true
+        );
+
+        $this->assertTrue($pensionado['pensionado']);
+        $this->assertEquals('0.00', $pensionado['pension']);
+        $this->assertEquals('0.00', $pensionado['fsp']);
+        $this->assertEquals('0.00', $pensionado['porcentaje_pension']);
+        $this->assertFalse($pensionado['aplica_fsp']);
+        $this->assertEquals('320000.00', $pensionado['salud']);
+        $this->assertEquals('320000.00', $pensionado['total_aportes']);
+        $this->assertEquals('7680000.00', $pensionado['salario_neto_sin_retencion']);
+        $this->assertEquals('0.00', $pensionado['desglose_patronal']['pension_patronal']);
+        $this->assertEquals('0.00', $pensionado['empleador']['pension']);
+        $this->assertTrue($pensionado['parametros_usados']['pensionado']);
+    }
+
+    /**
+     * RN-033.6 en el consolidado multi-ingreso: laboral con perfil Pensionado.
+     */
+    public function test_multi_ingreso_pensionado_no_paga_pension_ni_fsp(): void
+    {
+        $perfilPensionado = clone $this->perfil;
+        $perfilPensionado->ocupaciones = ['Pensionado'];
+
+        $resultado = $this->service->consolidarMultiIngreso(
+            datos: ['salario' => '8000000.00', 'es_salario_integral' => false],
+            parametro: $this->parametro,
+            perfil: $perfilPensionado
+        );
+
+        $laboral = $resultado['laboral'];
+        $this->assertEquals('0.00', $laboral['trabajador']['pension']);
+        $this->assertEquals('0.00', $laboral['trabajador']['fsp']);
+        $this->assertEquals('0.00', $laboral['empleador']['pension']);
+        $this->assertEquals('320000.00', $laboral['trabajador']['salud']);
+        $this->assertEquals('320000.00', $laboral['trabajador']['total_descuentos']);
+
+        $perfilDependiente = clone $this->perfil;
+        $perfilDependiente->ocupaciones = ['Empleado dependiente'];
+
+        $normal = $this->service->consolidarMultiIngreso(
+            datos: ['salario' => '8000000.00', 'es_salario_integral' => false],
+            parametro: $this->parametro,
+            perfil: $perfilDependiente
+        );
+        $this->assertNotEquals('0.00', $normal['laboral']['trabajador']['pension']);
     }
 }

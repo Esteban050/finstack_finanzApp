@@ -72,6 +72,65 @@ class PagoCreditoService
         self::crearPlan($credito, $version);
     }
 
+    /**
+     * Ajusta el saldo de una tarjeta con pagos. Las cuotas exigibles y las que
+     * tienen imputaciones conservan su ID, sus importes y su historial.
+     * El llamador debe tener el crédito bloqueado dentro de una transacción.
+     */
+    public static function ajustarPlanTarjeta(Credito $credito): void
+    {
+        $hoy = CarbonImmutable::today();
+        $situacion = self::situacion($credito, $hoy);
+        $pagado = $situacion['pagado'];
+        $capitalPagado = bcadd($pagado['CAPITAL'], $pagado['ABONO_EXTRAORDINARIO'], 0);
+        $saldoObjetivo = bcsub(CreditoService::alPeso((string) $credito->monto), $capitalPagado, 0);
+        if (bccomp($saldoObjetivo, $situacion['saldo_capital'], 0) === 0) {
+            return;
+        }
+
+        $protegidas = CuotaCredito::where('credito_id', $credito->id)
+            ->whereNull('reemplazada_en_version')
+            ->where(fn ($q) => $q->whereDate('fecha_vencimiento', '<=', $hoy)
+                ->orWhereHas('imputaciones.pago', fn ($pago) => $pago->vigentes()))
+            ->max('numero') ?? 0;
+
+        $futuras = [];
+        $saldoProtegido = '0';
+        $inicioPeriodo = $situacion['periodo_inicio'];
+        foreach ($situacion['cuotas'] as $cuota) {
+            if ($cuota['numero'] <= $protegidas) {
+                $saldoProtegido = bcadd($saldoProtegido, $cuota['capital_pendiente'], 0);
+                $inicioPeriodo = $cuota['fecha'];
+            } else {
+                $futuras[] = $cuota;
+            }
+        }
+
+        $nuevoSaldoFuturo = bcsub($saldoObjetivo, $saldoProtegido, 0);
+        if (bccomp($nuevoSaldoFuturo, '0', 0) < 0) {
+            throw ValidationException::withMessages([
+                'monto_original' => 'El ajuste dejaría el capital por debajo de lo pagado o comprometido en cuotas exigibles o anticipadas.',
+            ]);
+        }
+
+        $ids = array_column($futuras, 'id');
+        if ($futuras === [] && ! self::esCero($nuevoSaldoFuturo)) {
+            $inicioPeriodo = max($inicioPeriodo, $hoy->toDateString());
+            $futuras[] = [
+                'numero' => $protegidas + 1,
+                'fecha' => CreditoService::fechaVencimiento($inicioPeriodo, $credito->periodicidad, 1)->toDateString(),
+            ];
+        }
+
+        $inicio = CarbonImmutable::parse($inicioPeriodo);
+        $plan = self::regenerar($credito, ['periodo_inicio' => $inicioPeriodo], $futuras, $nuevoSaldoFuturo, 'CUOTA', $inicio);
+        $version = $credito->version_plan_vigente + 1;
+
+        CuotaCredito::whereIn('id', $ids)->update(['reemplazada_en_version' => $version]);
+        self::insertarCuotas($credito, $version, array_map(self::filaGuardable(...), $plan));
+        $credito->update(['version_plan_vigente' => $version]);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Situación a una fecha (Créditos RF-25, RF-37, RF-38, RF-39, RF-41..43)
@@ -674,7 +733,20 @@ class PagoCreditoService
 
         $anterior = $pago->toArray();
 
-        if ($pago->version_plan_generada !== null) {
+        if ($pago->version_plan_generada !== null && $credito->tipo_credito === 'TARJETA_CREDITO') {
+            $version = $pago->version_plan_generada;
+            $pago->update(['reversado_en' => now(), 'motivo_reverso' => $motivo]);
+
+            if ($version === $credito->version_plan_vigente) {
+                $versionReverso = $version + 1;
+                $cuotas = CuotaCredito::where('credito_id', $credito->id);
+                (clone $cuotas)->where('reemplazada_en_version', $version)->update(['reemplazada_en_version' => null]);
+                $cuotas->where('version_plan', $version)->update(['reemplazada_en_version' => $versionReverso]);
+                $credito->update(['version_plan_vigente' => $versionReverso]);
+            } else {
+                self::ajustarPlanTarjeta($credito);
+            }
+        } elseif ($pago->version_plan_generada !== null) {
             $version = $pago->version_plan_generada;
 
             CuotaCredito::where('credito_id', $credito->id)->where('version_plan', $version)->delete();
@@ -683,7 +755,9 @@ class PagoCreditoService
             $credito->update(['version_plan_vigente' => $version - 1]);
         }
 
-        $pago->update(['reversado_en' => now(), 'motivo_reverso' => $motivo]);
+        if ($pago->reversado_en === null) {
+            $pago->update(['reversado_en' => now(), 'motivo_reverso' => $motivo]);
+        }
 
         $gastos = Gasto::whereIn('id', array_filter([$pago->gasto_id, $pago->gasto_intereses_id]))->get();
         foreach ($gastos as $gasto) {

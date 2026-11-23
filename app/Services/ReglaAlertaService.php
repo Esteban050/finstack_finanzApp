@@ -64,11 +64,16 @@ class ReglaAlertaService
             // RN-059.4: una regla no editable siempre usa su valor fijo.
             $propia = $editable ? ($propias[$tipo] ?? null) : null;
 
+            $parametros = $propia ? $propia->parametros : $defecto['parametros'];
+            if ($tipo === self::VENCIMIENTOS) {
+                $parametros['dias_antes'] = min(7, (int) ($parametros['dias_antes'] ?? $defecto['parametros']['dias_antes']));
+            }
+
             $reglas[$tipo] = array_filter([
                 'tipo' => $tipo,
                 'activa' => $propia ? $propia->activa : $defecto['activa'],
                 'enviar_correo' => $propia ? $propia->enviar_correo : $defecto['enviar_correo'],
-                'parametros' => $propia ? $propia->parametros : $defecto['parametros'],
+                'parametros' => $parametros,
                 'personalizada' => $propia !== null,
                 'editable' => $editable,
                 'prioridad' => $defecto['prioridad'],
@@ -195,7 +200,7 @@ class ReglaAlertaService
             self::GASTO_PROYECTADO_ALTO => self::unEntero($parametros, 'umbral', $campo, 1, 200, '%', $errores),
             self::GASTO_DISCRECIONAL_ALTO, self::TOPE_DIAN_TARJETA, self::TOPE_DIAN_COMPRAS => self::unEntero($parametros, 'umbral', $campo, 1, 100, '%', $errores),
             self::GASTO_INUSUAL => self::unEntero($parametros, 'veces', $campo, 2, 20, 'veces', $errores),
-            self::VENCIMIENTOS => self::unEntero($parametros, 'dias_antes', $campo, 0, 15, 'días', $errores),
+            self::VENCIMIENTOS => self::unEntero($parametros, 'dias_antes', $campo, 0, 7, 'días', $errores),
             self::LIMITE_GASTO_MENSUAL => self::limiteMensual($parametros, $campo, $errores),
             self::GASTOS_HORMIGA => self::hormiga($parametros, $campo, $errores),
             default => [],

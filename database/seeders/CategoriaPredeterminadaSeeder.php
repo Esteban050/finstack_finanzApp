@@ -69,7 +69,7 @@ class CategoriaPredeterminadaSeeder extends Seeder
             'Entretenimiento' => ['Streaming y Cine', 'Viajes y Paseos'],
             'Vestuario' => ['Ropa y Calzado', 'Accesorios'],
             'Obligaciones financieras' => ['Tarjetas de Crédito', 'Créditos de Consumo'],
-            'Impuestos' => ['Predial / Vehicular', 'Renta / IVA'],
+            'Impuestos' => ['Predial / Vehicular', 'Renta / IVA', 'GMF'],
             'Seguridad social' => ['Aporte PILA independiente', 'Aportes voluntarios'],
             'Seguros' => ['Seguro de Vida', 'Seguro de Vehículo'],
             'Mascotas' => ['Alimento para mascotas', 'Veterinaria y Cuidados'],

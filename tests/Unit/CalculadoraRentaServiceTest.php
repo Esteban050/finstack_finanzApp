@@ -3,16 +3,18 @@
 namespace Tests\Unit;
 
 use App\Services\Renta\CalculadoraRentaService;
-use App\Services\Renta\ConsolidadoRentaService;
-use PHPUnit\Framework\TestCase;
+use Tests\Support\PreparaVigenciasCalculadora;
+use Tests\TestCase;
 
 class CalculadoraRentaServiceTest extends TestCase
 {
+    use PreparaVigenciasCalculadora;
     protected CalculadoraRentaService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->prepararVigenciasCalculadora();
         $this->service = new CalculadoraRentaService();
     }
 

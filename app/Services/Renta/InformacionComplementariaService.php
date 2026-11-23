@@ -15,6 +15,12 @@ class InformacionComplementariaService
 
     /**
      * Obtiene o inicializa la declaración de renta anual para un usuario y año gravable.
+     *
+     * Con $forzarRecalculo = true se vuelven a leer los datos consolidados (ingresos, inversiones,
+     * perfil) y se actualizan los valores C1, C2, C5 y C6 de la declaración. Las pantallas del módulo
+     * lo usan en cada consulta para que lo registrado después de abrir la declaración por primera vez
+     * (ingresos, inversiones, perfil) se refleje en la evaluación y la estimación. Una declaración
+     * ya PRESENTADA queda congelada y nunca se recalcula.
      */
     public function obtenerDeclaracion(Usuario $usuario, int $anioGravable, bool $forzarRecalculo = false): DeclaracionRenta
     {
@@ -22,7 +28,7 @@ class InformacionComplementariaService
             ->where('anio_gravable', $anioGravable)
             ->first();
 
-        if ($declaracion && ! $forzarRecalculo) {
+        if ($declaracion && (! $forzarRecalculo || $declaracion->estado_declaracion === 'PRESENTADA')) {
             return $declaracion;
         }
 
@@ -72,7 +78,8 @@ class InformacionComplementariaService
         int $anioGravable,
         array $datos
     ): DeclaracionRenta {
-        $declaracion = $this->obtenerDeclaracion($usuario, $anioGravable);
+        // Se parte siempre de valores consolidados vigentes para validar y guardar los ajustes.
+        $declaracion = $this->obtenerDeclaracion($usuario, $anioGravable, true);
         $consolidado = $declaracion->datos_consolidado_cache ?? $this->consolidadoService->consolidar($usuario, $anioGravable);
 
         $patrimonioConsolidado = (float) ($declaracion->c1_patrimonio_bruto_cop ?? $consolidado['patrimonio_bruto_31_12']['total_cop'] ?? 0);
@@ -96,17 +103,31 @@ class InformacionComplementariaService
             ]);
         }
 
-        // 3. Justificación obligatoria si hay cambio de ajuste diferente de 0 (RN-044.3)
+        // 3. Justificación obligatoria si el ajuste cambia a un valor distinto de 0 (RN-044.3).
+        //    Volver un ajuste a $0 (revertirlo) no exige nota: el formulario oculta la explicación
+        //    cuando ambos ajustes quedan en 0, y se deja constancia con una nota automática.
         $cambioPatrimonio = abs($ajustePatrimonio - (float) $declaracion->c1_ajuste_manual_cop) > 0.001;
         $cambioIngresos = abs($ajusteIngresos - (float) $declaracion->c2_ajuste_manual_cop) > 0.001;
 
         if ($cambioPatrimonio || $cambioIngresos) {
             $justificacion = trim((string) ($datos['justificacion_ajuste'] ?? ''));
             $len = mb_strlen($justificacion);
-            if ($len < 10 || $len > 500) {
+
+            $hayAjusteNoCero = ($cambioPatrimonio && abs($ajustePatrimonio) > 0.001)
+                || ($cambioIngresos && abs($ajusteIngresos) > 0.001);
+
+            if ($hayAjusteNoCero) {
+                if ($len < 10 || $len > 500) {
+                    throw ValidationException::withMessages([
+                        'justificacion_ajuste' => 'Todo ajuste manual requiere obligatoriamente una nota explicativa de entre 10 y 500 caracteres (RN-044.3).',
+                    ]);
+                }
+            } elseif ($len > 500) {
                 throw ValidationException::withMessages([
-                    'justificacion_ajuste' => 'Todo ajuste manual requiere obligatoriamente una nota explicativa de entre 10 y 500 caracteres (RN-044.3).',
+                    'justificacion_ajuste' => 'La nota explicativa no puede superar los 500 caracteres.',
                 ]);
+            } elseif ($len < 10) {
+                $justificacion = 'Ajuste manual revertido a $0';
             }
 
             // Registrar auditoría de patrimonio

@@ -5,10 +5,13 @@
     <header class="income-page-header">
         <div><h1>Calculadora de declaración de renta · {{ $anio }}</h1><p>Simula los topes según tus montos acumulados del año y consulta la estimación del sistema.</p></div>
         <div class="ui-inline">
-            <div class="mk-year"><label for="select-anio">Año gravable</label><select id="select-anio" onchange="window.location.href = '{{ url('/renta') }}/' + this.value + '/calculadora'">@foreach(array_unique([2025, 2026, (int)$anio]) as $year)<option value="{{ $year }}" @selected((int)$anio === $year)>{{ $year }}</option>@endforeach</select></div>
+            <div class="mk-year"><label for="select-anio">Año gravable</label><select id="select-anio" onchange="window.location.href = '{{ url('/renta') }}/' + this.value + '/calculadora'">@foreach(array_unique([$anio, ...($vigencias ?? [2025, 2026])]) as $year)<option value="{{ $year }}" @selected((int)$anio === $year)>{{ $year }}</option>@endforeach</select></div>
             <a class="ui-button ui-button--secondary" href="{{ route('renta.consolidado',['anio'=>$anio]) }}">Ver evaluación de mis registros</a>
         </div>
     </header>
+    @if($sinVigencia ?? false)
+        <p class="ui-error" role="alert">No hay una vigencia normativa activa para {{ $anio }}. Elige un año con parámetros disponibles.</p>
+    @else
     <form @submit.prevent="calculate" @input="invalidate" @change="invalidate" @money-change="invalidate" novalidate :aria-busy="calculating">
         <x-ui.card title="Montos acumulados del año">
             <p class="ui-help">Puedes indicar cero. Usa puntos para los miles y coma para los decimales. La evaluación de tus registros también contempla tu perfil tributario.</p>
@@ -47,5 +50,6 @@
             </x-ui.card>
         </section>
     </template>
+    @endif
 </div>
 @endsection

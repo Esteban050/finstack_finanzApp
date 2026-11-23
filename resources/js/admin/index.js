@@ -1,8 +1,29 @@
 import { request, showRequestError } from '../api/index.js';
 import { decimal, formatMoney, formatQuantity } from '../utils/money.js';
 import { formatDate } from '../utils/date.js';
+import { confirmAction } from '../ui/financial-view.js';
 
 export function mountAdmin() {
+    document.querySelectorAll('[data-confirm-vigencia]').forEach(form => {
+        let confirmed = false;
+        let pending = false;
+        form.addEventListener('submit', async event => {
+            if (confirmed) return;
+            event.preventDefault();
+            if (pending) return;
+
+            pending = true;
+            try {
+                if (await confirmAction('Activar vigencia', 'Se activará esta versión para el año indicado. Si ya existe una versión activa, pasará al historial.', 'Activar vigencia')) {
+                    confirmed = true;
+                    form.requestSubmit(event.submitter ?? undefined);
+                }
+            } finally {
+                pending = false;
+                confirmed = false;
+            }
+        });
+    });
     const lookup = document.getElementById('btnConsultar');
     lookup?.addEventListener('click', async () => {
         const input = document.getElementById('consulta_digitos'), output = document.getElementById('resultadoConsulta');
