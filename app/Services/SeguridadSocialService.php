@@ -59,8 +59,8 @@ class SeguridadSocialService
     /** RN-033.6 */
     public const OCUPACION_PENSIONADO = 'Pensionado';
 
-    /** Cálculo exacto al peso (sin redondeo a múltiplos de $ 100). */
-    private const MULTIPLO_APORTE = 1;
+    /** RN-033.5: cada aporte se redondea al múltiplo de $ 100 superior (Decreto 1990 de 2016). */
+    public const MULTIPLO_APORTE = 100;
 
     /**
      * RN-035.3: categoría del catálogo (RF-015) del gasto que crea un pago PILA,

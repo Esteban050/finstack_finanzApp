@@ -327,9 +327,9 @@ class SeguridadSocialRentistaTest extends TestCase
         $this->assertSame('12.50', $resultado['porcentaje_salud']);
         $this->assertSame('359600.00', $resultado['salud']);
         $this->assertSame('16.00', $resultado['porcentaje_pension']);
-        $this->assertSame('460288.00', $resultado['pension']);
+        $this->assertSame('460300.00', $resultado['pension']);
         $this->assertSame('0.00', $resultado['fsp']);
-        $this->assertSame('819888.00', $resultado['total']);
+        $this->assertSame('819900.00', $resultado['total']);
     }
 
     public function test_calcular_rentista_capital_ingreso_neto_menor_al_minimo_avisa_bajo_smmlv(): void
@@ -365,5 +365,35 @@ class SeguridadSocialRentistaTest extends TestCase
         $this->assertSame('1438400.00', $resultado['ingreso_neto']);
         $this->assertSame('1423500.00', $resultado['ibc']);
         $this->assertContains(SeguridadSocialService::AVISO_IBC_MINIMO, $resultado['avisos']);
+    }
+
+    public function test_calcular_independiente_redondea_aportes_al_multiplo_de_100_superior_segun_decreto_1990(): void
+    {
+        // 1 SMMLV en 2026 = 1.750.905,00
+        $parametro2026 = new ParametroNormativo([
+            'id' => (string) Str::uuid(),
+            'anio_vigencia' => 2026,
+            'version' => 2,
+            'acto_administrativo' => 'Decreto 2026',
+            'valor_smmlv' => '1750905.00',
+            'porc_ibc_indep' => '40.00',
+            'ibc_min_smmlv' => '1.00',
+            'ibc_max_smmlv' => '25.00',
+            'tarifa_salud_indep' => '12.50',
+            'tarifa_pension_indep' => '16.00',
+        ]);
+
+        $resultado = SeguridadSocialService::calcularIndependiente(
+            '1750905.00',
+            $parametro2026,
+            $this->perfil
+        );
+
+        $this->assertSame('1750905.00', $resultado['ibc']);
+        // 1.750.905 * 12.5% = 218.863,125 -> redondeado a múltiplo de $ 100 superior = 218.900,00
+        $this->assertSame('218900.00', $resultado['salud']);
+        // 1.750.905 * 16.0% = 280.144,80 -> redondeado a múltiplo de $ 100 superior = 280.200,00
+        $this->assertSame('280200.00', $resultado['pension']);
+        $this->assertSame('499100.00', $resultado['total']);
     }
 }

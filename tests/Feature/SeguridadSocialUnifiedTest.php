@@ -153,9 +153,9 @@ class SeguridadSocialUnifiedTest extends TestCase
         $this->assertSame('12.50', $data['porcentaje_salud']);
         $this->assertSame('359600.00', $data['salud']);
         $this->assertSame('16.00', $data['porcentaje_pension']);
-        $this->assertSame('460288.00', $data['pension']);
+        $this->assertSame('460300.00', $data['pension']);
         $this->assertSame('0.00', $data['fsp']);
-        $this->assertSame('819888.00', $data['total']);
+        $this->assertSame('819900.00', $data['total']);
     }
 
     public function test_pagar_seguridad_social_crea_pago_y_genera_gasto_en_gastos(): void
@@ -199,9 +199,9 @@ class SeguridadSocialUnifiedTest extends TestCase
     public function test_calcular_unificado_independiente_con_clases_arl_suma_al_total(): void
     {
         $clasesYTareas = [
-            1 => ['tarifa' => '0.522', 'arl' => '20880.00', 'total' => '1160880.00'],
-            2 => ['tarifa' => '1.044', 'arl' => '41760.00', 'total' => '1181760.00'],
-            3 => ['tarifa' => '2.436', 'arl' => '97440.00', 'total' => '1237440.00'],
+            1 => ['tarifa' => '0.522', 'arl' => '20900.00', 'total' => '1160900.00'],
+            2 => ['tarifa' => '1.044', 'arl' => '41800.00', 'total' => '1181800.00'],
+            3 => ['tarifa' => '2.436', 'arl' => '97500.00', 'total' => '1237500.00'],
             4 => ['tarifa' => '4.350', 'arl' => '174000.00', 'total' => '1314000.00'],
             5 => ['tarifa' => '6.960', 'arl' => '278400.00', 'total' => '1418400.00'],
         ];
@@ -225,5 +225,35 @@ class SeguridadSocialUnifiedTest extends TestCase
             $this->assertSame($esperado['arl'], $data['arl']);
             $this->assertSame($esperado['total'], $data['total']);
         }
+    }
+
+    /**
+     * RN-033.5 / Decreto 1990 de 2016: cada aporte se redondea al múltiplo de $ 100 superior.
+     * Salud sobre 1 SMMLV ($ 1.750.905 en 2026):
+     * 1.750.905 * 12.5% = 218.863,125 -> redondeado a $ 218.900,00 (en vez de $ 218.864,00).
+     * Pensión: 1.750.905 * 16.0% = 280.144,80 -> redondeado a $ 280.200,00 (en vez de $ 280.145,00).
+     */
+    public function test_decreto_1990_redondea_aportes_al_multiplo_de_100_superior(): void
+    {
+        $smmlv = (string) $this->parametro->valor_smmlv;
+
+        $response = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'INDEPENDIENTE',
+                'monto_contrato' => $smmlv,
+                'periodo' => '2026-05',
+                'clase_riesgo_arl' => 0,
+            ]);
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        $this->assertSame('INDEPENDIENTE', $data['tipo_cotizante']);
+        $this->assertSame($smmlv, $data['ibc']);
+        $this->assertSame('12.50', $data['porcentaje_salud']);
+        $this->assertSame('218900.00', $data['salud']);
+        $this->assertSame('16.00', $data['porcentaje_pension']);
+        $this->assertSame('280200.00', $data['pension']);
+        $this->assertSame('499100.00', $data['total']);
     }
 }
