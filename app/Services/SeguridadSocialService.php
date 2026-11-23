@@ -1409,7 +1409,7 @@ class SeguridadSocialService
      */
     private static function tarifaArl(?PerfilTributario $perfil, ParametroNormativo $parametro): ?string
     {
-        if ($perfil?->clase_riesgo_arl === null) {
+        if ($perfil?->clase_riesgo_arl === null || (int) $perfil->clase_riesgo_arl <= 0) {
             return null;
         }
 
@@ -1418,7 +1418,13 @@ class SeguridadSocialService
             ->where('rango_desde', $perfil->clase_riesgo_arl)
             ->first();
 
-        return $tramo === null ? null : (string) $tramo->tarifa_porc;
+        if ($tramo !== null) {
+            return (string) $tramo->tarifa_porc;
+        }
+
+        $tarifa = self::tarifaArlPorClase($perfil->clase_riesgo_arl);
+
+        return bccomp($tarifa, '0.000', 3) > 0 ? $tarifa : null;
     }
 
     /**

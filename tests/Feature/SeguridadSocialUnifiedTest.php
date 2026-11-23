@@ -195,4 +195,35 @@ class SeguridadSocialUnifiedTest extends TestCase
         $this->assertSame('TRANSFERENCIA', $gasto->medio_pago);
         $this->assertStringContainsString('Pago PILA del periodo '.$periodo, $gasto->descripcion);
     }
+
+    public function test_calcular_unificado_independiente_con_clases_arl_suma_al_total(): void
+    {
+        $clasesYTareas = [
+            1 => ['tarifa' => '0.522', 'arl' => '20880.00', 'total' => '1160880.00'],
+            2 => ['tarifa' => '1.044', 'arl' => '41760.00', 'total' => '1181760.00'],
+            3 => ['tarifa' => '2.436', 'arl' => '97440.00', 'total' => '1237440.00'],
+            4 => ['tarifa' => '4.350', 'arl' => '174000.00', 'total' => '1314000.00'],
+            5 => ['tarifa' => '6.960', 'arl' => '278400.00', 'total' => '1418400.00'],
+        ];
+
+        foreach ($clasesYTareas as $clase => $esperado) {
+            $response = $this->actingAs($this->usuario)
+                ->postJson(route('seguridad-social.calcular'), [
+                    'tipo_cotizante' => 'INDEPENDIENTE',
+                    'monto_contrato' => '10000000',
+                    'periodo' => '2026-05',
+                    'clase_riesgo_arl' => $clase,
+                ]);
+
+            $response->assertStatus(200);
+            $data = $response->json('data');
+
+            $this->assertSame('4000000.00', $data['ibc']);
+            $this->assertSame('500000.00', $data['salud']);
+            $this->assertSame('640000.00', $data['pension']);
+            $this->assertSame($esperado['tarifa'], $data['porcentaje_arl']);
+            $this->assertSame($esperado['arl'], $data['arl']);
+            $this->assertSame($esperado['total'], $data['total']);
+        }
+    }
 }

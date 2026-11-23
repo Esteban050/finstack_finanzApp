@@ -214,10 +214,16 @@ class SeguridadSocialController extends Controller
         $usuario = Auth::user();
         $perfil = SeguridadSocialService::perfilDelPeriodo($usuario->id, $inicioMes) ?? $usuario->perfilTributarioActivo;
 
-        if ($request->has('clase_riesgo_arl') && $perfil) {
-            $perfil = clone $perfil;
+        if ($request->has('clase_riesgo_arl')) {
             $clase = (int) $request->input('clase_riesgo_arl');
-            $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            if ($perfil) {
+                $perfil = clone $perfil;
+                $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            } elseif ($clase > 0) {
+                $perfil = new PerfilTributario();
+                $perfil->clase_riesgo_arl = $clase;
+                $perfil->arl_obligatoria = true;
+            }
         }
 
         if ($tipo === 'MULTI_INGRESO') {
@@ -482,9 +488,22 @@ class SeguridadSocialController extends Controller
             'es_rentista' => ['nullable'],
             'tipo_servicio' => ['nullable', 'string'],
             'gastos' => ['nullable'],
+            'clase_riesgo_arl' => ['nullable', 'integer', 'between:0,5'],
         ], $this->mensajes());
 
         [, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
+
+        if ($request->has('clase_riesgo_arl')) {
+            $clase = (int) $request->input('clase_riesgo_arl');
+            if ($perfil) {
+                $perfil = clone $perfil;
+                $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
+            } elseif ($clase > 0) {
+                $perfil = new PerfilTributario();
+                $perfil->clase_riesgo_arl = $clase;
+                $perfil->arl_obligatoria = true;
+            }
+        }
 
         $esRentista = $request->boolean('es_rentista')
             || in_array(strtoupper((string) $request->input('tipo_servicio')), ['RENTISTA_CAPITAL', 'RENTISTA'], true);

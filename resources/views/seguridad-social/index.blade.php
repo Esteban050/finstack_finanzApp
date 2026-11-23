@@ -4,7 +4,7 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}" data-clase-arl="{{ $perfil?->clase_riesgo_arl ?? 0 }}">
 <p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
@@ -408,6 +408,10 @@
                     <input type="hidden" name="pension" :value="resultados.pension">
                     <input type="hidden" name="fsp" :value="resultados.fsp">
                     <input type="hidden" name="arl" :value="resultados.arl">
+                    <input type="hidden" name="porcentaje_salud" :value="_data?.porcentaje_salud || 0">
+                    <input type="hidden" name="porcentaje_pension" :value="_data?.porcentaje_pension || 0">
+                    <input type="hidden" name="porcentaje_fsp" :value="_data?.porcentaje_fsp || 0">
+                    <input type="hidden" name="porcentaje_arl" :value="_data?.porcentaje_arl || 0">
                     <input type="hidden" name="intereses_mora" value="0">
 
                     <div style="background: rgba(var(--accent-rgb, 14, 165, 233), 0.08); padding: 1rem; border-radius: var(--ui-radius); margin-bottom: 1rem; border: 1px solid var(--ui-border);">

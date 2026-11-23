@@ -90,16 +90,6 @@ class ParametroNormativoSeeder extends Seeder
             );
         }
 
-        // Tabla FSP (RN-014.2)
-        $tramosFsp = [
-            ['desde' => 4, 'hasta' => 16, 'tarifa' => 1.0],
-            ['desde' => 16, 'hasta' => 17, 'tarifa' => 1.2],
-            ['desde' => 17, 'hasta' => 18, 'tarifa' => 1.4],
-            ['desde' => 18, 'hasta' => 19, 'tarifa' => 1.6],
-            ['desde' => 19, 'hasta' => 20, 'tarifa' => 1.8],
-            ['desde' => 20, 'hasta' => null, 'tarifa' => 2.0],
-        ];
-
         foreach ($tramosFsp as $f) {
             TarifaEscalonada::firstOrCreate(
                 [
@@ -115,28 +105,27 @@ class ParametroNormativoSeeder extends Seeder
             );
         }
 
-        // Tabla ARL (RN-014.3)
-        $tramosArl = [
-            ['desde' => 1, 'hasta' => 1, 'tarifa' => 0.522],
-            ['desde' => 2, 'hasta' => 2, 'tarifa' => 1.044],
-            ['desde' => 3, 'hasta' => 3, 'tarifa' => 2.436],
-            ['desde' => 4, 'hasta' => 4, 'tarifa' => 4.350],
-            ['desde' => 5, 'hasta' => 5, 'tarifa' => 6.960],
-        ];
+        // Tabla ARL (RN-014.3) para todas las vigencias registradas
+        $parametros = ParametroNormativo::all();
+        if ($parametros->isEmpty()) {
+            $parametros = collect([$parametro]);
+        }
 
-        foreach ($tramosArl as $a) {
-            TarifaEscalonada::firstOrCreate(
-                [
-                    'parametro_normativo_id' => $parametro->id,
-                    'tipo_tabla' => 'ARL',
-                    'rango_desde' => $a['desde'],
-                ],
-                [
-                    'rango_hasta' => $a['hasta'],
-                    'tarifa_porc' => $a['tarifa'],
-                    'impuesto_base_uvt' => 0,
-                ]
-            );
+        foreach ($parametros as $p) {
+            foreach ($tramosArl as $a) {
+                TarifaEscalonada::firstOrCreate(
+                    [
+                        'parametro_normativo_id' => $p->id,
+                        'tipo_tabla' => 'ARL',
+                        'rango_desde' => $a['desde'],
+                    ],
+                    [
+                        'rango_hasta' => $a['hasta'],
+                        'tarifa_porc' => $a['tarifa'],
+                        'impuesto_base_uvt' => 0,
+                    ]
+                );
+            }
         }
     }
 }
