@@ -186,7 +186,9 @@ class InversionController extends Controller
             $tieneUnidades = ! empty($unidadesIn) && is_numeric($unidadesIn) && (float) $unidadesIn > 0;
             $tieneValorUnidad = ! empty($valorUnidadIn) && is_numeric($valorUnidadIn) && (float) $valorUnidadIn > 0;
 
-            if ($tieneMonto && $tieneValorUnidad && ! $tieneUnidades) {
+            // Las unidades solo se calculan si el campo vino vacío. Un valor escrito
+            // (p. ej. 0) se valida tal cual y no se reemplaza en silencio (RN-037.3).
+            if ($tieneMonto && $tieneValorUnidad && ! $request->filled('unidades')) {
                 $unidadesCalc = bcdiv((string) $montoIn, (string) $valorUnidadIn, 8);
                 $request->merge(['unidades' => $unidadesCalc]);
             } elseif ($tieneMonto && $tieneUnidades && ! $tieneValorUnidad) {
@@ -765,7 +767,8 @@ class InversionController extends Controller
 
             // Campos específicos Acciones / ETF
             'simbolo' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'string', 'max:15'],
-            'unidades' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'numeric', 'gt:0'],
+            // RN-037.3: unidades > 0 y hasta 8 decimales.
+            'unidades' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
             'valor_unidad' => [Rule::requiredIf($tipo === 'ACCION_ETF'), 'nullable', 'numeric', 'gt:0'],
             'subtipo_renta_variable' => ['nullable', Rule::in(['ACCION', 'ETF'])],
             'mercado' => ['nullable', Rule::in(['BVC', 'EXTERIOR'])],
@@ -817,6 +820,9 @@ class InversionController extends Controller
             'simbolo.required' => 'El símbolo mnemotécnico o ticker es obligatorio para Acciones / ETF.',
             'valor_dividendo_por_unidad.required' => 'Indique el dividendo por acción decretado (digite 0 si no reparte dividendos).',
             'unidades.required' => 'La cantidad de unidades o títulos es obligatoria.',
+            'unidades.numeric' => 'Las unidades deben ser un número.',
+            'unidades.gt' => 'Las unidades deben ser mayores que cero.',
+            'unidades.regex' => 'Las unidades admiten hasta 8 decimales.',
             'valor_unidad.required' => 'El valor o precio por unidad es obligatorio.',
             'fic_catalogo_id.required' => 'Seleccione un fondo del catálogo de FICs.',
         ];

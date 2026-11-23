@@ -2,53 +2,54 @@
 
 namespace Tests\Feature\Auth;
 
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\UsaBaseLocal;
 use Tests\TestCase;
 
+/** RF-003: inicio y cierre de sesión con el correo (adaptada de Breeze a SCFP). */
 class AuthenticationTest extends TestCase
 {
-    use RefreshDatabase;
+    use UsaBaseLocal;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->iniciarBaseLocal();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->cerrarBaseLocal();
+        parent::tearDown();
+    }
 
     public function test_login_screen_can_be_rendered(): void
     {
-        $response = $this->get('/login');
-
-        $response->assertStatus(200);
+        $this->get(route('login'))->assertOk()->assertSee('Iniciar sesión');
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void
     {
-        $user = User::factory()->create();
+        $usuario = $this->crearUsuario();
 
-        $response = $this->post('/login', [
-            'email' => $user->email,
-            'password' => 'password',
-        ]);
-
-        $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $this->post(route('login'), ['correo' => $usuario->correo, 'password' => $this->claveDePrueba])
+            ->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($usuario);
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void
     {
-        $user = User::factory()->create();
+        $usuario = $this->crearUsuario();
 
-        $this->post('/login', [
-            'email' => $user->email,
-            'password' => 'wrong-password',
-        ]);
-
+        $this->post(route('login'), ['correo' => $usuario->correo, 'password' => 'Incorrecta#2026'])
+            ->assertSessionHasErrors(['correo' => 'Correo o contraseña incorrectos']);
         $this->assertGuest();
     }
 
     public function test_users_can_logout(): void
     {
-        $user = User::factory()->create();
+        $this->entrarComo($this->crearUsuario());
 
-        $response = $this->actingAs($user)->post('/logout');
-
+        $this->post(route('logout'))->assertRedirect();
         $this->assertGuest();
-        $response->assertRedirect('/');
     }
 }

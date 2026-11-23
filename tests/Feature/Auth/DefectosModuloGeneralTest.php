@@ -87,6 +87,18 @@ class DefectosModuloGeneralTest extends TestCase
         $this->assertSame(1, $usuario->intentos_fallidos);
     }
 
+    /** RN-004.1: 4 fallos dentro de la ventana no bloquean. */
+    public function test_cuatro_fallos_no_bloquean(): void
+    {
+        for ($i = 0; $i < 4; $i++) {
+            $this->fallarLogin();
+        }
+        $usuario = $this->usuario->fresh();
+        $this->assertSame('ACTIVA', $usuario->estado);
+        $this->assertSame(4, $usuario->intentos_fallidos);
+        $this->assertNull($usuario->bloqueado_hasta);
+    }
+
     /** RN-004.1: 5 fallos dentro de 15 minutos sí bloquean. */
     public function test_cinco_fallos_dentro_de_15_minutos_bloquean(): void
     {

@@ -99,6 +99,7 @@ class ReportesControllerUnitTest extends TestCase
             ->andReturn($mockData);
 
         $request = Request::create('/reportes/indicadores', 'GET', ['mes' => '2026-10']);
+        $request->headers->set('Accept', 'application/json');
         $response = $this->reportesController->indicadores($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
@@ -126,6 +127,7 @@ class ReportesControllerUnitTest extends TestCase
             'fecha_hasta' => '2026-06-30',
             'agrupacion' => 'mensual',
         ]);
+        $request->headers->set('Accept', 'application/json');
 
         $response = $this->reportesController->flujoCaja($request);
 
@@ -151,6 +153,7 @@ class ReportesControllerUnitTest extends TestCase
             'dimension_fila' => 'categoria',
             'dimension_columna' => 'medio_pago',
         ]);
+        $request->headers->set('Accept', 'application/json');
 
         $response = $this->reportesController->gastosDimension($request);
 
@@ -179,6 +182,7 @@ class ReportesControllerUnitTest extends TestCase
             'desde_b' => '2026-10-01',
             'hasta_b' => '2026-10-31',
         ]);
+        $request->headers->set('Accept', 'application/json');
 
         $response = $this->reportesController->comparativo($request);
 
