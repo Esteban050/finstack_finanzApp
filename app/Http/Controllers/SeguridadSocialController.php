@@ -281,8 +281,10 @@ class SeguridadSocialController extends Controller
                 $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
             } else {
                 $codigoActividad = $request->input('codigo_actividad') ?: EsquemaCostoPresunto::ACTIVIDAD_CAPITAL;
-                $porcentajePresuncion = $request->input('porcentaje_presuncion')
-                    ?: EsquemaCostoPresunto::porcentajePara($codigoActividad);
+                $porcentajePresuncion = $request->input('porcentaje_presuncion');
+                if (! $porcentajePresuncion || in_array($porcentajePresuncion, ['28.08', '28.08%', '28', '27.5', '27.50', '27.5%'], true)) {
+                    $porcentajePresuncion = EsquemaCostoPresunto::porcentajePara($codigoActividad, $periodo);
+                }
                 $costosReales = $request->filled('costos_reales')
                     ? PagoSeguridadSocialController::limpiarMonto((string) $request->input('costos_reales'))
                     : '0';

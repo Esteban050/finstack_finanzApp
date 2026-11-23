@@ -4,7 +4,7 @@
 @extends('layouts.app')
 @section('title', 'Seguridad social')
 @section('content')
-<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA }}" data-initial="{{ json_encode(session('calculo_reciente')) }}" data-clase-arl="{{ $perfil?->clase_riesgo_arl ?? 0 }}">
+<div class="finance-page social-page" x-data="seguridadSocialApp()" data-social-app data-periodo="{{ old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m'))) }}" data-calculate-url="{{ route('seguridad-social.calcular') }}" data-ingresos-url="{{ route('seguridad-social.ingresos-mes') }}" data-tariffs="{{ json_encode(['tarifaSaludIndep'=>$parametro?->tarifa_salud_indep,'tarifaPensionIndep'=>$parametro?->tarifa_pension_indep,'tarifaSaludEmp'=>$parametro?->tarifa_salud_emp,'tarifaPensionEmp'=>$parametro?->tarifa_pension_emp]) }}" data-smmlv="{{ $parametro?->valor_smmlv ?? '' }}" data-presuncion="{{ \App\Services\SeguridadSocialService::porcentajePresuncionRentista(old('periodo', session('calculo_reciente.periodo', now('America/Bogota')->format('Y-m')))) }}" data-initial="{{ json_encode(session('calculo_reciente')) }}" data-clase-arl="{{ $perfil?->clase_riesgo_arl ?? 0 }}">
 <p class="ui-help" x-show="calculando" role="status">Calculando con las reglas del periodo…</p><p class="ui-error" x-show="errorCalculo" x-text="errorCalculo" role="alert" aria-live="polite"></p>
     <header class="income-page-header">
         <div>
@@ -91,7 +91,7 @@
                                 </template>
                             </ul>
                             <p x-show="!ingresosMes.obligado" style="margin: 0; font-size: var(--ui-text-small);">
-                                <span x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tras la presunción de costos (28,08%), estos ingresos quedan por debajo de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
+                                <span x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tras la presunción de costos (<span x-text="porcentajePresuncionDisplay"></span>%), estos ingresos quedan por debajo de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
                                 <span x-show="tipoCotizante !== 'RENTISTA_CAPITAL'">Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
                             </p>
                             <div class="ui-inline" role="group" aria-label="Monto para calcular" style="gap: 0.5rem; flex-wrap: wrap;">
@@ -317,7 +317,7 @@
                                     <dt>Monto ingresos brutos de capital:</dt>
                                     <dd x-text="formatMoney(resultados.montoContrato)"></dd>
 
-                                    <dt>Presunción de costos (28,08 %):</dt>
+                                    <dt>Presunción de costos (<span x-text="porcentajePresuncionDisplay"></span> %):</dt>
                                     <dd style="color: var(--ui-danger);" x-text="'- ' + formatMoney(resultados.presuncionCostos)"></dd>
 
                                     <dt>Base neta después de costos:</dt>

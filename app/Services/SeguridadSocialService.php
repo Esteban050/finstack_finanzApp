@@ -46,6 +46,16 @@ class SeguridadSocialService
      * Porcentaje legal/UGPP de presunción de costos para Rentistas de capital (28,08%).
      */
     public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA = '28.08';
+    public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA_HASTA_ABRIL_2026 = '27.50';
+    public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA_DESDE_MAYO_2026 = '28.08';
+
+    /**
+     * Retorna el porcentaje de presunción de costos aplicable a rentistas de capital para un periodo dado.
+     */
+    public static function porcentajePresuncionRentista(?string $periodo = null): string
+    {
+        return EsquemaCostoPresunto::porcentajePara(EsquemaCostoPresunto::ACTIVIDAD_CAPITAL, $periodo);
+    }
 
     /** RF-033: ocupaciones del perfil (RF-008) que cotizan como independientes. */
     public const OCUPACIONES_INDEPENDIENTE = [
@@ -182,9 +192,12 @@ class SeguridadSocialService
 
         $total = bcadd((string) $ingresos->sum('monto_bruto_cop'), '0', 2);
         $esRentista = strtoupper($tipoCotizante) === 'RENTISTA_CAPITAL';
+        $periodoCotizado = $inicioPeriodo->format('Y-m');
+        $porcentajeRentista = $esRentista ? self::porcentajePresuncionRentista($periodoCotizado) : null;
+        $deduccion = '0.00';
 
         if ($esRentista) {
-            $deduccion = self::redondearArriba(self::porcentaje($total, self::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA), 1);
+            $deduccion = self::redondearArriba(self::porcentaje($total, $porcentajeRentista), 1);
             $neto = bcsub($total, $deduccion, 2);
             if (bccomp($neto, '0', 2) < 0) {
                 $neto = '0.00';
@@ -202,6 +215,8 @@ class SeguridadSocialService
             'smmlv' => bcadd($smmlv, '0', 2),
             'obligado' => $obligado,
             'supera_smmlv' => $obligado,
+            'porcentaje_presuncion' => $porcentajeRentista,
+            'deduccion_presuncion' => $deduccion,
             'ingresos' => $ingresos->map(fn ($ingreso) => [
                 'id' => $ingreso->id,
                 'fecha' => $ingreso->fecha_recepcion->format('d/m/Y'),
@@ -523,7 +538,8 @@ class SeguridadSocialService
         string $codigoActividad,
         ?string $costosReales = null,
         bool $usarCostosReales = false,
-        ?ParametroNormativo $parametro = null
+        ?ParametroNormativo $parametro = null,
+        ?string $periodo = null
     ): array {
         $brutos = bcadd($ingresoBruto, '0', 2);
         
@@ -532,7 +548,7 @@ class SeguridadSocialService
             $porcentajePresuncion = null;
             $modalidadCosto = 'REALES';
         } else {
-            $porcentajePresuncion = EsquemaCostoPresunto::porcentajePara($codigoActividad);
+            $porcentajePresuncion = EsquemaCostoPresunto::porcentajePara($codigoActividad, $periodo);
             $deduccionCostos = self::porcentaje($brutos, $porcentajePresuncion);
             $deduccionCostos = self::redondearArriba($deduccionCostos, 1);
             $modalidadCosto = 'PRESUNCION_UGPP';
@@ -658,7 +674,7 @@ class SeguridadSocialService
                 || (bccomp($costosAct, '0', 2) > 0);
             $codAct = $act['codigo_actividad'] ?? ($act['tipo'] ?? EsquemaCostoPresunto::ACTIVIDAD_SERVICIOS);
 
-            $calcAct = self::calcularActividadIndependiente($montoAct, $codAct, $costosAct, $usarReales, $parametro);
+            $calcAct = self::calcularActividadIndependiente($montoAct, $codAct, $costosAct, $usarReales, $parametro, $periodo);
             $actividadesCalculadas[] = $calcAct;
 
             $totalIngresoBrutoIndep = bcadd($totalIngresoBrutoIndep, $calcAct['ingreso_bruto'], 2);

@@ -3,12 +3,14 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\PagoSeguridadSocialController;
+use App\Models\EsquemaCostoPresunto;
 use App\Models\FuenteIngreso;
 use App\Models\Ingreso;
 use App\Models\ParametroNormativo;
 use App\Models\PerfilTributario;
 use App\Models\Usuario;
 use App\Services\SeguridadSocialService;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -144,6 +146,28 @@ class SeguridadSocialRentistaTest extends TestCase
             $table->decimal('tarifa_porc', 6, 3);
             $table->decimal('impuesto_base_uvt', 12, 2)->default(0);
         });
+
+        Schema::create('esquemas_costos_presuntos', function ($table) {
+            $table->uuid('id')->primary();
+            $table->string('codigo_actividad', 50);
+            $table->string('nombre_actividad', 150);
+            $table->decimal('porcentaje_costo_presunto', 5, 2);
+            $table->string('normativa_referencia', 100)->nullable();
+            $table->boolean('admite_costos_reales')->default(true);
+            $table->boolean('activo')->default(true);
+            $table->timestamp('creado_en')->nullable();
+            $table->timestamp('actualizado_en')->nullable();
+        });
+
+        EsquemaCostoPresunto::create([
+            'id' => (string) Str::uuid(),
+            'codigo_actividad' => EsquemaCostoPresunto::ACTIVIDAD_CAPITAL,
+            'nombre_actividad' => 'Rentas de capital',
+            'porcentaje_costo_presunto' => 28.08,
+            'normativa_referencia' => 'UGPP Res. 532 de 2024 / Dec. 0379 de 2026',
+            'admite_costos_reales' => true,
+            'activo' => true,
+        ]);
 
         $this->usuario = new Usuario([
             'id' => (string) Str::uuid(),
@@ -395,5 +419,140 @@ class SeguridadSocialRentistaTest extends TestCase
         // 1.750.905 * 16.0% = 280.144,80 -> redondeado a múltiplo de $ 100 superior = 280.200,00
         $this->assertSame('280200.00', $resultado['pension']);
         $this->assertSame('499100.00', $resultado['total']);
+    }
+
+    public function test_porcentaje_presuncion_rentista_dinamico_por_periodo(): void
+    {
+        // Periodos <= 2026-04 retornan 27.50%
+        $this->assertSame('27.50', SeguridadSocialService::porcentajePresuncionRentista('2026-04'));
+        $this->assertSame('27.50', SeguridadSocialService::porcentajePresuncionRentista('2026-01'));
+        $this->assertSame('27.50', SeguridadSocialService::porcentajePresuncionRentista('2025-12'));
+        $this->assertSame('27.50', EsquemaCostoPresunto::porcentajePara(EsquemaCostoPresunto::ACTIVIDAD_CAPITAL, '2026-04'));
+
+        // Periodos >= 2026-05 retornan 28.08%
+        $this->assertSame('28.08', SeguridadSocialService::porcentajePresuncionRentista('2026-05'));
+        $this->assertSame('28.08', SeguridadSocialService::porcentajePresuncionRentista('2026-06'));
+        $this->assertSame('28.08', SeguridadSocialService::porcentajePresuncionRentista('2027-01'));
+        $this->assertSame('28.08', EsquemaCostoPresunto::porcentajePara(EsquemaCostoPresunto::ACTIVIDAD_CAPITAL, '2026-05'));
+
+        // Sin periodo especificado (null) retorna el valor base 28.08%
+        $this->assertSame('28.08', SeguridadSocialService::porcentajePresuncionRentista(null));
+        $this->assertSame('28.08', EsquemaCostoPresunto::porcentajePara(EsquemaCostoPresunto::ACTIVIDAD_CAPITAL, null));
+    }
+
+    public function test_calcular_rentista_capital_abril_2026_aplica_27_50(): void
+    {
+        $ingreso = '10000000.00';
+        $porcentaje = SeguridadSocialService::porcentajePresuncionRentista('2026-04');
+
+        $this->assertSame('27.50', $porcentaje);
+
+        $resultado = SeguridadSocialService::calcularRentistaCapital(
+            $ingreso,
+            '0',
+            $this->parametro,
+            $this->perfil,
+            $porcentaje
+        );
+
+        $this->assertSame('RENTISTA_CAPITAL', $resultado['tipo_cotizante']);
+        $this->assertSame('10000000.00', $resultado['monto_contrato']);
+        $this->assertSame('27.50', $resultado['porcentaje_presuncion_costos']);
+        // 10.000.000 * 27.5% = 2.750.000
+        $this->assertSame('2750000.00', $resultado['presuncion_costos']);
+        // Ingreso neto: 10.000.000 - 2.750.000 = 7.250.000
+        $this->assertSame('7250000.00', $resultado['ingreso_neto']);
+        // IBC: 40% de 7.250.000 = 2.900.000
+        $this->assertSame('2900000.00', $resultado['ibc']);
+    }
+
+    public function test_calcular_rentista_capital_mayo_2026_aplica_28_08(): void
+    {
+        $ingreso = '10000000.00';
+        $porcentaje = SeguridadSocialService::porcentajePresuncionRentista('2026-05');
+
+        $this->assertSame('28.08', $porcentaje);
+
+        $resultado = SeguridadSocialService::calcularRentistaCapital(
+            $ingreso,
+            '0',
+            $this->parametro,
+            $this->perfil,
+            $porcentaje
+        );
+
+        $this->assertSame('RENTISTA_CAPITAL', $resultado['tipo_cotizante']);
+        $this->assertSame('10000000.00', $resultado['monto_contrato']);
+        $this->assertSame('28.08', $resultado['porcentaje_presuncion_costos']);
+        // 10.000.000 * 28.08% = 2.808.000
+        $this->assertSame('2808000.00', $resultado['presuncion_costos']);
+        // Ingreso neto: 10.000.000 - 2.808.000 = 7.192.000
+        $this->assertSame('7192000.00', $resultado['ingreso_neto']);
+        // IBC: 40% de 7.192.000 = 2.876.800
+        $this->assertSame('2876800.00', $resultado['ibc']);
+    }
+
+    public function test_ingresos_para_seguridad_social_rentista_periodos_abril_vs_mayo_2026(): void
+    {
+        $fuente = new FuenteIngreso([
+            'id' => (string) Str::uuid(),
+            'usuario_id' => $this->usuario->id,
+            'nombre' => 'Rendimientos Financieros',
+            'clasificacion_tributaria' => 'RENTAS_CAPITAL',
+            'activa' => true,
+        ]);
+        $fuente->save();
+
+        // Ingreso en marzo de 2026 (respalda cotización de abril 2026 por mes vencido)
+        $ingresoMarzo = new Ingreso([
+            'id' => (string) Str::uuid(),
+            'usuario_id' => $this->usuario->id,
+            'fuente_id' => $fuente->id,
+            'fecha_recepcion' => '2026-03-15',
+            'clasificacion_tributaria' => 'RENTAS_CAPITAL',
+            'moneda' => 'COP',
+            'monto_original' => '5000000.00',
+            'monto_bruto_cop' => '5000000.00',
+            'estado' => 'CONFIRMADO',
+        ]);
+        $ingresoMarzo->save();
+
+        $inicioAbril = CarbonImmutable::create(2026, 4, 1);
+        $resAbril = SeguridadSocialService::ingresosParaSeguridadSocial(
+            $this->usuario->id,
+            $inicioAbril,
+            'RENTISTA_CAPITAL',
+            (string) $this->parametro->valor_smmlv
+        );
+
+        $this->assertSame('27.50', $resAbril['porcentaje_presuncion']);
+        // 5.000.000 * 27.50% = 1.375.000
+        $this->assertSame('1375000.00', $resAbril['deduccion_presuncion']);
+
+        // Ingreso en abril de 2026 (respalda cotización de mayo 2026)
+        $ingresoAbril = new Ingreso([
+            'id' => (string) Str::uuid(),
+            'usuario_id' => $this->usuario->id,
+            'fuente_id' => $fuente->id,
+            'fecha_recepcion' => '2026-04-15',
+            'clasificacion_tributaria' => 'RENTAS_CAPITAL',
+            'moneda' => 'COP',
+            'monto_original' => '5000000.00',
+            'monto_bruto_cop' => '5000000.00',
+            'estado' => 'CONFIRMADO',
+        ]);
+        $ingresoAbril->save();
+
+        $inicioMayo = CarbonImmutable::create(2026, 5, 1);
+        $resMayo = SeguridadSocialService::ingresosParaSeguridadSocial(
+            $this->usuario->id,
+            $inicioMayo,
+            'RENTISTA_CAPITAL',
+            (string) $this->parametro->valor_smmlv
+        );
+
+        $this->assertSame('28.08', $resMayo['porcentaje_presuncion']);
+        // 5.000.000 * 28.08% = 1.404.000
+        $this->assertSame('1404000.00', $resMayo['deduccion_presuncion']);
     }
 }

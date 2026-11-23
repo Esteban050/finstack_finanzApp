@@ -384,4 +384,101 @@ class SeguridadSocialNormativa2026Test extends TestCase
         $this->assertArrayHasKey('liquidacion_laboral_tipo_e', $data);
         $this->assertArrayHasKey('liquidacion_independiente_tipo_i', $data);
     }
+
+    /**
+     * Decreto 0379 de 2026 / UGPP Resolución 532 de 2024:
+     * Regla dinámica de presunción de costos para Rentistas de Capital:
+     * Periodos hasta abril 2026 (<= 2026-04): 27.50%
+     * Periodos desde mayo 2026 (>= 2026-05): 28.08%
+     * Periodo null o no especificado: 28.08%
+     */
+    public function test_presuncion_costos_rentista_dinamica_decreto_0379_de_2026(): void
+    {
+        // 1. Verificación directa en el Modelo EsquemaCostoPresunto
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-04'));
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-01'));
+        $this->assertEquals('27.50', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2025-10'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-05'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', '2026-08'));
+        $this->assertEquals('28.08', EsquemaCostoPresunto::porcentajePara('RENTAS_CAPITAL', null));
+
+        // 2. Verificación de catálogo activo por periodo
+        $catAbril = EsquemaCostoPresunto::catalogoActivo('2026-04');
+        $this->assertEquals('27.50', (string) $catAbril['RENTAS_CAPITAL']['porcentaje_costo_presunto']);
+
+        $catMayo = EsquemaCostoPresunto::catalogoActivo('2026-05');
+        $this->assertEquals('28.08', (string) $catMayo['RENTAS_CAPITAL']['porcentaje_costo_presunto']);
+
+        // 3. Verificación en el servicio SeguridadSocialService
+        $this->assertEquals('27.50', SeguridadSocialService::porcentajePresuncionRentista('2026-04'));
+        $this->assertEquals('28.08', SeguridadSocialService::porcentajePresuncionRentista('2026-05'));
+        $this->assertEquals('28.08', SeguridadSocialService::porcentajePresuncionRentista(null));
+
+        // 4. Verificación de cálculo individual de actividad independiente con periodo
+        // Sobre $20.000.000:
+        // Abril 2026 (27.5%): costo = $5.500.000, neto = $14.500.000, IBC = $5.800.000
+        $actividadAbril = $this->service->calcularActividadIndependiente(
+            ingresoBruto: '20000000.00',
+            codigoActividad: 'RENTAS_CAPITAL',
+            costosReales: '0.00',
+            usarCostosReales: false,
+            parametro: $this->parametro,
+            periodo: '2026-04'
+        );
+        $this->assertEquals('27.50', $actividadAbril['porcentaje_presuncion']);
+        $this->assertEquals('5500000.00', $actividadAbril['costos_aplicados']);
+        $this->assertEquals('14500000.00', $actividadAbril['ingreso_neto']);
+        $this->assertEquals('5800000.00', $actividadAbril['ibc_preliminar']);
+
+        // Mayo 2026 (28.08%): costo = $5.616.000, neto = $14.384.000, IBC = $5.753.600
+        $actividadMayo = $this->service->calcularActividadIndependiente(
+            ingresoBruto: '20000000.00',
+            codigoActividad: 'RENTAS_CAPITAL',
+            costosReales: '0.00',
+            usarCostosReales: false,
+            parametro: $this->parametro,
+            periodo: '2026-05'
+        );
+        $this->assertEquals('28.08', $actividadMayo['porcentaje_presuncion']);
+        $this->assertEquals('5616000.00', $actividadMayo['costos_aplicados']);
+        $this->assertEquals('14384000.00', $actividadMayo['ingreso_neto']);
+        $this->assertEquals('5753600.00', $actividadMayo['ibc_preliminar']);
+    }
+
+    /**
+     * Verificación del Endpoint API POST /seguridad-social/calcular para rentista de capital
+     * en periodo abril 2026 (27.50%) vs mayo 2026 (28.08%).
+     */
+    public function test_api_calcular_rentista_capital_aplica_presuncion_segun_periodo(): void
+    {
+        // 1. Periodo 2026-04 aplica 27.50%
+        $respAbril = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'RENTISTA_CAPITAL',
+                'periodo' => '2026-04',
+                'monto_contrato' => '20000000',
+            ]);
+
+        $respAbril->assertStatus(200);
+        $dataAbril = $respAbril->json('data');
+        $this->assertEquals('27.50', $dataAbril['porcentaje_presuncion_costos']);
+        $this->assertEquals('5500000.00', $dataAbril['presuncion_costos']);
+        $this->assertEquals('14500000.00', $dataAbril['ingreso_neto']);
+        $this->assertEquals('5800000.00', $dataAbril['ibc']);
+
+        // 2. Periodo 2026-05 aplica 28.08%
+        $respMayo = $this->actingAs($this->usuario)
+            ->postJson(route('seguridad-social.calcular'), [
+                'tipo_cotizante' => 'RENTISTA_CAPITAL',
+                'periodo' => '2026-05',
+                'monto_contrato' => '20000000',
+            ]);
+
+        $respMayo->assertStatus(200);
+        $dataMayo = $respMayo->json('data');
+        $this->assertEquals('28.08', $dataMayo['porcentaje_presuncion_costos']);
+        $this->assertEquals('5616000.00', $dataMayo['presuncion_costos']);
+        $this->assertEquals('14384000.00', $dataMayo['ingreso_neto']);
+        $this->assertEquals('5753600.00', $dataMayo['ibc']);
+    }
 }
