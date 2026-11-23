@@ -91,7 +91,8 @@
                                 </template>
                             </ul>
                             <p x-show="!ingresosMes.obligado" style="margin: 0; font-size: var(--ui-text-small);">
-                                Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.
+                                <span x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tras la presunción de costos (28,08%), estos ingresos quedan por debajo de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
+                                <span x-show="tipoCotizante !== 'RENTISTA_CAPITAL'">Estos ingresos suman menos de 1 salario mínimo (<span x-text="formatMoney(ingresosMes.smmlv)"></span>), así que con ellos no estás obligado a pagar seguridad social.</span>
                             </p>
                             <div class="ui-inline" role="group" aria-label="Monto para calcular" style="gap: 0.5rem; flex-wrap: wrap;">
                                 <button type="button" class="ui-button" :class="origenMonto === 'INGRESOS' ? 'ui-button--primary' : 'ui-button--secondary'" :aria-pressed="origenMonto === 'INGRESOS'" @click="usarIngresos()">Usar estos ingresos</button>
@@ -230,7 +231,8 @@
                         {{-- Sin obligación: ingresos del mes por debajo de 1 salario mínimo --}}
                         <div x-show="resultados.obligado === false" class="ui-notice" role="status" style="border-left: 4px solid var(--ui-success); display: grid; gap: 0.25rem;">
                             <strong>No debes pagar seguridad social este mes.</strong>
-                            <p style="margin: 0;">Tus ingresos del mes (<span x-text="formatMoney(resultados.montoContrato)"></span>) son menores que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como <span x-text="tipoCotizante === 'RENTISTA_CAPITAL' ? 'rentista de capital' : 'independiente'"></span>.</p>
+                            <p style="margin: 0;" x-show="tipoCotizante === 'RENTISTA_CAPITAL'">Tu ingreso neto del mes tras restar la presunción de costos (<span x-text="formatMoney(resultados.baseNeta)"></span>) es menor que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como rentista de capital.</p>
+                            <p style="margin: 0;" x-show="tipoCotizante !== 'RENTISTA_CAPITAL'">Tus ingresos del mes (<span x-text="formatMoney(resultados.montoContrato)"></span>) son menores que 1 salario mínimo (<span x-text="formatMoney(smmlv)"></span>), así que no estás obligado a cotizar como independiente.</p>
                         </div>
 
                         <template x-for="aviso in (resultados.obligado === false ? [] : resultados.avisos)" :key="aviso">

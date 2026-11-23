@@ -272,6 +272,7 @@ class SeguridadSocialController extends Controller
 
             if ($tipo === 'INDEPENDIENTE') {
                 $calculo = SeguridadSocialService::calcularIndependiente($montoLimpio, $parametro, $perfil);
+                $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
             } else {
                 $codigoActividad = $request->input('codigo_actividad') ?: EsquemaCostoPresunto::ACTIVIDAD_CAPITAL;
                 $porcentajePresuncion = $request->input('porcentaje_presuncion')
@@ -288,10 +289,13 @@ class SeguridadSocialController extends Controller
                     $perfil,
                     $usarReales ? null : (string) $porcentajePresuncion
                 );
+
+                // Para rentista de capital: si el ingreso neto tras descontar presunción de costos
+                // (o gastos procedentes) es menor a 1 SMMLV, no debe pagar seguridad social.
+                $obligado = SeguridadSocialService::estaObligadoACotizar($calculo['ingreso_neto'], $smmlv);
             }
 
             // Con ingresos del mes por debajo de 1 SMMLV no hay obligación de cotizar.
-            $obligado = SeguridadSocialService::estaObligadoACotizar($montoLimpio, $smmlv);
             $calculo = $obligado ? $calculo + ['obligado' => true] : SeguridadSocialService::sinObligacion($calculo);
             $calculo['origen_monto'] = $usarIngresos ? 'INGRESOS' : 'MANUAL';
             $calculo['ingresos_mes'] = $ingresosMes;

@@ -181,7 +181,18 @@ class SeguridadSocialService
             ->get();
 
         $total = bcadd((string) $ingresos->sum('monto_bruto_cop'), '0', 2);
-        $obligado = self::estaObligadoACotizar($total, $smmlv);
+        $esRentista = strtoupper($tipoCotizante) === 'RENTISTA_CAPITAL';
+
+        if ($esRentista) {
+            $deduccion = self::redondearArriba(self::porcentaje($total, self::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA), 1);
+            $neto = bcsub($total, $deduccion, 2);
+            if (bccomp($neto, '0', 2) < 0) {
+                $neto = '0.00';
+            }
+            $obligado = self::estaObligadoACotizar($neto, $smmlv);
+        } else {
+            $obligado = self::estaObligadoACotizar($total, $smmlv);
+        }
 
         return [
             'clasificacion' => $clasificacion,
@@ -263,7 +274,6 @@ class SeguridadSocialService
         $totalIngresos = bcadd((string) $suma, '0', 2);
         $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
         $parametroPeriodo = self::parametrosDe($inicioMes->year);
-        $superaSmmlv = self::estaObligadoACotizar($totalIngresos, (string) $parametroPeriodo->valor_smmlv);
 
         if (! $tieneIngresos) {
             $msg = $esRentista
@@ -297,8 +307,10 @@ class SeguridadSocialService
 
         if ($esRentista) {
             $calculo = self::calcularRentistaCapital($totalIngresos, $gastos, $parametro, $perfil);
+            $superaSmmlv = self::estaObligadoACotizar($calculo['ingreso_neto'], (string) $parametroPeriodo->valor_smmlv);
         } else {
             $calculo = self::calcularIndependiente($totalIngresos, $parametro, $perfil);
+            $superaSmmlv = self::estaObligadoACotizar($totalIngresos, (string) $parametroPeriodo->valor_smmlv);
         }
 
         $listaIngresos = $ingresos->map(fn ($ing) => [
@@ -482,10 +494,12 @@ class SeguridadSocialService
             'arl' => $calculo['arl'],
             'total' => $calculo['total'],
             'aplica_fsp' => $calculo['aplica_fsp'],
-            // La obligación depende de los ingresos brutos; si tras la presunción de
-            // costos la base queda por debajo del mínimo, se cotiza sobre 1 SMMLV.
+            // Para rentista de capital, la obligación de cotizar depende del ingreso neto tras la deducción
+            // de costos (o gastos). Si la base neta es inferior a 1 SMMLV, no existe obligación
+            // (cálculo voluntario sobre 1 SMMLV). Si la base neta es >= 1 SMMLV pero su 40% queda por debajo
+            // de 1 SMMLV, se cotiza sobre 1 SMMLV.
             'avisos' => match (true) {
-                bccomp($brutos, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
+                bccomp($baseNeta, $smmlv, 2) < 0 => [self::AVISO_BAJO_SMMLV],
                 bccomp(self::porcentaje($baseNeta, (string) $parametro->porc_ibc_indep), bcmul($smmlv, (string) $parametro->ibc_min_smmlv, 2), 2) < 0 => [self::AVISO_IBC_MINIMO],
                 default => [],
             },

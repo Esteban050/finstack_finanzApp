@@ -331,4 +331,39 @@ class SeguridadSocialRentistaTest extends TestCase
         $this->assertSame('0.00', $resultado['fsp']);
         $this->assertSame('819888.00', $resultado['total']);
     }
+
+    public function test_calcular_rentista_capital_ingreso_neto_menor_al_minimo_avisa_bajo_smmlv(): void
+    {
+        // Ingreso bruto de 1.500.000 con presunción de costos del 28.08%
+        // Deducción = 421.200 -> Ingreso neto = 1.078.800 (menor a 1 SMMLV = 1.423.500)
+        $resultado = SeguridadSocialService::calcularRentistaCapital(
+            '1500000.00',
+            '0',
+            $this->parametro,
+            $this->perfil,
+            SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA
+        );
+
+        $this->assertSame('1078800.00', $resultado['ingreso_neto']);
+        $this->assertContains(SeguridadSocialService::AVISO_BAJO_SMMLV, $resultado['avisos']);
+    }
+
+    public function test_calcular_rentista_capital_ingreso_neto_mayor_al_minimo_pero_ibc_menor_al_minimo_avisa_ibc_minimo(): void
+    {
+        // Ingreso bruto de 2.000.000 con presunción del 28.08%
+        // Deducción = 561.600 -> Ingreso neto = 1.438.400 (mayor a 1 SMMLV = 1.423.500)
+        // IBC preliminar = 40% de 1.438.400 = 575.360 (menor a 1 SMMLV)
+        // Por ende el IBC se acota al SMMLV: 1.423.500
+        $resultado = SeguridadSocialService::calcularRentistaCapital(
+            '2000000.00',
+            '0',
+            $this->parametro,
+            $this->perfil,
+            SeguridadSocialService::PORCENTAJE_PRESUNCION_COSTOS_RENTISTA
+        );
+
+        $this->assertSame('1438400.00', $resultado['ingreso_neto']);
+        $this->assertSame('1423500.00', $resultado['ibc']);
+        $this->assertContains(SeguridadSocialService::AVISO_IBC_MINIMO, $resultado['avisos']);
+    }
 }
