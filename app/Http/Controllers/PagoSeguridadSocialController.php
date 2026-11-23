@@ -718,8 +718,10 @@ class PagoSeguridadSocialController extends Controller
             'porcentaje_pension' => ['nullable', 'numeric', 'between:0,100'],
             'porcentaje_fsp' => ['nullable', 'numeric', 'between:0,100'],
             'porcentaje_arl' => ['nullable', 'numeric', 'between:0,100'],
-            'salud' => ['nullable', ...$monto],
-            'pension' => ['nullable', ...$monto],
+            // RN-035.1: salud* y pensión* son obligatorios (pensión admite $ 0: el
+            // pensionado no aporta). Si llega el IBC, se calculan desde los porcentajes.
+            'salud' => ['required_without:ibc', 'nullable', ...$monto],
+            'pension' => ['required_without:ibc', 'nullable', ...$monto],
             'fsp' => ['nullable', ...$monto],
             'arl' => ['nullable', ...$monto],
             'intereses_mora' => ['nullable', ...$monto],
@@ -758,6 +760,7 @@ class PagoSeguridadSocialController extends Controller
 
         foreach ($nombres as $campo => $nombre) {
             $mensajes["{$campo}.required"] = "Indique el valor pagado de {$nombre}.";
+            $mensajes["{$campo}.required_without"] = "Indique el valor pagado de {$nombre}.";
             $mensajes["{$campo}.numeric"] = "El valor de {$nombre} debe ser un número.";
             $mensajes["{$campo}.min"] = "El valor de {$nombre} no puede ser negativo.";
             $mensajes["{$campo}.regex"] = "El valor de {$nombre} admite hasta 12 dígitos enteros y 2 decimales.";

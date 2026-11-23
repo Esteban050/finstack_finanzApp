@@ -777,7 +777,8 @@ class MovimientoInversionController extends Controller
             'tipo' => ['required', Rule::in(Inversion::MOVIMIENTOS_PERMITIDOS[$inversion->tipo] ?? MovimientoInversion::TIPOS)],
             'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString()],
             'monto' => ['required', 'numeric', 'gt:0', 'max:999999999999.99'],
-            'unidades' => ['nullable', 'numeric', 'gt:0'],
+            // RN-037.3: unidades > 0 y hasta 8 decimales.
+            'unidades' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
             'valor_unidad' => ['nullable', 'numeric', 'gt:0'],
             'comision' => ['nullable', 'numeric', 'gte:0'],
             'impuesto_origen' => ['nullable', 'numeric', 'gte:0'],
@@ -796,6 +797,8 @@ class MovimientoInversionController extends Controller
         return [
             'tipo.required' => 'Indique el tipo de transacción.',
             'tipo.in' => 'El tipo de transacción no está permitido para este producto.',
+            'unidades.gt' => 'Las unidades deben ser mayores que cero.',
+            'unidades.regex' => 'Las unidades admiten hasta 8 decimales.',
             'fecha.required' => 'Indique la fecha de la transacción.',
             'fecha.after_or_equal' => 'La fecha no puede ser anterior a la apertura de la inversión.',
             'fecha.before_or_equal' => 'La fecha no puede ser futura.',
