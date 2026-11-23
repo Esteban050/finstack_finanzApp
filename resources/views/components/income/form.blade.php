@@ -25,13 +25,13 @@
                     </div>
                 </x-ui.field>
                 <div data-exchange-rate-field @if(old('moneda', $record['moneda'] ?? 'COP') !== 'USD') hidden @endif>
-                    <x-ui.field name="tasa_cambio_usada" :id="$prefix.'-rate'" label="Tasa de cambio (TRM)" help="Opcional. Si se deja vacía, se aplicará automáticamente la TRM oficial de la fecha de recepción.">
+                    <x-ui.field name="tasa_cambio_usada" :id="$prefix.'-rate'" label="Tasa de cambio (TRM)" help="Si hay una TRM disponible para la fecha, puedes dejar la tasa manual vacía.">
                         <input id="{{ $prefix }}-rate" type="text" inputmode="decimal" data-value-input data-precision="4" min="0.0001" data-positive="true" name="tasa_cambio_usada" placeholder="Ej: 4.150,00" value="{{ old('tasa_cambio_usada', $record['tasa_cambio_usada'] ?? '') }}">
                     </x-ui.field>
                 </div>
             </div>
             <div data-trm-suggestion class="ui-notice" @if(old('moneda', $record['moneda'] ?? 'COP') !== 'USD') hidden @endif>
-                <p class="ui-help" data-trm-hint>TRM aplicable: Si no indicas una tasa personalizada, se usará la TRM oficial de la fecha consultada automáticamente.</p>
+                <p class="ui-help" data-trm-hint role="status">Selecciona la fecha para consultar la TRM.</p>
             </div>
             <x-ui.money-input name="monto_original" :id="$prefix.'-gross'" label="Monto bruto" :value="(string) ($record['monto_original'] ?? '')" :currency="old('moneda', $record['moneda'] ?? 'COP')" />
             <div class="income-two-fields">

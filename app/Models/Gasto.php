@@ -80,6 +80,8 @@ class Gasto extends Model
         'categoria_id',
         'subcategoria_id',
         'plantilla_recurrencia_id',
+        'credito_id',
+        'movimiento_gmf_id',
         'fecha',
         'moneda',
         'monto_original',
@@ -152,6 +154,15 @@ class Gasto extends Model
     public function scopeConTarjetaCredito(Builder $query): Builder
     {
         return $query->where('medio_pago', 'TARJETA_CREDITO');
+    }
+
+    public function scopeConsumosConTarjeta(Builder $query): Builder
+    {
+        return $query->conTarjetaCredito()->whereNotExists(function ($pagos) {
+            $pagos->selectRaw('1')->from('pagos_credito')
+                ->where(fn ($gastos) => $gastos->whereColumn('pagos_credito.gasto_id', 'gastos.id')
+                    ->orWhereColumn('pagos_credito.gasto_intereses_id', 'gastos.id'));
+        });
     }
 
     public function estaPendiente(): bool

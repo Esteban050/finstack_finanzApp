@@ -17,17 +17,17 @@ class ConsolidadoRentaService
      */
     public static function obtenerParametros(int $anioGravable): array
     {
-        try {
-            $normativo = ParametroNormativo::where('anio_vigencia', $anioGravable)
-                ->where('es_activa', true)
-                ->orderByDesc('version')
-                ->first();
-        } catch (\Throwable) {
-            $normativo = null;
+        $normativo = ParametroNormativo::where('anio_vigencia', $anioGravable)
+            ->where('es_activa', true)
+            ->first();
+
+        if ($normativo === null) {
+            throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException(
+                "No hay una vigencia normativa activa para {$anioGravable}.",
+            );
         }
 
-        // UVT oficial
-        $uvt = $normativo ? (float) $normativo->valor_uvt : ($anioGravable === 2026 ? 52374.0 : 49799.0);
+        $uvt = (float) $normativo->valor_uvt;
 
         // Componente inflacionario anual decretado
         try {
@@ -47,14 +47,14 @@ class ConsolidadoRentaService
             'anio_gravable' => $anioGravable,
             'uvt' => $uvt,
             'pct_componente_inflacionario' => $pctInflacionario,
-            'tope_patrimonio_uvt' => $normativo ? (int) $normativo->tope_patrimonio_uvt : 4500,
-            'tope_ingresos_uvt' => $normativo ? (int) $normativo->tope_ingresos_uvt : 1400,
-            'tope_tarjetas_uvt' => $normativo ? (int) $normativo->tope_tc_uvt : 1400,
-            'tope_compras_uvt' => $normativo ? (int) $normativo->tope_compras_uvt : 1400,
-            'tope_consignaciones_uvt' => $normativo ? (int) $normativo->tope_consignaciones_uvt : 1400,
-            'limite_global_exentas_pct' => $normativo ? ((float) $normativo->porc_limite_global_exentas / 100.0) : 0.40,
-            'limite_global_exentas_uvt' => $normativo ? (int) $normativo->limite_global_exentas_uvt : 1340,
-            'limite_exenta_laboral_25_uvt' => $normativo ? (int) $normativo->limite_renta_exenta_25_uvt : 790,
+            'tope_patrimonio_uvt' => (int) $normativo->tope_patrimonio_uvt,
+            'tope_ingresos_uvt' => (int) $normativo->tope_ingresos_uvt,
+            'tope_tarjetas_uvt' => (int) $normativo->tope_tc_uvt,
+            'tope_compras_uvt' => (int) $normativo->tope_compras_uvt,
+            'tope_consignaciones_uvt' => (int) $normativo->tope_consignaciones_uvt,
+            'limite_global_exentas_pct' => ((float) $normativo->porc_limite_global_exentas / 100.0),
+            'limite_global_exentas_uvt' => (int) $normativo->limite_global_exentas_uvt,
+            'limite_exenta_laboral_25_uvt' => (int) $normativo->limite_renta_exenta_25_uvt,
             'limite_fpv_ingreso_bruto_pct' => 0.30,
         ];
     }

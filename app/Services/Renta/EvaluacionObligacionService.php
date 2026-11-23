@@ -3,6 +3,7 @@
 namespace App\Services\Renta;
 
 use App\Models\DeclaracionRenta;
+use App\Models\Gasto;
 use App\Models\Usuario;
 use Carbon\CarbonImmutable;
 
@@ -39,7 +40,13 @@ class EvaluacionObligacionService
         $valC2 = max(0.0, (float) $declaracion->c2_ingresos_brutos_cop + (float) $declaracion->c2_ajuste_manual_cop);
         $declaracion->c1_valor_final_cop = $valC1;
         $declaracion->c2_valor_final_cop = $valC2;
-        $valC3 = (float) $declaracion->c3_consumos_tarjeta_cop;
+        $consumosRegistrados = (string) Gasto::delUsuario($usuario->id)
+            ->confirmados()->consumosConTarjeta()
+            ->whereBetween('fecha', ["{$anioGravable}-01-01", "{$anioGravable}-12-31"])
+            ->sum('monto_cop');
+        // El total manual puede incluir consumos externos. Conserva el mayor sin duplicar registros.
+        $consumosDeclarados = (string) ($declaracion->c3_consumos_tarjeta_cop ?? '0');
+        $valC3 = bccomp($consumosRegistrados, $consumosDeclarados, 2) > 0 ? $consumosRegistrados : $consumosDeclarados;
         $valC4 = (float) $declaracion->c4_compras_totales_cop;
 
         // C5: max(Piso Inversiones, Consignaciones declaradas)
@@ -64,7 +71,8 @@ class EvaluacionObligacionService
         $cercaC2 = (! $cumpleC2 && $topeC2Cop > 0 && ($valC2 / $topeC2Cop) >= 0.90);
 
         // 3. Evaluación C3: Consumos tarjeta > 1.400 UVT
-        $cumpleC3 = $valC3 > $topeC3Cop;
+        $topeC3Exacto = bcmul((string) $uvt, (string) $params['tope_tarjetas_uvt'], 2);
+        $cumpleC3 = bccomp($valC3, $topeC3Exacto, 2) > 0;
         $margenC3 = max(0.0, $topeC3Cop - $valC3);
         $cercaC3 = (! $cumpleC3 && $topeC3Cop > 0 && ($valC3 / $topeC3Cop) >= 0.90);
 

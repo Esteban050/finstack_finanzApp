@@ -15,7 +15,7 @@ export function validateTagDraft(draft, tags) {
     if (!draft.trim()) return '';
     return validateTags([...tags, draft.trim()]) || 'Agrega la etiqueta con Enter o Agregar, o borra el texto antes de guardar.';
 }
-export function validateExpense(values, categories, { recurrent = false, limit = 'none', frozen = {} } = {}) {
+export function validateExpense(values, categories, { recurrent = false, limit = 'none', frozen = {}, cardRequired = false } = {}) {
     const errors = {};
     if (!recurrent) {
         try { formatDate(values.fecha); if (!/^\d{4}-\d{2}-\d{2}$/.test(values.fecha)) throw new Error(); }
@@ -29,6 +29,9 @@ export function validateExpense(values, categories, { recurrent = false, limit =
     if (!children.length && category) errors.subcategoria_id = ['Esta categoría no tiene subcategorías activas. Crea o activa una subcategoría para continuar.'];
     else if (!children.some((sub) => sub.id === values.subcategoria_id)) errors.subcategoria_id = ['Selecciona una subcategoría activa de esta categoría.'];
     if (!has(Object.keys(PAYMENT_LABELS), values.medio_pago)) errors.medio_pago = ['Selecciona el medio de pago.'];
+    if (cardRequired && values.medio_pago === 'TARJETA_CREDITO' && !values.credito_id) {
+        errors.credito_id = ['Selecciona la tarjeta usada para pagar el gasto.'];
+    }
     if (!has(['FIJO', 'VARIABLE'], values.naturaleza)) errors.naturaleza = ['Selecciona la naturaleza: Fijo o Variable.'];
     if (!has(['ESENCIAL', 'DISCRECIONAL'], values.necesidad)) errors.necesidad = ['Selecciona la necesidad: Esencial o Discrecional.'];
     if (!has(['NO_DEDUCIBLE', 'POTENCIALMENTE_DEDUCIBLE'], values.relevancia_tributaria)) errors.relevancia_tributaria = ['Selecciona la relevancia tributaria.'];

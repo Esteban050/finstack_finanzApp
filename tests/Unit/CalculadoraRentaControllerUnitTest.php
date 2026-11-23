@@ -12,10 +12,12 @@ use App\Services\Renta\InformacionComplementariaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Mockery;
+use Tests\Support\PreparaVigenciasCalculadora;
 use Tests\TestCase;
 
 class CalculadoraRentaControllerUnitTest extends TestCase
 {
+    use PreparaVigenciasCalculadora;
     protected DeclaracionRentaController $controller;
     protected CalculadoraRentaService $calculadoraService;
 
@@ -28,6 +30,7 @@ class CalculadoraRentaControllerUnitTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->prepararVigenciasCalculadora();
 
         $consolidadoService = Mockery::mock(ConsolidadoRentaService::class);
         $complementariaService = Mockery::mock(InformacionComplementariaService::class);
@@ -77,6 +80,15 @@ class CalculadoraRentaControllerUnitTest extends TestCase
         $this->assertArrayHasKey('liquidacion', $data);
         $this->assertGreaterThan(0, $data['liquidacion']['impuesto_cop']);
         $this->assertArrayHasKey('saldo_neto_cop', $data['liquidacion']);
+    }
+
+    public function test_calcular_simulacion_rechaza_un_anio_sin_vigencia(): void
+    {
+        $request = Request::create('/renta/2030/calculadora/calcular', 'POST');
+        $response = $this->controller->calcularSimulacion($request, 2030);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertStringContainsString('2030', $response->getData(true)['message']);
     }
 
     public function test_calcular_simulacion_no_obliga_si_montos_son_menores_a_topes(): void

@@ -8,6 +8,7 @@ use App\Models\PagoSeguridadSocial;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
+use App\Services\ConsumoTarjetaService;
 use App\Services\GastoService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -52,17 +53,23 @@ class GastoController extends Controller
         // CA-028.2: un gasto con monto estimado no entra en la ejecución
         // presupuestal hasta confirmarse. Se totaliza solo lo CONFIRMADO y los
         // pendientes se informan por separado para que nada quede oculto.
-        $totales = (clone $base)->confirmados()->selectRaw("
-            COUNT(*) AS cantidad,
-            COALESCE(SUM(monto_cop), 0) AS monto,
-            COALESCE(SUM(CASE WHEN medio_pago = 'TARJETA_CREDITO' THEN monto_cop ELSE 0 END), 0) AS tarjeta_credito,
-            COALESCE(SUM(CASE WHEN relevancia_tributaria = 'POTENCIALMENTE_DEDUCIBLE' THEN monto_cop ELSE 0 END), 0) AS potencialmente_deducible
-        ")->first();
-
-        $pendientes = (clone $base)->where('estado', 'PENDIENTE')->selectRaw('
-            COUNT(*) AS cantidad,
-            COALESCE(SUM(monto_cop), 0) AS monto
-        ')->first();
+        $acumulados = (clone $base)->selectRaw("
+            COUNT(*) FILTER (WHERE estado = 'CONFIRMADO') AS cantidad,
+            COALESCE(SUM(monto_cop) FILTER (WHERE estado = 'CONFIRMADO'), 0) AS monto,
+            COALESCE(SUM(monto_cop) FILTER (WHERE estado = 'CONFIRMADO' AND relevancia_tributaria = 'POTENCIALMENTE_DEDUCIBLE'), 0) AS potencialmente_deducible,
+            COUNT(*) FILTER (WHERE estado = 'PENDIENTE') AS pendientes_cantidad,
+            COALESCE(SUM(monto_cop) FILTER (WHERE estado = 'PENDIENTE'), 0) AS pendientes_monto
+        ")->addSelect([
+            'tarjeta_credito' => (clone $base)->confirmados()->consumosConTarjeta()
+                ->selectRaw('COALESCE(SUM(monto_cop), 0)'),
+        ])->toBase()->first();
+        $totales = (object) [
+            'cantidad' => $acumulados->cantidad,
+            'monto' => $acumulados->monto,
+            'tarjeta_credito' => $acumulados->tarjeta_credito,
+            'potencialmente_deducible' => $acumulados->potencialmente_deducible,
+        ];
+        $pendientes = (object) ['cantidad' => $acumulados->pendientes_cantidad, 'monto' => $acumulados->pendientes_monto];
 
         // RNG-10: por defecto se ordenan por fecha, del más reciente al más antiguo.
         $gastos = $base->with(['categoria', 'subcategoria'])
@@ -93,10 +100,6 @@ class GastoController extends Controller
             'totales' => $totales,
             'pendientes' => $pendientes,
             'categorias' => CategoriaGastoService::catalogo(Auth::id()),
-            'etiquetasUsadas' => GastoService::etiquetasUsadas(),
-            'dimensiones' => $this->dimensiones(),
-            'porPaginaOpciones' => self::POR_PAGINA,
-            'porPagina' => $porPagina,
         ]);
     }
 
@@ -124,7 +127,7 @@ class GastoController extends Controller
             ]);
         }
 
-        return view('gastos.create', $datos);
+        return view('gastos.create', $datos + ['tarjetas' => $this->tarjetas()]);
     }
 
     /**
@@ -137,14 +140,18 @@ class GastoController extends Controller
 
         $atributos = $this->prepararAtributos($validated);
 
-        $gasto = Gasto::create(array_merge($atributos, [
-            'usuario_id' => Auth::id(),
-            'fecha' => $validated['fecha'],
-            'origen' => 'MANUAL',
-            'estado' => 'CONFIRMADO',
-            'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
-            'descripcion' => $validated['descripcion'] ?? null,
-        ]));
+        $gasto = DB::transaction(function () use ($atributos, $validated) {
+            $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos);
+
+            return Gasto::create(array_merge($atributos, [
+                'usuario_id' => Auth::id(),
+                'fecha' => $validated['fecha'],
+                'origen' => 'MANUAL',
+                'estado' => 'CONFIRMADO',
+                'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
+                'descripcion' => $validated['descripcion'] ?? null,
+            ]));
+        });
 
         BitacoraService::registrar(
             accion: 'CREAR_GASTO',
@@ -186,6 +193,7 @@ class GastoController extends Controller
 
         return view('gastos.edit', [
             'gasto' => $gasto,
+            'tarjetas' => $this->tarjetas(),
             'categorias' => CategoriaGastoService::catalogo(Auth::id(), soloActivas: true),
             'dimensiones' => $this->dimensiones(),
             'etiquetasUsadas' => GastoService::etiquetasUsadas(),
@@ -198,19 +206,25 @@ class GastoController extends Controller
      */
     public function update(Request $request, string $id): RedirectResponse|JsonResponse
     {
-        $gasto = $this->gastoPropio($id);
-        $this->rechazarSiEsDePagoPila($gasto);
-        $this->rechazarSiEsDePagoCredito($gasto);
         $validated = $request->validate($this->reglas(), $this->mensajes());
-
         $atributos = $this->prepararAtributos($validated);
-        $anterior = $gasto->toArray();
+        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated) {
+            $gasto = $this->gastoPropio($id, bloquear: true);
+            $this->rechazarSiEsAutomatico($gasto);
+            $anterior = $gasto->toArray();
 
-        $gasto->update(array_merge($atributos, [
-            'fecha' => $validated['fecha'],
-            'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
-            'descripcion' => $validated['descripcion'] ?? null,
-        ]));
+            if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
+                $atributos['credito_id'] = $gasto->credito_id;
+            }
+            $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), $gasto, $atributos);
+            $gasto->update(array_merge($atributos, [
+                'fecha' => $validated['fecha'],
+                'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
+                'descripcion' => $validated['descripcion'] ?? null,
+            ]));
+
+            return [$gasto, $anterior];
+        });
 
         BitacoraService::registrar(
             accion: 'EDITAR_GASTO',
@@ -244,12 +258,15 @@ class GastoController extends Controller
      */
     public function destroy(Request $request, string $id): RedirectResponse|JsonResponse
     {
-        $gasto = $this->gastoPropio($id);
-        $this->rechazarSiEsDePagoPila($gasto);
-        $this->rechazarSiEsDePagoCredito($gasto);
-        $anterior = $gasto->toArray();
+        $anterior = DB::transaction(function () use ($id) {
+            $gasto = $this->gastoPropio($id, bloquear: true);
+            $this->rechazarSiEsAutomatico($gasto);
+            ConsumoTarjetaService::aplicar(Auth::id(), $gasto, []);
+            $anterior = $gasto->toArray();
+            $gasto->delete();
 
-        $gasto->delete();
+            return $anterior;
+        });
 
         BitacoraService::registrar(
             accion: 'ELIMINAR_GASTO',
@@ -382,6 +399,10 @@ class GastoController extends Controller
 
         // RN-035.3: los gastos de un pago PILA se editan desde su pago. Se rechaza
         // la operación completa en lugar de omitirlos sin avisar.
+        if (Gasto::whereIn('id', $validated['ids'])->whereNotNull('movimiento_gmf_id')->exists()) {
+            throw ValidationException::withMessages(['gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.']);
+        }
+
         if (PagoSeguridadSocial::whereIn('gasto_id', $validated['ids'])->exists()) {
             throw ValidationException::withMessages([
                 'ids' => 'La selección incluye gastos generados por pagos de seguridad social (PILA). Quítelos de la selección: se editan desde /seguridad-social/pagos.',
@@ -481,30 +502,10 @@ class GastoController extends Controller
      */
     private function prepararAtributos(array $validated): array
     {
-        $subcategoria = null;
-        $categoriaId = $validated['categoria_id'];
-        $subcategoriaId = $validated['subcategoria_id'] ?? null;
-
-        if (! empty($subcategoriaId)) {
-            $subcategoria = GastoService::validarJerarquia(
-                $categoriaId,
-                $subcategoriaId,
-                Auth::id()
-            );
-            $categoriaId = $subcategoria->categoria_padre_id;
-            $sugerencias = GastoService::aplicarSugerencias($subcategoria, $validated);
-        } else {
-            $categoria = GastoService::categoriaUsable($categoriaId, Auth::id());
-            if ($categoria === null) {
-                throw ValidationException::withMessages([
-                    'categoria_id' => 'La categoría no existe, está inactiva o no pertenece a tus categorías de gasto.',
-                ]);
-            }
-            $sugerencias = [
-                'naturaleza' => $validated['naturaleza'] ?? ($categoria->naturaleza_sugerida ?? 'VARIABLE'),
-                'necesidad' => $validated['necesidad'] ?? ($categoria->necesidad_sugerida ?? 'DISCRECIONAL'),
-            ];
-        }
+        $subcategoria = GastoService::validarJerarquia(
+            $validated['categoria_id'], $validated['subcategoria_id'], Auth::id(),
+        );
+        $sugerencias = GastoService::aplicarSugerencias($subcategoria, $validated);
 
         return array_merge(
             // CA-017.1: en USD sin tasa se usa la TRM vigente en la fecha del gasto.
@@ -512,8 +513,9 @@ class GastoController extends Controller
             $sugerencias,
             GastoService::validarRelevancia($validated),
             [
-                'categoria_id' => $categoriaId,
-                'subcategoria_id' => $subcategoria?->id,
+                'categoria_id' => $subcategoria->categoria_padre_id,
+                'subcategoria_id' => $subcategoria->id,
+                'credito_id' => $validated['credito_id'] ?? null,
                 'medio_pago' => $validated['medio_pago'],
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
             ]
@@ -614,9 +616,9 @@ class GastoController extends Controller
             'monto_original' => ['required', 'numeric', 'gt:0', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'moneda' => ['required', 'string', 'size:3', 'alpha'],
             'tasa_cambio_usada' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,4})?$/'],
-            // Categoría obligatoria, subcategoría opcional
             'categoria_id' => ['required', 'uuid'],
-            'subcategoria_id' => ['nullable', 'uuid'],
+            'subcategoria_id' => ['required', 'uuid'],
+            'credito_id' => ['exclude_unless:medio_pago,TARJETA_CREDITO', 'nullable', 'uuid'],
             // RN-026.1 (4): medio de pago, obligatorio.
             'medio_pago' => ['required', Rule::in(Gasto::MEDIOS_PAGO)],
             // RN-026.1 (2) y (3): si no se envían, se toma la sugerencia de la
@@ -658,7 +660,9 @@ class GastoController extends Controller
             'tasa_cambio_usada.regex' => 'La tasa de cambio admite hasta 8 dígitos enteros y 4 decimales.',
             'categoria_id.required' => 'Seleccione la categoría del gasto.',
             'categoria_id.uuid' => 'La categoría seleccionada no es válida.',
+            'subcategoria_id.required' => 'Seleccione la subcategoría del gasto.',
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
+            'credito_id.uuid' => 'Seleccione una tarjeta válida.',
             'medio_pago.required' => 'Seleccione el medio de pago.',
             'medio_pago.in' => 'El medio de pago debe ser EFECTIVO, TARJETA_DEBITO, TARJETA_CREDITO, TRANSFERENCIA, BILLETERA_DIGITAL u OTRO.',
             'naturaleza.in' => 'La naturaleza debe ser FIJO o VARIABLE.',
@@ -695,9 +699,9 @@ class GastoController extends Controller
      * RNG-01: El global scope ya devolvió 404 para recursos ajenos. Aquí solo se
      * distingue el caso que la regla manda registrar en bitácora (RF-019).
      */
-    private function gastoPropio(string $id): Gasto
+    private function gastoPropio(string $id, bool $bloquear = false): Gasto
     {
-        $gasto = Gasto::find($id);
+        $gasto = Gasto::query()->when($bloquear, fn ($query) => $query->lockForUpdate())->find($id);
 
         if ($gasto !== null) {
             return $gasto;
@@ -726,6 +730,22 @@ class GastoController extends Controller
      *
      * @throws ValidationException
      */
+    private function tarjetas()
+    {
+        return ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito']);
+    }
+
+    private function rechazarSiEsAutomatico(Gasto $gasto): void
+    {
+        $this->rechazarSiEsDePagoPila($gasto);
+        $this->rechazarSiEsDePagoCredito($gasto);
+        if ($gasto->movimiento_gmf_id !== null) {
+            throw ValidationException::withMessages([
+                'gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.',
+            ]);
+        }
+    }
+
     private function rechazarSiEsDePagoPila(Gasto $gasto): void
     {
         if (PagoSeguridadSocial::where('gasto_id', $gasto->id)->exists()) {

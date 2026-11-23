@@ -740,7 +740,7 @@ class SeguridadSocialService
 
         // 5. FONDO DE SOLIDARIDAD PENSIONAL (RF-09)
         // Evaluar si el consolidado total supera 20 SMMLV
-        $supera20Smmlv = bccomp($ibcConsolidadoTotal, $umbral20, 2) >= 0;
+        $supera20Smmlv = bccomp($ibcConsolidadoTotal, $umbral20, 2) > 0;
         $tarifaFsp = $supera20Smmlv ? '2.00' : self::tarifaFsp($ibcConsolidadoTotal, $smmlv, $parametro);
 
         // 6. LIQUIDACIÓN LABORAL (TIPO E)
@@ -1347,22 +1347,31 @@ class SeguridadSocialService
      */
     public static function tarifaFsp(string $ibc, string $smmlv, ParametroNormativo $parametro): string
     {
-        $enSmmlv = bcdiv($ibc, $smmlv, 4);
-
-        if (bccomp($enSmmlv, '20.00', 4) >= 0) {
+        $comparacion = bccomp($ibc, bcmul($smmlv, '20', 2), 2);
+        if ($comparacion > 0) {
             return (string) ($parametro->tarifa_fsp ?? '2.00');
         }
+        if (bccomp($ibc, bcmul($smmlv, '4', 2), 2) < 0) {
+            return '0';
+        }
 
-        $tramo = TarifaEscalonada::where('parametro_normativo_id', $parametro->id)
+        $enSmmlv = bcdiv($ibc, $smmlv, 12);
+        // Los 4 y 16 SMMLV inician el aporte base y el adicional, respectivamente.
+        $incluyeDesde = bccomp($enSmmlv, '4', 12) === 0 || bccomp($enSmmlv, '16', 12) === 0;
+        $tramo = $parametro->tarifasEscalonadas()
             ->where('tipo_tabla', 'FSP')
-            ->where('rango_desde', '<=', $enSmmlv)
-            ->where(function ($query) use ($enSmmlv) {
-                $query->whereNull('rango_hasta')->orWhere('rango_hasta', '>', $enSmmlv);
-            })
+            ->where('rango_desde', $incluyeDesde ? '<=' : '<', $enSmmlv)
+            ->where(fn ($rango) => $rango->whereNull('rango_hasta')->orWhere('rango_hasta', '>=', $enSmmlv))
             ->orderByDesc('rango_desde')
             ->first();
 
-        return $tramo === null ? '0' : (string) $tramo->tarifa_porc;
+        if ($tramo === null) {
+            throw ValidationException::withMessages([
+                'periodo' => "Falta configurar el tramo del Fondo de Solidaridad Pensional para la vigencia {$parametro->anio_vigencia}.",
+            ]);
+        }
+
+        return (string) $tramo->tarifa_porc;
     }
 
     /**

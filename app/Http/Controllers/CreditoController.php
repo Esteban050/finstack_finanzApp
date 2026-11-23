@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Credito;
+use App\Models\Gasto;
 use App\Models\CuotaCredito;
 use App\Models\PagoCredito;
 use App\Models\Scopes\DelUsuarioAutenticado;
@@ -416,15 +417,21 @@ class CreditoController extends Controller
         $credito = $this->creditoPropio($id);
         $validated = $this->validar($request);
 
-        $cambiaCondiciones = $this->cambiaCondiciones($credito, $validated);
+        DB::transaction(function () use ($credito, $validated) {
+            $credito = Credito::whereKey($credito->id)->lockForUpdate()->firstOrFail();
+            $cambiaCondiciones = $this->cambiaCondiciones($credito, $validated);
 
-        if ($cambiaCondiciones && PagoCredito::where('credito_id', $credito->id)->vigentes()->exists()) {
-            throw ValidationException::withMessages([
-                'credito' => 'El crédito ya tiene pagos: solo se pueden cambiar el banco y el propósito. Para corregir las condiciones, reverse los pagos.',
-            ]);
-        }
+            if ($cambiaCondiciones && PagoCredito::where('credito_id', $credito->id)->vigentes()->exists()) {
+                throw ValidationException::withMessages([
+                    'credito' => 'El crédito ya tiene pagos: solo se pueden cambiar el banco y el propósito. Para corregir las condiciones, reverse los pagos.',
+                ]);
+            }
+            if ($cambiaCondiciones && Gasto::where('credito_id', $credito->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'credito' => 'Para cambiar las condiciones, corrige los consumos vinculados a esta tarjeta desde Gastos.',
+                ]);
+            }
 
-        DB::transaction(function () use ($credito, $validated, $cambiaCondiciones) {
             $anterior = $credito->toArray();
 
             $credito->update($validated);
@@ -460,13 +467,18 @@ class CreditoController extends Controller
     {
         $credito = $this->creditoPropio($id);
 
-        if (PagoCredito::where('credito_id', $credito->id)->vigentes()->exists()) {
-            throw ValidationException::withMessages([
-                'credito' => 'El crédito tiene pagos vigentes: reverse los pagos antes de eliminarlo.',
-            ]);
-        }
-
         DB::transaction(function () use ($credito) {
+            $credito = Credito::whereKey($credito->id)->lockForUpdate()->firstOrFail();
+            if (PagoCredito::where('credito_id', $credito->id)->vigentes()->exists()) {
+                throw ValidationException::withMessages([
+                    'credito' => 'El crédito tiene pagos vigentes: reverse los pagos antes de eliminarlo.',
+                ]);
+            }
+            if (Gasto::where('credito_id', $credito->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'credito' => 'La tarjeta tiene consumos vinculados. Corrige primero esos registros desde Gastos.',
+                ]);
+            }
             $anterior = $credito->toArray();
             $credito->delete();
 

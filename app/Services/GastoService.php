@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Categoria;
 use App\Models\Gasto;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -67,7 +68,8 @@ class GastoService
      */
     public static function validarJerarquia(string $categoriaId, string $subcategoriaId, string $usuarioId): Categoria
     {
-        $categoria = self::categoriaUsable($categoriaId, $usuarioId);
+        $visibles = self::categoriasUsables($usuarioId)->whereKey([$categoriaId, $subcategoriaId])->get()->keyBy('id');
+        $categoria = $visibles->get(strtolower($categoriaId));
 
         if ($categoria === null || $categoria->categoria_padre_id !== null) {
             throw ValidationException::withMessages([
@@ -75,7 +77,7 @@ class GastoService
             ]);
         }
 
-        $subcategoria = self::categoriaUsable($subcategoriaId, $usuarioId);
+        $subcategoria = $visibles->get(strtolower($subcategoriaId));
 
         if ($subcategoria === null || $subcategoria->categoria_padre_id !== $categoria->id) {
             throw ValidationException::withMessages([
@@ -242,15 +244,18 @@ class GastoService
      */
     public static function indicadoresAnuales(int $anio): array
     {
-        $confirmados = Gasto::query()
+        $base = Gasto::query()
             ->confirmados()
-            ->whereRaw('EXTRACT(YEAR FROM fecha) = ?', [$anio])
-            ->selectRaw("
+            ->whereRaw('EXTRACT(YEAR FROM fecha) = ?', [$anio]);
+        $confirmados = (clone $base)->selectRaw("
                 COUNT(*) AS cantidad,
                 COALESCE(SUM(monto_cop), 0) AS compras_y_consumos_totales,
-                COALESCE(SUM(CASE WHEN medio_pago = 'TARJETA_CREDITO' THEN monto_cop ELSE 0 END), 0) AS consumos_tarjeta_credito,
                 COALESCE(SUM(CASE WHEN relevancia_tributaria = 'POTENCIALMENTE_DEDUCIBLE' THEN monto_cop ELSE 0 END), 0) AS potencialmente_deducible
             ")
+            ->addSelect([
+                'consumos_tarjeta_credito' => $base->consumosConTarjeta()
+                    ->selectRaw('COALESCE(SUM(monto_cop), 0)'),
+            ])
             ->first();
 
         $pendientes = Gasto::query()
@@ -319,13 +324,16 @@ class GastoService
      */
     public static function categoriaUsable(string $id, string $usuarioId): ?Categoria
     {
-        return Categoria::where('id', $id)
-            ->where('tipo', 'GASTO')
+        return self::categoriasUsables($usuarioId)->find($id);
+    }
+
+    private static function categoriasUsables(string $usuarioId): Builder
+    {
+        return Categoria::where('tipo', 'GASTO')
             ->where('activa', true)
             ->where(function ($query) use ($usuarioId) {
                 $query->where('usuario_id', $usuarioId)
                     ->orWhere('es_predeterminada', true);
-            })
-            ->first();
+            });
     }
 }

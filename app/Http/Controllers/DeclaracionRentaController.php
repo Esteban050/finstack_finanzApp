@@ -185,9 +185,11 @@ class DeclaracionRentaController extends Controller
     public function calculadora(Request $request, int $anio): View
     {
         $usuario = auth()->user();
-        $parametros = ConsolidadoRentaService::obtenerParametros($anio);
+        $vigencias = \App\Models\ParametroNormativo::where('es_activa', true)
+            ->orderByDesc('anio_vigencia')->pluck('anio_vigencia')->map(fn ($year) => (int) $year)->all();
+        $sinVigencia = ! in_array($anio, $vigencias, true);
 
-        return view('renta.calculadora', compact('usuario', 'anio', 'parametros'));
+        return view('renta.calculadora', compact('usuario', 'anio', 'vigencias', 'sinVigencia'));
     }
 
     /**
@@ -212,7 +214,11 @@ class DeclaracionRentaController extends Controller
             'retenciones_fuente_cop' => ['nullable', 'numeric', 'min:0'],
         ])->validate();
 
-        $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
+        try {
+            $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
+        } catch (\Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json($resultado);
     }

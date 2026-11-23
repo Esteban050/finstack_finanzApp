@@ -11,7 +11,7 @@
                 <strong>Aviso de Versionamiento:</strong> Al modificar los parámetros, se generará automáticamente una nueva versión (v{{ $parametro->version + 1 }}), conservando el histórico anterior en la bitácora de auditoría.
             </div>
 
-            <form method="POST" action="{{ route('admin.parametros.update', $parametro->id) }}" class="p-8 bg-white shadow sm:rounded-xl space-y-6">
+            <form method="POST" data-confirm-vigencia action="{{ route('admin.parametros.update', $parametro->id) }}" class="p-8 bg-white shadow sm:rounded-xl space-y-6">
                 @csrf
                 @method('PUT')
 

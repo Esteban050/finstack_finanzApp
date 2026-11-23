@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Inversion;
+use App\Models\Gasto;
+use App\Models\Categoria;
 use App\Models\MovimientoInversion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\UsuarioPerfilTributario;
@@ -64,7 +66,12 @@ class MovimientoInversionController extends Controller
 
     public function store(Request $request, string $id): JsonResponse|RedirectResponse
     {
-        $inversion = $this->inversionPropia($id);
+        return DB::transaction(fn () => $this->guardarMovimiento($request, $id));
+    }
+
+    private function guardarMovimiento(Request $request, string $id): JsonResponse|RedirectResponse
+    {
+        $inversion = Inversion::whereKey($id)->lockForUpdate()->firstOrFail();
 
         if ($inversion->estaLiquidada()) {
             throw ValidationException::withMessages([
@@ -619,6 +626,10 @@ class MovimientoInversionController extends Controller
             // Registrar en tablas puente hacia Ingresos
             InversionService::registrarPuentesTributarios($movimiento, $inversion, $datosPuente);
 
+            if (bccomp($gmfAplicado, '0', 2) > 0) {
+                $this->registrarGastoGmf($movimiento, $gmfAplicado);
+            }
+
             BitacoraService::registrar(
                 accion: 'REGISTRAR_MOVIMIENTO',
                 entidadAfectada: 'movimientos_inversion',
@@ -662,6 +673,8 @@ class MovimientoInversionController extends Controller
         }
 
         DB::transaction(function () use ($movimiento, $inversion) {
+            Inversion::whereKey($inversion->id)->lockForUpdate()->firstOrFail();
+            $movimiento = MovimientoInversion::whereKey($movimiento->id)->firstOrFail();
             $anterior = $movimiento->toArray();
 
             // Revertir inventario si era VENTA o REDENCION
@@ -698,6 +711,7 @@ class MovimientoInversionController extends Controller
                 \App\Models\Ingreso::where('id', $movimiento->ingreso_id)->delete();
             }
 
+            Gasto::where('movimiento_gmf_id', $movimiento->id)->first()?->delete();
             $movimiento->delete();
 
             BitacoraService::registrar(
@@ -716,6 +730,34 @@ class MovimientoInversionController extends Controller
 
         return redirect()->route('inversiones.show', $inversion->id)
             ->with('status', 'Transacción eliminada con éxito.');
+    }
+
+    private function registrarGastoGmf(MovimientoInversion $movimiento, string $monto): void
+    {
+        $categoria = Categoria::whereNull('usuario_id')->whereNull('categoria_padre_id')
+            ->where('tipo', 'GASTO')->where('nombre', 'Impuestos')->firstOrFail();
+        $subcategoria = Categoria::whereNull('usuario_id')->where('categoria_padre_id', $categoria->id)
+            ->where('tipo', 'GASTO')->where('nombre', 'GMF')->firstOrFail();
+
+        Gasto::create([
+            'usuario_id' => $movimiento->usuario_id,
+            'categoria_id' => $categoria->id,
+            'subcategoria_id' => $subcategoria->id,
+            'movimiento_gmf_id' => $movimiento->id,
+            'fecha' => $movimiento->fecha,
+            'moneda' => 'COP',
+            'monto_original' => $monto,
+            'tasa_cambio_usada' => '1.0000',
+            'monto_cop' => $monto,
+            'naturaleza' => 'VARIABLE',
+            'necesidad' => 'ESENCIAL',
+            'medio_pago' => 'OTRO',
+            'relevancia_tributaria' => 'POTENCIALMENTE_DEDUCIBLE',
+            'subtipo_deduccion' => 'GMF',
+            'origen' => 'MANUAL',
+            'estado' => 'CONFIRMADO',
+            'descripcion' => 'GMF del retiro · 50 % potencialmente deducible',
+        ]);
     }
 
     private function inversionPropia(string $id): Inversion
