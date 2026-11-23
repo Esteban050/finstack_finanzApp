@@ -17,7 +17,7 @@
 <x-ui.field name="proposito" label="Nombre del crédito" :required="true" help="Entre 3 y 60 caracteres."><input id="proposito" name="proposito" required minlength="3" maxlength="60"></x-ui.field>
 <x-ui.field name="banco" label="Entidad" :required="true" help="Hasta 80 caracteres."><input id="banco" name="banco" required maxlength="80"></x-ui.field>
 <x-ui.select name="tipo_credito" label="Tipo de crédito" :required="true">@foreach(\App\Services\CreditoService::TIPOS_CREDITO as $code)<option value="{{ $code }}">{{ $labels[$code] }}</option>@endforeach</x-ui.select>
-</div><p class="ui-help">Moneda: COP.</p><p data-credit-edit-notice class="ui-notice" hidden>Este crédito tiene pagos: solo puedes cambiar el nombre y la entidad.</p></x-ui.card>
+</div><p class="ui-help">Moneda: COP.</p><p data-credit-edit-notice class="ui-notice" hidden>Este crédito tiene pagos: solo puedes cambiar el nombre, la entidad y el cupo de la tarjeta.</p></x-ui.card>
 <x-ui.card title="Condiciones financieras"><div class="income-two-fields">
 <x-ui.money-input name="monto" id="credit-monto" label="Monto desembolsado" />
 <x-ui.field name="tasa" label="Tasa de interés (%)" :required="true" help="Usa coma decimal, hasta seis decimales."><input id="tasa" name="tasa" inputmode="decimal" required></x-ui.field>
@@ -32,6 +32,7 @@
 <x-ui.date-input name="fecha_primer_pago" label="Fecha de primera cuota" :allow-future="true" :required="false" />
 <x-ui.field name="tasa_mora" label="Tasa de mora (% EA)" help="Este campo no requiere captura manual. Se conserva la tasa ya registrada, si existe."><input id="tasa_mora" name="tasa_mora" inputmode="decimal" disabled></x-ui.field>
 <div data-credit-housing hidden><x-ui.money-input name="valor_inmueble" id="credit-property" label="Valor del inmueble" :required="false" /><label class="ui-check"><input name="es_vis" type="checkbox" value="1"> Vivienda de interés social (VIS)</label></div>
+<div data-credit-card hidden><x-ui.money-input name="cupo" id="credit-cupo" label="Cupo de la tarjeta" :required="false" /><p class="ui-help">Opcional. Si los consumos superan el cupo, se muestra un aviso.</p></div>
 </div></x-ui.card><x-ui.module-status /><div class="ui-inline"><a class="ui-button ui-button--secondary" href="{{ route('creditos.index') }}">Cancelar</a><x-ui.button type="submit" data-credit-save>Registrar crédito</x-ui.button></div></form></section>
 <section data-credit-screen="detail" hidden><div data-credit-detail></div></section>
 <section data-credit-screen="abono" hidden><x-ui.card title="Abono extraordinario a capital"><p>Consulta cómo se aplicará el pago y compara las alternativas antes de confirmar.</p><div data-credit-abono-context></div></x-ui.card><div data-credit-abono-host></div></section>
