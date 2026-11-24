@@ -36,7 +36,7 @@ class EvaluacionObligacionService
         $topeC5Cop = $params['tope_consignaciones_uvt'] * $uvt; // 1.400 UVT
 
         // Valores de evaluación (consolidado + ajuste manual)
-        $valC1 = max(0.0, (float) $declaracion->c1_patrimonio_bruto_cop + (float) $declaracion->c1_ajuste_manual_cop);
+        $valC1 = max(0.0, (float) $declaracion->c1_patrimonio_bruto_cop + (float) $declaracion->c1_inmuebles_valor_fiscal_cop + (float) $declaracion->c1_ajuste_manual_cop);
         $valC2 = max(0.0, (float) $declaracion->c2_ingresos_brutos_cop + (float) $declaracion->c2_ajuste_manual_cop);
         $declaracion->c1_valor_final_cop = $valC1;
         $declaracion->c2_valor_final_cop = $valC2;

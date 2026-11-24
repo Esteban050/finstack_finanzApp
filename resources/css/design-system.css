@@ -211,6 +211,8 @@ html:has(dialog[open]) { overflow: hidden; }
     .ui-content .flex { flex-wrap: wrap; }
     .ui-table, .ui-table tbody, .ui-table tfoot, .ui-table tr, .ui-table td { display: block; width: 100%; }
     .ui-table caption { display: block; width: 100%; }
+    /* Un caption solo para lectores de pantalla no debe ocupar ancho (CP-DIS-001). */
+    .ui-table caption.sr-only { width: 1px; height: 1px; padding: 0; }
     .ui-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .ui-table tr { padding: .75rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); margin: 1rem 0; background: var(--ui-surface); }
     .ui-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 1rem; padding: .75rem .5rem; }
@@ -256,3 +258,11 @@ html:has(dialog[open]) { overflow: hidden; }
 }
 
 .scfp-theme [data-money] { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* CP-DIS-006: áreas táctiles de al menos 44 px en controles que se veían más bajos. */
+summary { min-height: 44px; align-content: center; }
+.ui-table td > a:not(.ui-button),
+.report-ranked-list li > a,
+.dashboard-deficit .planning-detail-link { display: inline-flex; align-items: center; min-height: 44px; }
+/* CP-DIS-002: en pantallas anchas el texto corrido no pasa de ~80 caracteres por línea. */
+:where(.ui-content p) { max-width: 80ch; }

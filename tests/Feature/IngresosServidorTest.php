@@ -96,4 +96,27 @@ class IngresosServidorTest extends TestCase
         $this->registrar($base + ['retencion_fuente' => '60000', 'aportes_descontados' => '40001'])->assertStatus(422)
             ->assertJsonValidationErrors(['aportes_descontados' => 'La suma de la retención y los aportes no puede superar el monto bruto.']);
     }
+
+    /** CP-ING-038 / RN-019.3: editar un ingreso en USD conserva moneda, monto original y tasa. */
+    public function test_editar_ingreso_usd_conserva_moneda_monto_y_tasa(): void
+    {
+        $fuente = $this->crearFuente($this->usuario);
+        $datos = ['fuente_id' => $fuente, 'fecha_recepcion' => '2025-03-05', 'monto_original' => '1000', 'moneda' => 'USD',
+            'tasa_cambio_usada' => '4200', 'retencion_fuente' => '100'];
+        $id = $this->registrar($datos)->assertCreated()->json('data.id');
+
+        $html = $this->get(route('ingresos.edit', $id))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/value="USD"[^>]*checked/', $html);
+        $this->assertStringContainsString('name="tasa_cambio_usada" placeholder="Ej: 4.150,00" value="4200.0000"', $html);
+        $this->assertMatchesRegularExpression('/data-value="1000.00"(?:(?!x-data).)*name="monto_original"/s', $html);
+        $this->assertMatchesRegularExpression('/data-value="100.00"(?:(?!x-data).)*name="retencion_fuente"/s', $html);
+
+        // Guardar con lo que trae el formulario no cambia nada.
+        $this->putJson(route('ingresos.update', $id), $datos + ['descripcion' => 'editado'])->assertOk();
+        // CP-DIS-010: tras guardar, la lista que se recarga muestra el mensaje de éxito.
+        $this->get(route('ingresos.index'))->assertOk()->assertSee('Ingreso actualizado.');
+        $fila = DB::table('ingresos')->where('id', $id)->first();
+        $this->assertSame(['USD', '1000.00', '4200.0000', '4200000.00', '420000.00'],
+            [$fila->moneda, (string) $fila->monto_original, (string) $fila->tasa_cambio_usada, (string) $fila->monto_bruto_cop, (string) $fila->retencion_fuente_cop]);
+    }
 }

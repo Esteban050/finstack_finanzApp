@@ -56,7 +56,7 @@ class InformacionComplementariaService
             ]);
         } else {
             $declaracion->c1_patrimonio_bruto_cop = $patrimonioConsolidado;
-            $declaracion->c1_valor_final_cop = max(0.0, $patrimonioConsolidado + (float) $declaracion->c1_ajuste_manual_cop);
+            $declaracion->c1_valor_final_cop = max(0.0, $patrimonioConsolidado + (float) $declaracion->c1_inmuebles_valor_fiscal_cop + (float) $declaracion->c1_ajuste_manual_cop);
             $declaracion->c2_ingresos_brutos_cop = $ingresosConsolidados;
             $declaracion->c2_valor_final_cop = max(0.0, $ingresosConsolidados + (float) $declaracion->c2_ajuste_manual_cop);
             $declaracion->c5_piso_inversiones_cop = $pisoInversiones;
@@ -85,10 +85,17 @@ class InformacionComplementariaService
         $patrimonioConsolidado = (float) ($declaracion->c1_patrimonio_bruto_cop ?? $consolidado['patrimonio_bruto_31_12']['total_cop'] ?? 0);
         $ingresosConsolidados = (float) ($declaracion->c2_ingresos_brutos_cop ?? $consolidado['ingresos_brutos']['total_cop'] ?? 0);
 
+        // Art. 277 ET: inmuebles a valor fiscal declarados por el usuario. Se
+        // suman al patrimonio consolidado antes del ajuste manual.
+        $inmuebles = isset($datos['c1_inmuebles_valor_fiscal_cop']) && $datos['c1_inmuebles_valor_fiscal_cop'] !== ''
+            ? max(0.0, (float) $datos['c1_inmuebles_valor_fiscal_cop'])
+            : (float) $declaracion->c1_inmuebles_valor_fiscal_cop;
+        $patrimonioBase = $patrimonioConsolidado + $inmuebles;
+
         // 1. Validar ajuste manual de patrimonio (C1) y regla de no negatividad (RN-044.2 / CA-044.2)
         $ajustePatrimonio = isset($datos['c1_ajuste_manual_cop']) ? (float) $datos['c1_ajuste_manual_cop'] : (float) $declaracion->c1_ajuste_manual_cop;
-        if (($patrimonioConsolidado + $ajustePatrimonio) < 0) {
-            $maxRestar = number_format($patrimonioConsolidado, 0, ',', '.');
+        if (($patrimonioBase + $ajustePatrimonio) < 0) {
+            $maxRestar = number_format($patrimonioBase, 0, ',', '.');
             throw ValidationException::withMessages([
                 'c1_ajuste_manual_cop' => "El valor final del patrimonio bruto no puede ser negativo. Revisa el ajuste: el máximo que puedes restar es $ {$maxRestar}.",
             ]);
@@ -136,7 +143,7 @@ class InformacionComplementariaService
                     'declaracion_renta_id' => $declaracion->id,
                     'concepto' => 'PATRIMONIO_BRUTO',
                     'valor_anterior_cop' => $declaracion->c1_valor_final_cop,
-                    'valor_nuevo_cop' => $patrimonioConsolidado + $ajustePatrimonio,
+                    'valor_nuevo_cop' => $patrimonioBase + $ajustePatrimonio,
                     'monto_ajuste_cop' => $ajustePatrimonio,
                     'justificacion' => $justificacion,
                     'usuario_id' => $usuario->id,
@@ -160,8 +167,9 @@ class InformacionComplementariaService
         }
 
         // 4. Actualizar campos de la declaración
+        $declaracion->c1_inmuebles_valor_fiscal_cop = $inmuebles;
         $declaracion->c1_ajuste_manual_cop = $ajustePatrimonio;
-        $declaracion->c1_valor_final_cop = $patrimonioConsolidado + $ajustePatrimonio;
+        $declaracion->c1_valor_final_cop = $patrimonioBase + $ajustePatrimonio;
 
         $declaracion->c2_ajuste_manual_cop = $ajusteIngresos;
         $declaracion->c2_valor_final_cop = $ingresosConsolidados + $ajusteIngresos;

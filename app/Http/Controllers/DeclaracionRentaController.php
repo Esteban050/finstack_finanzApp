@@ -74,6 +74,7 @@ class DeclaracionRentaController extends Controller
 
         $validated = $request->validate([
             'c1_ajuste_manual_cop' => ['nullable', 'numeric'],
+            'c1_inmuebles_valor_fiscal_cop' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99'],
             'c2_ajuste_manual_cop' => ['nullable', 'numeric'],
             'justificacion_ajuste' => ['nullable', 'string', 'max:500'],
             'c3_consumos_tarjeta_cop' => ['nullable', 'numeric', 'min:0'],
@@ -81,6 +82,9 @@ class DeclaracionRentaController extends Controller
             'c5_consignaciones_declaradas_cop' => ['nullable', 'numeric', 'min:0'],
             'c5_confirmado' => ['nullable', 'boolean'],
             'accion' => ['nullable', 'string'],
+        ], [
+            'c1_inmuebles_valor_fiscal_cop.min' => 'El valor fiscal de los inmuebles no puede ser negativo.',
+            'c1_inmuebles_valor_fiscal_cop.max' => 'El valor fiscal de los inmuebles no puede superar $ 999.999.999.999,99.',
         ]);
 
         $this->complementariaService->guardarInformacionComplementaria($usuario, $anio, $validated);

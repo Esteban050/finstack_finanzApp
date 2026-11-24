@@ -110,7 +110,7 @@
                         <!-- Tarjeta Riesgo Bajo -->
                         <div id="card-riesgo-BAJO" onclick="seleccionarNivelRiesgo('BAJO')" style="border: 2px solid {{ $initialRiesgo === 'BAJO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'BAJO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="radio" name="wizard_riesgo_radio" value="BAJO" @checked($initialRiesgo === 'BAJO') style="accent-color: #b45309; pointer-events: none;">
+                                <input type="radio" name="wizard_riesgo_radio" value="BAJO" @checked($initialRiesgo === 'BAJO') onchange="seleccionarNivelRiesgo('BAJO')" aria-label="Riesgo bajo" style="accent-color: #b45309; pointer-events: none;">
                                 <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Bajo</span>
                             </div>
                             <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre 4 % y 7 % EA</div>
@@ -120,7 +120,7 @@
                         <!-- Tarjeta Riesgo Medio -->
                         <div id="card-riesgo-MEDIO" onclick="seleccionarNivelRiesgo('MEDIO')" style="border: 2px solid {{ $initialRiesgo === 'MEDIO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'MEDIO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="radio" name="wizard_riesgo_radio" value="MEDIO" @checked($initialRiesgo === 'MEDIO') style="accent-color: #b45309; pointer-events: none;">
+                                <input type="radio" name="wizard_riesgo_radio" value="MEDIO" @checked($initialRiesgo === 'MEDIO') onchange="seleccionarNivelRiesgo('MEDIO')" aria-label="Riesgo medio" style="accent-color: #b45309; pointer-events: none;">
                                 <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Medio</span>
                             </div>
                             <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre 6 % y 12 % EA</div>
@@ -130,7 +130,7 @@
                         <!-- Tarjeta Riesgo Alto -->
                         <div id="card-riesgo-ALTO" onclick="seleccionarNivelRiesgo('ALTO')" style="border: 2px solid {{ $initialRiesgo === 'ALTO' ? '#b45309' : '#e2e8f0' }}; background: {{ $initialRiesgo === 'ALTO' ? '#fffaf0' : '#ffffff' }}; border-radius: 12px; padding: 1.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="radio" name="wizard_riesgo_radio" value="ALTO" @checked($initialRiesgo === 'ALTO') style="accent-color: #b45309; pointer-events: none;">
+                                <input type="radio" name="wizard_riesgo_radio" value="ALTO" @checked($initialRiesgo === 'ALTO') onchange="seleccionarNivelRiesgo('ALTO')" aria-label="Riesgo alto" style="accent-color: #b45309; pointer-events: none;">
                                 <span style="font-size: 1.05rem; font-weight: 700; color: #1e293b;">Alto</span>
                             </div>
                             <div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">Entre -10 % y 20 % EA</div>

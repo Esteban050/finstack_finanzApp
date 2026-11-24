@@ -6,6 +6,7 @@
         'patrimonioConsolidado'=>(string)$consolidado['patrimonio_bruto_31_12']['total_cop'],
         'ingresosConsolidados'=>(string)$consolidado['ingresos_brutos']['total_cop'],
         'pisoInversiones'=>(string)$consolidado['piso_inversiones_c5']['total_cop'],
+        'inmueblesValorFiscal'=>(string)old('c1_inmuebles_valor_fiscal_cop',$declaracion->c1_inmuebles_valor_fiscal_cop ?? '0'),
         'ajustePatrimonio'=>(string)old('c1_ajuste_manual_cop',$declaracion->c1_ajuste_manual_cop ?? '0'),
         'ajusteIngresos'=>(string)old('c2_ajuste_manual_cop',$declaracion->c2_ajuste_manual_cop ?? '0'),
         'consumosTarjeta'=>(string)old('c3_consumos_tarjeta_cop',$declaracion->c3_consumos_tarjeta_cop ?? '0'),
@@ -28,6 +29,10 @@
                         <x-ui.money-input name="c4_compras_totales_cop" id="c4_input" label="Compras y consumos totales" :value="$rentaInitial['comprasTotales']" :allow-zero="true" :required="false" />
                     </div>
                 </x-ui.card>
+                <x-ui.card title="Inmuebles">
+                    <p class="ui-help">Tus casas, apartamentos, lotes o locales no están en tus registros. Escribe la suma de su valor fiscal al 31 de diciembre: por cada inmueble, el mayor entre el costo fiscal y el avalúo o autoavalúo catastral (Art. 277 del Estatuto Tributario). Se suma a tu patrimonio bruto.</p>
+                    <x-ui.money-input name="c1_inmuebles_valor_fiscal_cop" id="c1_inmuebles_input" label="Valor fiscal de tus inmuebles" :value="$rentaInitial['inmueblesValorFiscal']" :allow-zero="true" :required="false" />
+                </x-ui.card>
                 <x-ui.card title="Ajustes a ingresos y patrimonio">
                     <p class="ui-help">Valor final = consolidado + ajuste. Puedes sumar o restar, sin dejar el total por debajo de cero.</p>
                     <div class="renta-adjustment">
@@ -36,7 +41,7 @@
                         <p :class="ingresosInvalidos ? 'ui-error' : 'ui-help'" aria-live="polite">Ingresos finales: <strong x-text="money(ingresosFinales)"></strong></p>
                     </div>
                     <div class="renta-adjustment">
-                        <p>Patrimonio bruto consolidado: <strong data-money="{{ $consolidado['patrimonio_bruto_31_12']['total_cop'] }}"></strong></p>
+                        <p>Patrimonio bruto consolidado: <strong data-money="{{ $consolidado['patrimonio_bruto_31_12']['total_cop'] }}"></strong><span x-show="tieneInmuebles"> + inmuebles <strong x-text="money(inmueblesValorFiscal)"></strong></span></p>
                         <x-ui.money-input name="c1_ajuste_manual_cop" label="Ajuste al patrimonio bruto" :value="$rentaInitial['ajustePatrimonio']" :allow-zero="true" :allow-negative="true" />
                         <p :class="patrimonioInvalido ? 'ui-error' : 'ui-help'" aria-live="polite">Patrimonio final: <strong x-text="money(patrimonioFinal)"></strong></p>
                     </div>

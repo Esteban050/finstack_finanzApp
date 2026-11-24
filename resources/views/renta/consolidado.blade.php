@@ -306,6 +306,16 @@
                                 <td colspan="6" class="mk-muted" style="text-align:center;padding:1rem">No se registraron inversiones patrimoniales al 31 de diciembre.</td>
                             </tr>
                         @endforelse
+                        @if(($declaracion->c1_inmuebles_valor_fiscal_cop ?? 0) != 0)
+                            <tr>
+                                <td><span class="ui-badge">INMUEBLES</span></td>
+                                <td>Inmuebles declarados en información complementaria</td>
+                                <td class="mk-meta">Valor fiscal (Art. 277 ET)</td>
+                                <td class="num">—</td>
+                                <td class="num">—</td>
+                                <td class="num mk-strong">$ {{ $formatValue($declaracion->c1_inmuebles_valor_fiscal_cop, 0, ',', '.') }}</td>
+                            </tr>
+                        @endif
                         @if($declaracion->c1_ajuste_manual_cop != 0)
                             <tr class="is-row-current">
                                 <td colspan="3"><span class="mk-strong">Ajuste manual del usuario</span><br><span class="mk-meta">"{{ $declaracion->justificacion_ajustes['c1'] ?? 'Ajuste patrimonial' }}"</span></td>

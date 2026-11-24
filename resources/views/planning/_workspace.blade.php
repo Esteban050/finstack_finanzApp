@@ -23,4 +23,6 @@
 <header class="income-page-header planning-page-header"><div class="planning-heading"><h1 data-workspace-title></h1><p data-workspace-description hidden></p></div><div class="ui-inline planning-heading-actions" data-workspace-actions>@if($workspacePage === 'notifications')<a class="ui-button ui-button--ghost" href="{{ $workspaceRoutes['alerts'] }}">Configurar alertas</a>@endif</div></header>
 <div data-workspace-status role="alert" hidden></div><div data-workspace-loading><x-ui.skeleton :lines="4" /></div><div data-workspace-content></div>
 <noscript><p class="ui-notice">Activa JavaScript para consultar los datos y utilizar estos reportes.</p></noscript>
+{{-- RNG-08: los reportes y presupuestos muestran cálculos estimados. --}}
+@if(in_array($workspacePage, ['dashboard', 'indicators', 'cash', 'matrix', 'compare', 'budgets'], true))<x-ui.calculation-notice />@endif
 </div>

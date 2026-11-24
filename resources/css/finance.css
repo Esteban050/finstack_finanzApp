@@ -158,4 +158,6 @@
 
 .investment-page [style*="background: #"], .investment-page [style*="background:#"] { background:var(--ui-surface) !important; border-color:var(--ui-border-strong) !important; }
 .investment-page [style*="color: #"], .investment-page [style*="color:#"] { color:var(--ui-text) !important; }
+/* CP-DIS-003: si el fondo en línea se reemplaza por la superficie, el texto blanco en línea tampoco puede quedarse. */
+.investment-page [style*="background: #"][style*="color: white"], .investment-page [style*="background:#"][style*="color:white"] { color:var(--ui-text) !important; }
 .investment-page .ui-help[style] { color:var(--ui-muted) !important; }

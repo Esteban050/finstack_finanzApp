@@ -179,6 +179,8 @@ class GastoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Gasto registrado exitosamente.');
             return response()->json([
                 'mensaje' => 'Gasto registrado exitosamente.',
                 'data' => $gasto->load(['categoria', 'subcategoria', 'credito']),
@@ -267,6 +269,8 @@ class GastoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Gasto actualizado.');
             return response()->json([
                 'mensaje' => 'Gasto actualizado.',
                 'data' => $gasto->fresh()->load(['categoria', 'subcategoria']),
@@ -303,6 +307,7 @@ class GastoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            session()->flash('status', 'Gasto eliminado.');
             return response()->json(['mensaje' => 'Gasto eliminado.']);
         }
 
@@ -358,6 +363,8 @@ class GastoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Gasto confirmado.');
             return response()->json([
                 'mensaje' => 'Gasto confirmado.',
                 'data' => $gasto->fresh(),

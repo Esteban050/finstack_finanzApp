@@ -29,7 +29,8 @@
 .income-table { min-width: 0; }
 .income-source-list [data-recurrence-fields] { margin-block: 1.5rem; }
 [data-recurrence-fields] > .ui-inline { margin-block: 1rem 1.5rem; }
-[data-limit-choice][aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+/* CP-DIS-003: el texto del botón activo necesita 4,5:1 en ambos temas. */
+[data-limit-choice][aria-pressed=true] { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
 @media (max-width: 1199px) {
     .income-editor { grid-template-columns: minmax(0, 1fr); }
     .income-summary { position: static; }

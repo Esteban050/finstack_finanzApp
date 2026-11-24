@@ -55,16 +55,17 @@ export function registerRenta(Alpine) {
     }));
     Alpine.data('rentaComplementary', () => ({
         patrimonioConsolidado: '0', ingresosConsolidados: '0', pisoInversiones: '0',
-        ajustePatrimonio: '0', ajusteIngresos: '0', consumosTarjeta: '0', comprasTotales: '0', consignaciones: '0',
+        inmueblesValorFiscal: '0', ajustePatrimonio: '0', ajusteIngresos: '0', consumosTarjeta: '0', comprasTotales: '0', consignaciones: '0',
         invalidFields: {},
         init() { Object.assign(this, JSON.parse(this.$root.dataset.rentaInitial)); },
         update(detail) {
-            const keys = { c1_ajuste_manual_cop: 'ajustePatrimonio', c2_ajuste_manual_cop: 'ajusteIngresos', c3_consumos_tarjeta_cop: 'consumosTarjeta', c4_compras_totales_cop: 'comprasTotales', c5_consignaciones_declaradas_cop: 'consignaciones' };
+            const keys = { c1_inmuebles_valor_fiscal_cop: 'inmueblesValorFiscal', c1_ajuste_manual_cop: 'ajustePatrimonio', c2_ajuste_manual_cop: 'ajusteIngresos', c3_consumos_tarjeta_cop: 'consumosTarjeta', c4_compras_totales_cop: 'comprasTotales', c5_consignaciones_declaradas_cop: 'consignaciones' };
             if (!keys[detail.name]) return;
             this[keys[detail.name]] = detail.amount;
             this.invalidFields[detail.name] = !detail.valid;
         },
-        get patrimonioFinal() { return complementaryTotal(this.patrimonioConsolidado, this.ajustePatrimonio); },
+        get patrimonioFinal() { return complementaryTotal(complementaryTotal(this.patrimonioConsolidado, this.inmueblesValorFiscal), this.ajustePatrimonio); },
+        get tieneInmuebles() { try { return !decimal(this.inmueblesValorFiscal || '0').isZero(); } catch { return false; } },
         get ingresosFinales() { return complementaryTotal(this.ingresosConsolidados, this.ajusteIngresos); },
         get patrimonioInvalido() { return decimal(this.patrimonioFinal).lt('0'); },
         get ingresosInvalidos() { return decimal(this.ingresosFinales).lt('0'); },

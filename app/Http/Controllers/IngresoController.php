@@ -143,6 +143,8 @@ class IngresoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Ingreso registrado exitosamente.');
             return response()->json([
                 'mensaje' => 'Ingreso registrado exitosamente.',
                 'data' => $ingreso->load('fuente'),
@@ -214,6 +216,8 @@ class IngresoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Ingreso actualizado.');
             return response()->json([
                 'mensaje' => 'Ingreso actualizado.',
                 'data' => $ingreso->load('fuente'),
@@ -247,6 +251,7 @@ class IngresoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            session()->flash('status', 'Ingreso eliminado.');
             return response()->json(['mensaje' => 'Ingreso eliminado.']);
         }
 
@@ -279,6 +284,8 @@ class IngresoController extends Controller
         );
 
         if ($request->expectsJson()) {
+            // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
+            session()->flash('status', 'Ingreso confirmado.');
             return response()->json([
                 'mensaje' => 'Ingreso confirmado.',
                 'data' => $ingreso->fresh(),
