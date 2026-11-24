@@ -50,6 +50,8 @@ class Credito extends Model
         'fecha_inicio',
         'fecha_primer_pago',
         'fecha_corte',
+        // CP-CRE-013: cupo de la tarjeta de crédito.
+        'cupo',
         'seguro_porc_mensual',
         'cargo_fijo',
         'valor_inmueble',
@@ -70,6 +72,7 @@ class Credito extends Model
             'fecha_inicio' => 'date:Y-m-d',
             'fecha_primer_pago' => 'date:Y-m-d',
             'fecha_corte' => 'date:Y-m-d',
+            'cupo' => 'decimal:2',
             'seguro_porc_mensual' => 'decimal:6',
             'cargo_fijo' => 'decimal:2',
             'valor_inmueble' => 'decimal:2',

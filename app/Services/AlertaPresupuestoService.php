@@ -12,9 +12,10 @@ use Carbon\CarbonImmutable;
  *   umbral. Una por umbral, categoría y mes.
  * - PRESUPUESTO_TOTAL: la ejecución total llega a un umbral.
  * - PROYECCION_LINEA (RN-057.3): desde la mitad del mes, la proyección al
- *   cierre de una línea llega al umbral y la línea aún no llegó al 100 %.
+ *   cierre de una línea supera el umbral y la línea aún no llegó al 100 %.
  *
- * Si una evaluación cruza varios umbrales a la vez solo se emite el más alto.
+ * CA-057.2: si una evaluación cruza varios umbrales a la vez se emite una
+ * alerta por cada uno; la clave (RN-057.2) evita repetir los ya emitidos.
  * La clave usa la categoría y no el id de la línea, porque editar el
  * presupuesto recrea las líneas.
  */
@@ -40,13 +41,13 @@ class AlertaPresupuestoService
         $regla = $reglas[ReglaAlertaService::UMBRAL_LINEA];
         if ($regla['activa']) {
             foreach ($ejecucion['lineas'] as $linea) {
-                $umbral = self::umbralAlcanzado($regla['parametros']['umbrales'], $linea['ejecucion_porc']);
-
-                if ($umbral !== null && self::emitir($presupuesto, $regla, $umbral, "UMBRAL_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}:{$umbral}", [
-                    ...self::datosLinea($ejecucion, $linea),
-                    'umbral' => $umbral,
-                ])) {
-                    $emitidas++;
+                foreach (self::umbralesAlcanzados($regla['parametros']['umbrales'], $linea['ejecucion_porc']) as $umbral) {
+                    if (self::emitir($presupuesto, $regla, $umbral, "UMBRAL_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}:{$umbral}", [
+                        ...self::datosLinea($ejecucion, $linea),
+                        'umbral' => $umbral,
+                    ])) {
+                        $emitidas++;
+                    }
                 }
             }
         }
@@ -54,18 +55,19 @@ class AlertaPresupuestoService
         $regla = $reglas[ReglaAlertaService::PRESUPUESTO_TOTAL];
         if ($regla['activa']) {
             $totales = $ejecucion['totales'];
-            $umbral = self::umbralAlcanzado($regla['parametros']['umbrales'], $totales['ejecucion_porc']);
 
-            if ($umbral !== null && self::emitir($presupuesto, $regla, $umbral, "PRESUPUESTO_TOTAL:{$ejecucion['mes']}:{$umbral}", [
-                'mes' => $ejecucion['mes'],
-                'presupuesto_id' => $presupuesto->id,
-                'umbral' => $umbral,
-                'ejecucion_porc' => $totales['ejecucion_porc'],
-                'asignado' => bcadd($totales['monto_asignado'], $totales['saldo_trasladado'], 0),
-                'gastado' => $totales['gastado'],
-                'disponible' => $totales['disponible'],
-            ])) {
-                $emitidas++;
+            foreach (self::umbralesAlcanzados($regla['parametros']['umbrales'], $totales['ejecucion_porc']) as $umbral) {
+                if (self::emitir($presupuesto, $regla, $umbral, "PRESUPUESTO_TOTAL:{$ejecucion['mes']}:{$umbral}", [
+                    'mes' => $ejecucion['mes'],
+                    'presupuesto_id' => $presupuesto->id,
+                    'umbral' => $umbral,
+                    'ejecucion_porc' => $totales['ejecucion_porc'],
+                    'asignado' => bcadd($totales['monto_asignado'], $totales['saldo_trasladado'], 0),
+                    'gastado' => $totales['gastado'],
+                    'disponible' => $totales['disponible'],
+                ])) {
+                    $emitidas++;
+                }
             }
         }
 
@@ -76,9 +78,10 @@ class AlertaPresupuestoService
 
             foreach ($ejecucion['lineas'] as $linea) {
                 $yaExcedida = bccomp((string) $linea['ejecucion_porc'], '100', 2) >= 0;
-                $llega = bccomp((string) $linea['proyeccion_porc'], (string) $umbral, 2) >= 0;
+                // RN-057.3 / CP-PRE-021: la proyección debe superar el umbral; 110 % exacto no alerta.
+                $supera = bccomp((string) $linea['proyeccion_porc'], (string) $umbral, 2) === 1;
 
-                if (! $yaExcedida && $llega && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
+                if (! $yaExcedida && $supera && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
                     ...self::datosLinea($ejecucion, $linea),
                     'umbral' => $umbral,
                     'proyeccion' => $linea['proyeccion'],
@@ -94,21 +97,26 @@ class AlertaPresupuestoService
         return $emitidas;
     }
 
-    /** El umbral más alto que el % alcanza, o null si no llega a ninguno. */
-    private static function umbralAlcanzado(array $umbrales, ?string $porcentaje): ?int
+    /**
+     * CA-057.2: los umbrales que el % alcanza, de menor a mayor (vacío si no
+     * llega a ninguno). De menor a mayor para que la de mayor prioridad quede
+     * como la más reciente.
+     *
+     * @return array<int, int>
+     */
+    private static function umbralesAlcanzados(array $umbrales, ?string $porcentaje): array
     {
         if ($porcentaje === null) {
-            return null;
+            return [];
         }
 
-        $alcanzado = null;
-        foreach ($umbrales as $umbral) {
-            if (bccomp($porcentaje, (string) $umbral, 2) >= 0 && ($alcanzado === null || $umbral > $alcanzado)) {
-                $alcanzado = (int) $umbral;
-            }
-        }
+        $alcanzados = array_values(array_filter(
+            array_map('intval', $umbrales),
+            fn (int $umbral) => bccomp($porcentaje, (string) $umbral, 2) >= 0
+        ));
+        sort($alcanzados);
 
-        return $alcanzado;
+        return $alcanzados;
     }
 
     private static function emitir(Presupuesto $presupuesto, array $regla, ?int $umbral, string $clave, array $datos): bool

@@ -85,3 +85,12 @@ test('lint: renta corregida queda limpia y no admite infracciones nuevas',async(
  assert.equal(financialLintStatus('resources/views/creditos/index.blade.php','const n=decimal("1");'),'clean');
  const config=readFileSync('tailwind.config.js','utf8');assert.doesNotMatch(config,/storage\/framework\/views/);
 });
+
+test('créditos: el cupo de la tarjeta (CP-CRE-013) viaja en pesos enteros y solo para tarjetas',()=>{
+    assert.deepEqual(contractPayload('/creditos','POST',{banco:'QA',tipo_credito:'TARJETA_CREDITO',cupo:'1000000'}),{banco:'QA',tipo_credito:'TARJETA_CREDITO',cupo:'1000000'});
+    assert.equal(contractPayload('/creditos/0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f','PUT',{cupo:'1000000'}).cupo,'1000000');
+    assert.equal(creditPayload({tipo_credito:'TARJETA_CREDITO',cupo:'1000000.00'}).payload.cupo,'1000000');
+    assert.deepEqual(creditPayload({tipo_credito:'TARJETA_CREDITO',cupo:'1000000.50'}).errors.cupo,['Indica un valor en pesos enteros, sin centavos.']);
+    assert.equal(creditPayload({tipo_credito:'LIBRE_INVERSION',cupo:'1000000'}).payload.cupo,undefined);
+    assert.equal(recordPayload({tipo_credito:'TARJETA_CREDITO',tasa_ingresada:'2',tasa_mora_ea:null,plazo_meses:null,cupo:'1000000.00'}).cupo,'1000000');
+});

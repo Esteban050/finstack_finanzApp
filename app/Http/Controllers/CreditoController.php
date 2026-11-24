@@ -423,7 +423,8 @@ class CreditoController extends Controller
 
     /**
      * RF-048: Editar el crédito. Créditos RF-08 / RF-28: con pagos vigentes
-     * las condiciones quedan fijas y solo cambian el banco y el propósito; sin
+     * las condiciones quedan fijas y solo cambian el banco, el propósito y el
+     * cupo de la tarjeta (CP-CRE-013); sin
      * pagos, el plan se regenera como versión nueva (RF-26).
      */
     public function update(Request $request, string $id): JsonResponse
@@ -437,7 +438,7 @@ class CreditoController extends Controller
 
             if ($cambiaCondiciones && PagoCredito::where('credito_id', $credito->id)->vigentes()->exists()) {
                 throw ValidationException::withMessages([
-                    'credito' => 'El crédito ya tiene pagos: solo se pueden cambiar el banco y el propósito. Para corregir las condiciones, reverse los pagos.',
+                    'credito' => 'El crédito ya tiene pagos: solo se pueden cambiar el banco, el propósito y el cupo. Para corregir las condiciones, reverse los pagos.',
                 ]);
             }
             if ($cambiaCondiciones && Gasto::where('credito_id', $credito->id)->exists()) {
@@ -605,8 +606,8 @@ class CreditoController extends Controller
         ];
 
         foreach ($validated as $campo => $nuevo) {
-            // Banco, propósito, valor del inmueble y VIS no cambian el plan.
-            if (in_array($campo, ['banco', 'proposito', 'valor_inmueble', 'es_vis'], true)) {
+            // Banco, propósito, valor del inmueble, VIS y cupo (CP-CRE-013) no cambian el plan.
+            if (in_array($campo, ['banco', 'proposito', 'valor_inmueble', 'es_vis', 'cupo'], true)) {
                 continue;
             }
 
@@ -691,6 +692,8 @@ class CreditoController extends Controller
             // Créditos RN-03: solo vivienda.
             'valor_inmueble' => ['nullable', 'prohibited_unless:tipo_credito,VIVIENDA', 'regex:/^\d{1,12}$/', 'not_regex:/^0+$/'],
             'es_vis' => ['nullable', 'prohibited_unless:tipo_credito,VIVIENDA', 'boolean'],
+            // CP-CRE-013: cupo de la tarjeta, opcional y en pesos enteros.
+            'cupo' => ['nullable', 'prohibited_unless:tipo_credito,TARJETA_CREDITO', 'regex:/^\d{1,12}$/', 'not_regex:/^0+$/'],
         ];
 
         if ($conMonto) {
@@ -699,7 +702,8 @@ class CreditoController extends Controller
 
         if ($conIdentificacion) {
             $reglas['banco'] = ['required', 'string', 'max:80'];
-            $reglas['proposito'] = ['required', 'string', 'min:3', 'max:120'];
+            // RN-048.1 / CP-CRE-003: el propósito es el nombre del crédito, entre 3 y 60 caracteres.
+            $reglas['proposito'] = ['required', 'string', 'min:3', 'max:60'];
         }
 
         $validated = Validator::make($entrada, $reglas, $this->mensajes())->validate();
@@ -757,6 +761,7 @@ class CreditoController extends Controller
             'cargo_fijo' => isset($validated['cargo_fijo']) ? (string) $validated['cargo_fijo'] : null,
             'valor_inmueble' => isset($validated['valor_inmueble']) ? (string) $validated['valor_inmueble'] : null,
             'es_vis' => isset($validated['es_vis']) ? (bool) $validated['es_vis'] : null,
+            'cupo' => isset($validated['cupo']) ? (string) $validated['cupo'] : null,
         ];
 
         if ($conMonto) {
@@ -861,9 +866,9 @@ class CreditoController extends Controller
         return [
             'banco.required' => 'Indique el nombre del banco.',
             'banco.max' => 'El nombre del banco admite máximo 80 caracteres.',
-            'proposito.required' => 'Indique el propósito del préstamo.',
-            'proposito.min' => 'El propósito debe tener al menos 3 caracteres.',
-            'proposito.max' => 'El propósito admite máximo 120 caracteres.',
+            'proposito.required' => 'Indique el nombre del crédito del préstamo.',
+            'proposito.min' => 'El nombre del crédito debe tener al menos 3 caracteres.',
+            'proposito.max' => 'El nombre del crédito admite máximo 60 caracteres.',
             'monto.required' => 'Indique el monto del préstamo.',
             'monto.numeric' => 'El monto debe ser un número.',
             'monto.gt' => 'El monto debe ser mayor que cero.',
@@ -901,6 +906,9 @@ class CreditoController extends Controller
             'cargo_fijo.regex' => 'El cargo fijo por cuota va en pesos enteros, sin decimales ni separadores.',
             'valor_inmueble.prohibited_unless' => 'El valor del inmueble solo aplica a créditos de vivienda.',
             'valor_inmueble.regex' => 'El valor del inmueble va en pesos enteros, sin decimales ni separadores.',
+            'cupo.prohibited_unless' => 'El cupo solo aplica a tarjetas de crédito.',
+            'cupo.regex' => 'El cupo va en pesos enteros, sin decimales ni separadores, con hasta 12 dígitos.',
+            'cupo.not_regex' => 'El cupo debe ser mayor que $ 0.',
             'valor_inmueble.not_regex' => 'El valor del inmueble debe ser mayor que cero.',
             'es_vis.prohibited_unless' => 'Indicar si es VIS solo aplica a créditos de vivienda.',
             'es_vis.boolean' => 'Indique si la vivienda es VIS con true o false.',

@@ -21,19 +21,20 @@ export function creditPayload(values) {
         if(payload[key]===undefined || payload[key]===''){delete payload[key];continue;}
         try {payload[key]=canonicalDecimal(payload[key],{min:'0',precision:6});}catch(error){errors[key]=[error.message];}
     }
-    for(const key of ['cargo_fijo','valor_inmueble'])if(payload[key]){payload[key]=integerPeso(payload[key]);if(!/^\d+$/.test(payload[key]))errors[key]=['Indica un valor en pesos enteros, sin centavos.'];}
+    for(const key of ['cargo_fijo','valor_inmueble','cupo'])if(payload[key]){payload[key]=integerPeso(payload[key]);if(!/^\d+$/.test(payload[key]))errors[key]=['Indica un valor en pesos enteros, sin centavos.'];}
     if(payload.tipo_tasa!=='NOMINAL')delete payload.capitalizacion;
     if(payload.tipo_credito!=='VIVIENDA'){delete payload.valor_inmueble;delete payload.es_vis;}
+    if(payload.tipo_credito!=='TARJETA_CREDITO')delete payload.cupo;
     if(payload.plazo_meses!==undefined)delete payload.numero_cuotas;
     return {payload,errors};
 }
 export function recordPayload(record) {
-    const keys=['banco','proposito','tipo_credito','monto','tipo_tasa','capitalizacion','periodicidad','sistema_amortizacion','plazo_meses','numero_cuotas','fecha_inicio','fecha_primer_pago','seguro_porc_mensual','cargo_fijo','valor_inmueble','es_vis'];
+    const keys=['banco','proposito','tipo_credito','monto','tipo_tasa','capitalizacion','periodicidad','sistema_amortizacion','plazo_meses','numero_cuotas','fecha_inicio','fecha_primer_pago','seguro_porc_mensual','cargo_fijo','valor_inmueble','es_vis','cupo'];
     const payload=Object.fromEntries(keys.filter(key=>record[key]!==null && record[key]!==undefined).map(key=>[key,key.startsWith('fecha_')?record[key].slice(0,10):record[key]]));
     payload.tasa=record.tasa_ingresada;
     if(record.tasa_mora_ea!==null && record.tasa_mora_ea!==undefined)payload.tasa_mora=decimal(String(record.tasa_mora_ea)).times('100').toFixed(6);
     if(payload.plazo_meses!==undefined)delete payload.numero_cuotas;
-    for(const key of ['cargo_fijo','valor_inmueble'])if(payload[key]!==undefined)payload[key]=integerPeso(payload[key]);
+    for(const key of ['cargo_fijo','valor_inmueble','cupo'])if(payload[key]!==undefined)payload[key]=integerPeso(payload[key]);
     return payload;
 }
 export function planSummary(plan) {

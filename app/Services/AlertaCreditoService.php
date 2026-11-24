@@ -11,7 +11,7 @@ use Carbon\CarbonImmutable;
 /**
  * MOD-08 — Alertas de un crédito (documento de créditos, sección 6): usura
  * (RN-01), capacidad de pago (RN-03 vivienda, RN-07 libranza) y financiación
- * de vivienda (RN-03).
+ * de vivienda (RN-03) y cupo de la tarjeta (CP-CRE-013).
  *
  * Son alertas, no bloqueos (decisión del usuario): en una app personal el
  * usuario anota su crédito real, aunque supere un límite. Cada alerta lleva
@@ -35,13 +35,63 @@ class AlertaCreditoService
             ...self::usura($datos),
             ...self::capacidadDePago($datos, $cuotaTotal, $usuarioId, $creditoId),
             ...self::financiacionVivienda($datos),
+            ...self::cupo($datos),
         ];
+    }
+
+    /**
+     * CP-CRE-013: el saldo de capital de una tarjeta supera su cupo. Avisa,
+     * no bloquea. Sin cupo registrado no hay alerta. En una simulación el
+     * saldo es el monto.
+     *
+     * @param  array<string, mixed>  $datos  tipo_credito, monto, cupo y, si existe, saldo
+     * @return array<int, array<string, mixed>>
+     */
+    public static function cupo(array $datos): array
+    {
+        if (($datos['tipo_credito'] ?? null) !== 'TARJETA_CREDITO' || empty($datos['cupo'])) {
+            return [];
+        }
+
+        $cupo = CreditoService::alPeso((string) $datos['cupo']);
+        $saldo = CreditoService::alPeso((string) ($datos['saldo'] ?? $datos['monto']));
+
+        if (bccomp($saldo, $cupo, 0) !== 1) {
+            return [];
+        }
+
+        $exceso = bcsub($saldo, $cupo, 0);
+
+        return [[
+            'codigo' => 'SUPERA_CUPO',
+            'nivel' => 'ADVERTENCIA',
+            'mensaje' => 'Los consumos de la tarjeta ($ '.self::formato($saldo).') superan su cupo de $ '.self::formato($cupo).' en $ '.self::formato($exceso).'.',
+            'cupo' => $cupo,
+            'saldo' => $saldo,
+            'exceso' => $exceso,
+        ]];
+    }
+
+    /** CP-CRE-013: alerta de cupo de una tarjeta registrada, con su saldo de capital a hoy. */
+    public static function cupoDeCredito(Credito $credito): array
+    {
+        if ($credito->tipo_credito !== 'TARJETA_CREDITO' || $credito->cupo === null) {
+            return [];
+        }
+
+        return self::cupo([
+            'tipo_credito' => $credito->tipo_credito,
+            'monto' => (string) $credito->monto,
+            'cupo' => (string) $credito->cupo,
+            'saldo' => PagoCreditoService::situacion($credito, CarbonImmutable::today())['saldo_capital'],
+        ]);
     }
 
     /** Las alertas de un crédito registrado, con la primera cuota de su plan vigente. */
     public static function deCredito(Credito $credito, string $cuotaTotal): array
     {
-        return self::alertas([
+        // Sin 'cupo' en los datos: la alerta de cupo de un crédito registrado usa su saldo (cupoDeCredito).
+        return [...self::alertas([
             'tipo_credito' => $credito->tipo_credito,
             'monto' => (string) $credito->monto,
             'tasa_ea' => (string) $credito->tasa_ea,
@@ -49,7 +99,7 @@ class AlertaCreditoService
             'fecha_inicio' => $credito->fecha_inicio->toDateString(),
             'valor_inmueble' => $credito->valor_inmueble === null ? null : (string) $credito->valor_inmueble,
             'es_vis' => $credito->es_vis,
-        ], $cuotaTotal, $credito->usuario_id, $credito->id);
+        ], $cuotaTotal, $credito->usuario_id, $credito->id), ...self::cupoDeCredito($credito)];
     }
 
     /**
