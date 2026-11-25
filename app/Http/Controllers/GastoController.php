@@ -154,7 +154,7 @@ class GastoController extends Controller
                 $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
                 $atributos['genera_credito'] = true;
             } else {
-                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos);
+                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos, $validated['fecha']);
             }
 
             return Gasto::create(array_merge($atributos, [
@@ -185,6 +185,7 @@ class GastoController extends Controller
         if ($request->expectsJson()) {
             // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
             session()->flash('status', 'Gasto registrado exitosamente.');
+
             return response()->json([
                 'mensaje' => $mensaje,
                 'data' => $gasto->load(['categoria', 'subcategoria', 'credito']),
@@ -246,7 +247,7 @@ class GastoController extends Controller
                 $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
                 $atributos['genera_credito'] = true;
             } else {
-                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), $gasto, $atributos);
+                $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), $gasto, $atributos, $validated['fecha']);
                 $atributos['genera_credito'] = $gasto->genera_credito && $atributos['credito_id'] !== null;
             }
             $gasto->update(array_merge($atributos, [
@@ -279,6 +280,7 @@ class GastoController extends Controller
         if ($request->expectsJson()) {
             // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
             session()->flash('status', 'Gasto actualizado.');
+
             return response()->json([
                 'mensaje' => $mensaje,
                 'data' => $gasto->fresh()->load(['categoria', 'subcategoria']),
@@ -343,6 +345,7 @@ class GastoController extends Controller
 
         if ($request->expectsJson()) {
             session()->flash('status', 'Gasto eliminado.');
+
             return response()->json(['mensaje' => 'Gasto eliminado.']);
         }
 
@@ -400,6 +403,7 @@ class GastoController extends Controller
         if ($request->expectsJson()) {
             // La pantalla recarga tras la petición: el aviso queda para el toast de la siguiente carga.
             session()->flash('status', 'Gasto confirmado.');
+
             return response()->json([
                 'mensaje' => 'Gasto confirmado.',
                 'data' => $gasto->fresh(),

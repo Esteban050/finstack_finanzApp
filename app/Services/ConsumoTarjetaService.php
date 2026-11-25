@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Credito;
 use App\Models\Gasto;
 use App\Models\PagoCredito;
+use App\Models\Scopes\DelUsuarioAutenticado;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
@@ -27,7 +28,7 @@ class ConsumoTarjetaService
      * Ajusta el capital y su plan en la misma transacción que el gasto.
      * Con pagos vigentes, conserva sus imputaciones y recalcula las cuotas futuras.
      */
-    public static function aplicar(string $usuarioId, ?Gasto $anterior, array $nuevo): ?string
+    public static function aplicar(string $usuarioId, ?Gasto $anterior, array $nuevo, ?string $fechaNueva = null): ?string
     {
         // El crédito creado por el propio gasto ya tiene la compra como capital: nunca se ajusta aquí.
         if ($anterior?->genera_credito && $anterior->credito_id !== null) {
@@ -80,7 +81,16 @@ class ConsumoTarjetaService
             if (PagoCredito::where('credito_id', $tarjeta->id)->vigentes()->exists()) {
                 PagoCreditoService::ajustarPlanTarjeta($tarjeta);
             } else {
-                PagoCreditoService::reemplazarPlan($tarjeta);
+                // El gasto aún no está guardado: las compras del plan se arman con lo que queda y lo nuevo.
+                $compras = Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+                    ->where('credito_id', $tarjeta->id)
+                    ->when($anterior !== null, fn (Builder $q) => $q->where('id', '!=', $anterior->id))
+                    ->get(['fecha', 'monto_cop'])
+                    ->map(fn (Gasto $g) => ['monto' => (string) $g->monto_cop, 'fecha' => $g->fecha->toDateString()]);
+                if (bccomp($despues, '0', 2) === 1) {
+                    $compras->push(['monto' => $despues, 'fecha' => $fechaNueva ?? $anterior?->fecha?->toDateString() ?? now()->toDateString()]);
+                }
+                PagoCreditoService::reemplazarPlan($tarjeta, $compras->all());
             }
         }
 

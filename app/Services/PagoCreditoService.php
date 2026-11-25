@@ -8,6 +8,7 @@ use App\Models\CuotaCredito;
 use App\Models\Gasto;
 use App\Models\ImputacionPagoCredito;
 use App\Models\PagoCredito;
+use App\Models\Scopes\DelUsuarioAutenticado;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,7 @@ class PagoCreditoService
 {
     /** Subcategoría del catálogo para el gasto de cada pago (decisión del usuario). */
     public const CATEGORIA_GASTO = 'Obligaciones financieras';
+
     public const SUBCATEGORIA_GASTO = 'Cuota de crédito / hipoteca';
 
     /** Filas por INSERT al guardar un plan (un semanal a 30 años son 1.560). */
@@ -40,7 +42,7 @@ class PagoCreditoService
      * Créditos RF-22: guarda el plan del crédito como la versión indicada, con
      * interés y capital por cuota en campos separados.
      */
-    public static function crearPlan(Credito $credito, int $version): void
+    public static function crearPlan(Credito $credito, int $version, ?array $compras = null): void
     {
         $tabla = CreditoService::tablaAmortizacion(
             (string) $credito->monto,
@@ -49,7 +51,7 @@ class PagoCreditoService
             $credito->numero_cuotas,
             $credito->fecha_inicio->toDateString(),
             $credito->sistema_amortizacion,
-            self::opcionesPlan($credito)
+            self::opcionesPlan($credito, $compras)
         );
 
         self::insertarCuotas($credito, $version, array_map(fn (array $fila) => self::filaGuardable($fila), $tabla));
@@ -60,7 +62,7 @@ class PagoCreditoService
      * vigentes, el plan entero se reemplaza por una versión nueva y la
      * anterior se conserva.
      */
-    public static function reemplazarPlan(Credito $credito): void
+    public static function reemplazarPlan(Credito $credito, ?array $compras = null): void
     {
         $version = $credito->version_plan_vigente + 1;
 
@@ -69,7 +71,7 @@ class PagoCreditoService
             ->update(['reemplazada_en_version' => $version]);
 
         $credito->update(['version_plan_vigente' => $version]);
-        self::crearPlan($credito, $version);
+        self::crearPlan($credito, $version, $compras);
     }
 
     /**
@@ -923,14 +925,34 @@ class PagoCreditoService
      *
      * @return array<string, mixed>
      */
-    private static function opcionesPlan(Credito $credito): array
+    private static function opcionesPlan(Credito $credito, ?array $compras = null): array
     {
+        if ($credito->tipo_credito === 'TARJETA_CREDITO') {
+            $compras ??= self::comprasTarjeta($credito);
+        }
+
         return [
+            'compras' => $compras,
             'fecha_primer_pago' => $credito->fecha_primer_pago?->toDateString(),
             'tasa_ea' => (string) $credito->tasa_ea,
             'seguro_porc_mensual' => $credito->seguro_porc_mensual,
             'cargo_fijo' => $credito->cargo_fijo,
         ];
+    }
+
+    /**
+     * H07: compras registradas con la tarjeta (fecha y monto en pesos), para causar
+     * el interés de la primera cuota desde la fecha de cada una.
+     *
+     * @return array<int, array{monto: string, fecha: string}>
+     */
+    public static function comprasTarjeta(Credito $credito): array
+    {
+        return Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('credito_id', $credito->id)
+            ->get(['fecha', 'monto_cop'])
+            ->map(fn (Gasto $g) => ['monto' => (string) $g->monto_cop, 'fecha' => $g->fecha->toDateString()])
+            ->all();
     }
 
     /** Fila de la tabla de amortización con los nombres de columna de cuotas_credito. */

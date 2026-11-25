@@ -174,8 +174,11 @@ class CreditoService
             $interesRegular = self::alPeso(bcmul($saldo, $tasaPeriodica, self::ESCALA));
 
             // Créditos RF-14: el primer periodo irregular cobra el interés por días (2.5).
+            // H07: con compras fechadas (tarjeta), cada una causa desde su propia fecha.
             $interes = $k === 1 && $primerPago !== null
-                ? self::interesPorDias($saldo, (string) $opciones['tasa_ea'], self::dias($inicio, $primerPago))
+                ? (! empty($opciones['compras'])
+                    ? self::interesComprasPorDias($saldo, $opciones['compras'], (string) $opciones['tasa_ea'], $inicio, $primerPago)
+                    : self::interesPorDias($saldo, (string) $opciones['tasa_ea'], self::dias($inicio, $primerPago)))
                 : $interesRegular;
 
             if ($k === $numeroCuotas) {
@@ -447,6 +450,36 @@ class CreditoService
         $factor = bcsub(self::factorDias($ea, $dias), '1', self::ESCALA);
 
         return self::alPeso(bcmul($saldo, $factor, self::ESCALA));
+    }
+
+    /**
+     * H07: interés hasta $hasta de varias compras, cada una desde su fecha:
+     * Σ monto_i · [(1 + EA)^(d_i/365) − 1], redondeado una sola vez al peso.
+     * Lo que el saldo tenga de más que las compras fechadas se causa desde $inicio.
+     *
+     * @param  array<int, array{monto: string, fecha: string}>  $compras
+     */
+    public static function interesComprasPorDias(string $saldo, array $compras, string $ea, CarbonImmutable $inicio, CarbonImmutable $hasta): string
+    {
+        $e = self::ESCALA;
+        $total = '0';
+        $fechado = '0';
+
+        foreach ($compras as $compra) {
+            $desde = CarbonImmutable::parse($compra['fecha']);
+            $desde = $desde->lessThan($inicio) ? $inicio : $desde;
+            $factor = bcsub(self::factorDias($ea, self::dias($desde, $hasta)), '1', $e);
+            $total = bcadd($total, bcmul((string) $compra['monto'], $factor, $e), $e);
+            $fechado = bcadd($fechado, (string) $compra['monto'], 2);
+        }
+
+        $resto = bcsub($saldo, $fechado, 2);
+        if (bccomp($resto, '0', 2) === 1) {
+            $factor = bcsub(self::factorDias($ea, self::dias($inicio, $hasta)), '1', $e);
+            $total = bcadd($total, bcmul($resto, $factor, $e), $e);
+        }
+
+        return self::alPeso($total);
     }
 
     /**
