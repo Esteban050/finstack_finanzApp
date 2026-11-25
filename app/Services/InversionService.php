@@ -294,7 +294,12 @@ class InversionService
         $valorBase = $ultimaVal !== null ? (string) $ultimaVal->valor : (string) $inversion->monto_inicial;
         $montoEfecto = $movimiento->monto_bruto ?? $movimiento->monto;
 
-        if (in_array($movimiento->tipo, ['APORTE', 'COMPRA', 'ABONO_INTERES', 'DIVIDENDO'], true)) {
+        // N02: el interés cobrado de un CDT sale de la posición; solo la cuenta de alto rendimiento lo capitaliza.
+        $sinEfecto = $movimiento->tipo === 'ABONO_INTERES' && $inversion->tipo !== 'CUENTA_ALTO_RENDIMIENTO';
+
+        if ($sinEfecto) {
+            $nuevoValor = $valorBase;
+        } elseif (in_array($movimiento->tipo, ['APORTE', 'COMPRA', 'ABONO_INTERES', 'DIVIDENDO'], true)) {
             $nuevoValor = bcadd($valorBase, (string) $movimiento->monto, 2);
         } else {
             $nuevoValor = bcsub($valorBase, (string) $montoEfecto, 2);
@@ -323,6 +328,8 @@ class InversionService
         foreach ($valPosteriores as $valPost) {
             if ($inversion->estaLiquidada()) {
                 $valPost->update(['valor' => '0.00']);
+            } elseif ($sinEfecto) {
+                continue;
             } else {
                 $nuevoPost = in_array($movimiento->tipo, ['APORTE', 'COMPRA', 'ABONO_INTERES', 'DIVIDENDO'], true)
                     ? bcadd((string) $valPost->valor, (string) $movimiento->monto, 2)
