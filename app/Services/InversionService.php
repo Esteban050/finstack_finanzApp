@@ -193,7 +193,7 @@ class InversionService
             $diferenciaUnit = bcsub((string) $precioActual, (string) $detalle->costo_promedio_unitario, 8);
             $valor = IngresoService::redondear(bcmul($diferenciaUnit, (string) $detalle->unidades_total, 4));
             $porcentaje = bccomp((string) $detalle->costo_promedio_unitario, '0', 8) > 0
-                ? bcdiv(bcmul($diferenciaUnit, '100', 4), (string) $detalle->costo_promedio_unitario, 2)
+                ? number_format(round((float) bcdiv(bcmul($diferenciaUnit, '100', 8), (string) $detalle->costo_promedio_unitario, 8), 2), 2, '.', '')
                 : '0.00';
 
             return [

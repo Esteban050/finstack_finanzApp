@@ -188,10 +188,10 @@
                     <dd data-result="positive">− $ {{ $formatValue($estimacion['paso3']['exentas_inversiones_cop'], 0, ',', '.') }}</dd>
 
                     <dt>Retenciones a favor por inversiones</dt>
-                    <dd data-result="positive">− $ {{ $formatValue($estimacion['impacto_inversiones']['retenciones_inversiones_cop'], 0, ',', '.') }}</dd>
+                    <dd data-result="positive">− $ {{ $formatValue($estimacion["impacto_inversiones"]["retenciones_inversiones_cop"], 2, ',', '.') }}</dd>
 
                     <dt class="total">Ahorro total estimado en impuesto gracias a inversiones</dt>
-                    <dd class="total" data-result="positive">$ {{ $formatValue($estimacion['impacto_inversiones']['ahorro_total_cop'], 0, ',', '.') }}</dd>
+                    <dd class="total" data-result="positive">$ {{ $formatValue($estimacion["impacto_inversiones"]["ahorro_total_cop"], 2, ',', '.') }}</dd>
                 </dl>
             </div>
 

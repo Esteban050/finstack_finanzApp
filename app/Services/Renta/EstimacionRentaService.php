@@ -180,7 +180,7 @@ class EstimacionRentaService
         $impuestoSinBeneficiosCop = $impuestoSinBeneficios['impuesto_cop'];
 
         $ahorroImpuestoDirectoCop = max(0.0, $impuestoSinBeneficiosCop - $paso7ImpuestoRedondeadoCop);
-        $retencionesInversionesRedondeadasCop = round($retencionesInversiones / 1000.0) * 1000;
+        $retencionesInversionesRedondeadasCop = round($retencionesInversiones, 2); // H22: exacta para el ahorro; solo el saldo de la declaración va a miles
         $ahorroTotalInversionesCop = $ahorroImpuestoDirectoCop + $retencionesInversionesRedondeadasCop;
 
         $resultado = [

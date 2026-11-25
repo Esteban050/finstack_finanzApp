@@ -350,7 +350,7 @@ class DashboardResumenService
             $asignadoPresupuesto = (string) ($ejecucion['totales']['monto_asignado'] ?? '0');
             $gastadoPresupuesto = (string) ($ejecucion['totales']['gastado'] ?? '0');
             if (bccomp($asignadoPresupuesto, '0', 2) === 1) {
-                $porcPresupuesto = round((float) bcdiv(bcmul($gastadoPresupuesto, '100', 6), $asignadoPresupuesto, 4), 1);
+                $porcPresupuesto = round((float) bcdiv(bcmul($gastadoPresupuesto, '100', 6), $asignadoPresupuesto, 6), 2);
             }
         }
 
