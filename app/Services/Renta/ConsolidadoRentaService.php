@@ -3,6 +3,7 @@
 namespace App\Services\Renta;
 
 use App\Models\Ingreso;
+use App\Models\IngresoInversion;
 use App\Models\Inversion;
 use App\Models\MovimientoInversion;
 use App\Models\ParametroNormativo;
@@ -132,6 +133,13 @@ class ConsolidadoRentaService
             ->whereNull('eliminado_en')
             ->get();
 
+        // Utilidad de cada venta de acciones, calculada al registrarla con el costo promedio ponderado
+        // (InversionService::registrarPuentesTributarios): fuente única para Ingresos y Renta.
+        $utilidadesVenta = IngresoInversion::withoutGlobalScopes()
+            ->where('usuario_id', $usuario->id)
+            ->where('tipo', 'UTILIDAD_VENTA')
+            ->whereIn('transaccion_id', $movimientosAnio->where('tipo', 'VENTA')->pluck('id'))
+            ->pluck('valor_bruto', 'transaccion_id');
         // 2.1 Rendimientos de Capital (CDTs, Cuentas de Alto Rendimiento, FICs)
         $rendimientosCdtCuentasFicCop = 0.0;
         $retencionesInversionesCop = 0.0;
@@ -206,8 +214,8 @@ class ConsolidadoRentaService
 
                         if ($diasTenencia < 730) {
                             // Tenencia < 2 años: Cédula General (Rentas no laborales)
-                            $costoFiscal = (float) ($inv->precio_unitario_compra ?? 0) * (float) ($mov->unidades ?? 1);
-                            $utilidadVenta = max(0.0, $montoCop - $costoFiscal);
+                            // H02: misma utilidad que Ingresos (costo promedio ponderado), no el precio de la primera compra.
+                            $utilidadVenta = max(0.0, (float) ($utilidadesVenta[$mov->id] ?? 0));
 
                             if ($utilidadVenta > 0) {
                                 $utilidadVentaAccionesMenor2AniosCop += $utilidadVenta;

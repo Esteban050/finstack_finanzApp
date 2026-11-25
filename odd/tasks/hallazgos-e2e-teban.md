@@ -25,7 +25,7 @@ Group 1 — data reaching other modules wrong (route: delegated writer, writer t
 - [x] T2 — H05: Resumen "Portafolio de inversiones" uses the Inversiones consolidated value.
 - [x] T3 — H14: Resumen "Próximos 15 días" shows the recurring amount.
 - [x] T4 — H01: paid PILA health + pension reach Renta INCRNGO.
-- [ ] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
+- [x] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
 
 Group 2 — credit card
 - [ ] T6 — H07: first-installment interest computed per purchase and real days.
@@ -50,7 +50,12 @@ Group 4 — UX / verify
 
 - [ ] T18 — H16 (decided 2026-11-24: REAL DAYS): payment before the installment due date charges current interest accrued by real days since disbursement/last installment (daily equivalent rate); the rest goes to capital.
 
-Pending decisions (ask user, one at a time): H16, H17, H20, H24, H26.
+- [ ] T19 — H17 (decided 2026-11-24: BLOCK): an expense that exceeds the card's available limit is rejected with a validation error (create and edit). Consequence for T7/H06: the "limit exceeded" notification no longer applies; keep the threshold notification.
+
+- [ ] T20 — H20 (decided 2026-11-24: INCLUDE): dividends received in the year are added to C2 gross income.
+- [ ] T21 — H24 + H26 (no user decision needed, defaults): unify PILA period selector rule/messages (period M uses income of M−1; allow up to current month+1 consistently); portfolio ROI uses the same capital base as per-investment ROI; GMF behaviour documented in UI (exemption not tracked).
+
+Pending decisions (ask user, one at a time): none. H16, H17, H20, H24, H26.
 Config only (report): H18 usury rate, H25 Resend domain / terms page.
 
 ## Acceptance criteria
@@ -62,3 +67,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - T2 (H05) done: RED 1 failed -> GREEN 1 passed (ResumenPortafolioInversionesTest); Resumen|Dashboard filter 12 green. Root cause: DashboardResumenService read nonexistent keys totales.valor_actual_cop (real: valor_total). Cut-off clamped to today.
 - T3 (H14) done: RED 1 failed -> GREEN 1 passed (ResumenProximos15DiasTest). Root cause: DashboardResumenService::obtenerProximos15Dias read datos_plantilla['monto'] (stored key is monto_cop).
 - T4 (H01) done: RED 1 failed -> GREEN 1 passed (RentaIncrngoSeguridadSocialTest); Renta|SeguridadSocial|PagoSeguridad filter 100 green. Root cause: ConsolidadoRentaService::consolidar summed only ingresos.aportes_descontados_cop, never PagoSeguridadSocial (PILA). Now adds SeguridadSocialService::resumenAnual (by fecha_pago year, paid rows).
+- T5 (H02) done: RED 1 failed (75000 vs 60066.67) -> GREEN 1 passed (RentaUtilidadVentaCostoPromedioTest). Root cause: ConsolidadoRentaService used inv.precio_unitario_compra * unidades; now reads IngresoInversion UTILIDAD_VENTA (weighted average, same as Ingresos). Note: legacy sales without a UTILIDAD_VENTA bridge row count as 0.
