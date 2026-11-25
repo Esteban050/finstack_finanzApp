@@ -811,6 +811,13 @@ class PresupuestoService
                     : '0';
             }
 
+            // H21: una línea fija sin gasto proyecta su monto asignado (una sola regla para todas):
+            // lo pendiente (recurrentes) cuenta dentro del asignado, no encima.
+            if ($quedanDias > 0 && ($linea['categoria']->naturaleza_sugerida ?? null) === 'FIJO' && bccomp($montoGastado, '0', 2) <= 0) {
+                $asignado = CreditoService::alPeso((string) $linea['modelo']->monto_asignado);
+                $montoHabitual = bccomp($asignado, $montoPendiente, 10) === 1 ? bcsub($asignado, $montoPendiente, 10) : '0';
+            }
+
             $resultado[$linea['modelo']->id] = [
                 'gastado' => $montoGastado,
                 'cantidad' => $cantidad,
