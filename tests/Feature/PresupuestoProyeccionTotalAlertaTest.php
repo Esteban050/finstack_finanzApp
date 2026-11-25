@@ -90,17 +90,17 @@ class PresupuestoProyeccionTotalAlertaTest extends TestCase
             ->where('usuario_id', $this->usuario->id)->where('tipo', 'PROYECCION_LINEA')->get();
     }
 
-    public function test_el_total_proyectado_sobre_el_umbral_alerta_una_sola_vez_aunque_ninguna_linea_lo_haga(): void
+    public function test_el_total_proyectado_sobre_el_umbral_alerta_una_sola_vez_ademas_de_la_linea_excedida(): void
     {
         [$a, $b] = $this->presupuestoDeDosLineas();
-        $this->gasto($a, '2026-11-05', '1000000');   // linea A ya al 100 %: la alerta de linea no aplica
-        $this->gasto($b, '2026-11-05', '800000');    // linea B proyecta 100 %: tampoco
+        $this->gasto($a, '2026-11-05', '1000000');   // linea A ya al 100 % (proyecta 125 %): alerta de linea (H10)
+        $this->gasto($b, '2026-11-05', '800000');    // linea B proyecta 100 %: no alerta
 
         $this->evaluar();
 
         $alertas = $this->alertas();
-        $this->assertCount(1, $alertas);
-        $n = $alertas[0];
+        $this->assertCount(2, $alertas);
+        $n = $alertas->firstWhere("clave", "PROYECCION_TOTAL:2026-11");
         $this->assertSame('PROYECCION_TOTAL:2026-11', $n->clave);
         $this->assertTrue($n->datos['total']);
         $this->assertSame('112.50', $n->datos['proyeccion_porc']);
@@ -109,18 +109,22 @@ class PresupuestoProyeccionTotalAlertaTest extends TestCase
         $this->assertSame('ADVERTENCIA', $n->prioridad);
 
         $this->evaluar();
-        $this->assertCount(1, $this->alertas(), 'sin duplicados en el mismo periodo');
+        $this->assertCount(2, $this->alertas(), 'sin duplicados en el mismo periodo');
     }
 
-    public function test_no_alerta_si_el_total_ya_paso_el_100_por_ciento(): void
+    /** H10: "Vas a pasarte" también avisa cuando la ejecución ya pasó el 100 %, una sola vez por mes. */
+    public function test_alerta_aunque_el_total_ya_paso_el_100_por_ciento(): void
     {
         [$a, $b] = $this->presupuestoDeDosLineas();
         $this->gasto($a, '2026-11-05', '1200000');
         $this->gasto($b, '2026-11-05', '900000');    // 105 % del total
 
         $this->evaluar();
+        $this->evaluar();
 
-        $this->assertSame([], $this->alertas()->pluck('clave')->filter(fn ($c) => str_starts_with($c, 'PROYECCION_TOTAL'))->all());
+        $claves = $this->alertas()->pluck('clave');
+        $this->assertSame(1, $claves->filter(fn ($c) => $c === 'PROYECCION_TOTAL:2026-11')->count());
+        $this->assertSame(1, $claves->filter(fn ($c) => str_starts_with($c, 'PROYECCION_LINEA:'.$a->id))->count());
     }
 
     public function test_respeta_el_umbral_la_activacion_y_la_mitad_del_mes(): void
@@ -129,9 +133,9 @@ class PresupuestoProyeccionTotalAlertaTest extends TestCase
         $this->gasto($a, '2026-11-05', '1000000');
         $this->gasto($b, '2026-11-05', '800000');    // proyeccion 112,5 %
 
-        $this->putJson('/perfil/alertas', ['reglas' => [['tipo' => 'PROYECCION_LINEA', 'parametros' => ['umbral' => 120]]]])->assertOk();
+        $this->putJson('/perfil/alertas', ['reglas' => [['tipo' => 'PROYECCION_LINEA', 'parametros' => ['umbral' => 130]]]])->assertOk();
         $this->evaluar();
-        $this->assertCount(0, $this->alertas(), 'umbral 120 %: 112,5 % no alerta');
+        $this->assertCount(0, $this->alertas(), 'umbral 130 %: ni la linea A (125 %) ni el total (112,5 %) alertan');
 
         $this->putJson('/perfil/alertas', ['reglas' => [['tipo' => 'PROYECCION_LINEA', 'parametros' => ['umbral' => 110], 'activa' => false]]])->assertOk();
         $this->evaluar();

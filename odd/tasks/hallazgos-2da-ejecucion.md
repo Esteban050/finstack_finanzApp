@@ -29,7 +29,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 - [x] T1 — N01: card interest per purchase in situacion()/regenerar().
 - [x] T2 — N02: CDT interest payout not added to valuation + data fix.
 - [x] T3 — N03: calculator system estimate from estimar().
-- [ ] T4 — H10: projection alert also when already exceeded.
+- [x] T4 — H10: projection alert also when already exceeded.
 - [ ] T5 — H22 (a)(b)(c)(d): rounding consistency.
 - [ ] T6 — H09: income label and "frente a tus ingresos".
 
@@ -37,6 +37,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 - T1 done: RED saldo_para_cancelar 3030590 vs 3012236 esperado; GREEN tras interesComprasPorDias en situacion()/regenerar(); `php artisan test`: 421 passed (003021a).
 - T2 done: RED valor 5043137.98 vs 5000000.00; GREEN con ABONO_INTERES sin efecto en CDT (solo CUENTA_ALTO_RENDIMIENTO capitaliza) + migracion de correccion unica (omite filas que quedarian negativas; no distingue valoraciones MANUAL tecleadas por el usuario); `php artisan test`: 424 passed.
 - T3 done: RED `estimacion_sistema` ausente en la respuesta; GREEN con estimar() (saldo 1.212.000); `php artisan test`: 425 passed. `npm test` tiene 9 fallos preexistentes (iguales sin mis cambios).
+- T4 done: RED nuevo test (total al 105 % sin alerta, 0 vs 1); GREEN al quitar la supresion por ejecucion >= 100 % (linea y total). Tests existentes ajustados: el de "alerta una sola vez" ahora espera 2 alertas (linea A al 100 % + total) y el de umbral usa 130 % porque la linea A (125 %) ya alerta; el de "no alerta si el total paso 100 %" invertido. `php artisan test`: 425 passed.
 
 ## Next step
-T4.
+T5.

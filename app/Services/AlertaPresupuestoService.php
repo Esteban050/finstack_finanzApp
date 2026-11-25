@@ -80,11 +80,10 @@ class AlertaPresupuestoService
             $umbral = (int) $regla['parametros']['umbral'];
 
             foreach ($ejecucion['lineas'] as $linea) {
-                $yaExcedida = bccomp((string) $linea['ejecucion_porc'], '100', 2) >= 0;
                 // RN-057.3 / CP-PRE-021: la proyección debe superar el umbral; 110 % exacto no alerta.
                 $supera = bccomp((string) $linea['proyeccion_porc'], (string) $umbral, 2) === 1;
 
-                if (! $yaExcedida && $supera && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
+                if ($supera && self::emitir($presupuesto, $regla, null, "PROYECCION_LINEA:{$linea['categoria_id']}:{$ejecucion['mes']}", [
                     ...self::datosLinea($ejecucion, $linea),
                     'umbral' => $umbral,
                     'proyeccion' => $linea['proyeccion'],
@@ -102,7 +101,7 @@ class AlertaPresupuestoService
         return $emitidas;
     }
 
-    /** H10: la proyección del presupuesto total supera el umbral y el total aún no llegó al 100 %. */
+    /** H10: la proyección del presupuesto total supera el umbral (aunque el total ya haya pasado el 100 %). */
     private static function proyeccionTotal(Presupuesto $presupuesto, array $regla, array $ejecucion, int $umbral): int
     {
         $totales = $ejecucion['totales'];
@@ -111,10 +110,9 @@ class AlertaPresupuestoService
             return 0;
         }
 
-        $yaExcedido = bccomp((string) $totales['ejecucion_porc'], '100', 2) >= 0;
         $supera = $totales['proyeccion_porc'] !== null && bccomp((string) $totales['proyeccion_porc'], (string) $umbral, 2) === 1;
 
-        if ($yaExcedido || ! $supera) {
+        if (! $supera) {
             return 0;
         }
 
