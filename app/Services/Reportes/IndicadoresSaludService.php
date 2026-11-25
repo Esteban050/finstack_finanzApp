@@ -218,10 +218,11 @@ class IndicadoresSaludService
         ];
 
         // 4. Gasto diario promedio: gastos periodo / días periodo
-        $gastoDiario = round((float) bcdiv($gastosTotales, (string) max($diasMes, 1), 4), 2);
+        $diasGasto = self::diasParaPromedio($mes, $hoy);
+        $gastoDiario = round((float) bcdiv($gastosTotales, (string) $diasGasto, 4), 2);
         $gastoDiarioAnt = round((float) bcdiv($gastosTotalesAnt, (string) max($diasMesAnterior, 1), 4), 2);
         $varGastoDiario = $gastoDiarioAnt > 0 ? round((($gastoDiario - $gastoDiarioAnt) / $gastoDiarioAnt) * 100, 2) : null;
-        $historicoGastoDiario = $this->obtenerHistoricoGastoDiario($usuario, $mes);
+        $historicoGastoDiario = $this->obtenerHistoricoGastoDiario($usuario, $mes, $hoy);
 
         $indGastoDiario = [
             'id' => 'gasto_diario_promedio',
@@ -232,10 +233,10 @@ class IndicadoresSaludService
             'variacion_porc' => $varGastoDiario,
             'tendencia_6m' => $historicoGastoDiario,
             'detalle' => [
-                'formula' => 'Gastos totales del periodo / Días transcurridos en el periodo',
+                'formula' => 'Gastos totales del periodo / Días transcurridos (mes en curso) o días del mes (mes cerrado)',
                 'variables' => [
                     'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
-                    'Días del mes' => (string) $diasMes,
+                    'Días transcurridos' => (string) $diasGasto,
                     'Gasto diario mes anterior' => '$ '.number_format($gastoDiarioAnt, 0, ',', '.'),
                 ],
                 'interpretacion' => 'Indica el ritmo promedio de egresos diarios. Ayuda a establecer límites de consumo por día o semana.',
@@ -438,17 +439,36 @@ class IndicadoresSaludService
     }
 
     /**
+     * H19: días entre los que se divide el gasto del mes. En el mes en curso, los días transcurridos
+     * (hasta hoy, mínimo 1); en un mes cerrado, todos los días del mes; en un mes futuro, 1.
+     */
+    private static function diasParaPromedio(CarbonImmutable $mes, CarbonImmutable $hoy): int
+    {
+        $inicio = $mes->startOfMonth();
+
+        if ($hoy->lt($inicio)) {
+            return 1;
+        }
+
+        if ($hoy->lte($mes->endOfMonth())) {
+            return max($hoy->day, 1);
+        }
+
+        return max($mes->daysInMonth, 1);
+    }
+
+    /**
      * Obtiene serie de 6 meses para el gasto diario promedio.
      *
      * @return array<int, array{mes: string, promedio_diario: float}>
      */
-    protected function obtenerHistoricoGastoDiario(Usuario $usuario, CarbonImmutable $mesFinal): array
+    protected function obtenerHistoricoGastoDiario(Usuario $usuario, CarbonImmutable $mesFinal, ?CarbonImmutable $hoy = null): array
     {
         $historico = [];
         for ($i = 5; $i >= 0; $i--) {
             $m = $mesFinal->subMonthsNoOverflow($i)->startOfMonth();
             $fin = $m->endOfMonth();
-            $dias = $m->daysInMonth;
+            $dias = self::diasParaPromedio($m, $hoy ?? CarbonImmutable::today());
 
             $gas = (string) (Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
                 ->where('usuario_id', $usuario->id)

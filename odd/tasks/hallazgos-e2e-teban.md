@@ -36,7 +36,7 @@ Group 3 — cross-module consistency
 - [x] T8 — H09: one "ingreso promedio" function used by Presupuestos, Alertas, Reportes, Créditos.
 - [ ] T9 — H10: "Vas a pasarte" alert fires when the projection exceeds the threshold.
 - [x] T10 — H12 + H13: retention report base = yields only; deductible values exclude withholding.
-- [ ] T11 — H19: daily average divides by elapsed days.
+- [x] T11 — H19: daily average divides by elapsed days.
 - [ ] T12 — H21: same projection rule for fixed lines with zero spend.
 
 Group 4 — UX / verify
@@ -85,3 +85,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - T8 (H09) done: RED presupuestos 14379 vs 13536417 / 2000000 vs 3000000 -> GREEN 3 passed (IngresoPromedioUnicoTest); Presupuesto|Alerta|Credito|Endeudamiento|Reporte|Notificacion 74 green. Root cause: Presupuestos/Alertas/AlertaCredito used ingresosNetosPorMes (fixed 3-month window incl. zeros) while Créditos/Reportes used baseIngresos. Now EndeudamientoService::ingresoPromedio (= baseIngresos promedio, H08 fallback) is the single definition; PresupuestoService::ingresoBase and AlertaCreditoService::ingresoMensualPromedio delegate to it.
 - T9 (H10) BLOCKED, needs decision: "Vas a pasarte" (PROYECCION_LINEA) is evaluated only per line, from mid-month, and by documented design (RN-057.3, AlertaPresupuestoService `$yaExcedida`) skips a line already at >= 100 % execution because UMBRAL_LINEA 100 % covers it. In the scenario the PILA line (1.543.900 spent on 450.000) and the total (4.118.900 on 3.160.000 = 130 %) were already exceeded, and there is no total-level projection alert at all. Decision needed: (a) also alert on already-exceeded lines, (b) add a total-level projection alert, or (c) keep as designed and document.
 - T10 (H12 + H13) done: RED 5275743.08 vs 275743.08; 71096.40 vs 60066.67 -> GREEN 2 passed (ReportesInversionesRetencionesUtilidadesTest). ReporteInversionController::retenciones base = IngresoInversion.valor_bruto of the movement (yield) with fallback monto_bruto, for totals/producto/entidad; utilidades deducibles_total excludes concepts starting RETE (RETENCION_*, RETEFUENTE_*). CSV rows unchanged.
+- T11 (H19) done: RED 137296.67 vs 171620.83 -> GREEN 3 passed (ReportesGastoDiarioPromedioTest). IndicadoresSaludService::diasParaPromedio: current month = elapsed days (hoy->day), closed month = days in month, future = 1; used for the value and the 6-month trend; label "Días transcurridos" and formula text aligned. Previous-month reference stays on full days.
