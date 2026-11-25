@@ -43,6 +43,11 @@ class ConsumoTarjetaService
             if ($disponibles->count() > 1) {
                 throw ValidationException::withMessages(['credito_id' => 'Selecciona la tarjeta usada para pagar el gasto.']);
             }
+            // Todo gasto con tarjeta queda vinculado a un crédito del módulo de créditos:
+            // sin tarjetas registradas hay que registrar la tarjeta con el gasto.
+            if ($disponibles->isEmpty()) {
+                throw ValidationException::withMessages(['credito_id' => 'Registra la tarjeta: elige "Registrar tarjeta nueva" e indica el banco, el interés anual y el cupo.']);
+            }
             $vinculo = $disponibles->first();
         }
 

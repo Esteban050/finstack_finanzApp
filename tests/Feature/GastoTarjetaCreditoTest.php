@@ -87,6 +87,7 @@ class GastoTarjetaCreditoTest extends TestCase
             'fecha_corte' => CarbonImmutable::today()->addDays(3)->toDateString(),
             'fecha_pago' => CarbonImmutable::today()->addDays(12)->toDateString(),
             'tasa_interes_anual' => '24.5',
+            'cupo_tarjeta' => '5000000',
         ], $extra);
     }
 
@@ -113,6 +114,39 @@ class GastoTarjetaCreditoTest extends TestCase
         $this->assertSame(CarbonImmutable::today()->addDays(12)->toDateString(), $credito->fecha_primer_pago->toDateString());
         $this->assertSame(CarbonImmutable::today()->addDays(3)->toDateString(), $credito->fecha_corte->toDateString());
         $this->assertSame(12, $credito->cuotasVigentes()->count());
+        // El formulario de la tarjeta registra también su cupo.
+        $this->assertSame('5000000.00', (string) $credito->cupo);
+    }
+
+    public function test_cupo_de_la_tarjeta_invalido_se_rechaza(): void
+    {
+        foreach (['0', '-100', '1500000.50', 'abc'] as $cupo) {
+            $this->postJson(route('gastos.store'), $this->payload($this->camposTarjeta(['cupo_tarjeta' => $cupo])))
+                ->assertStatus(422)->assertJsonValidationErrors(['cupo_tarjeta']);
+        }
+        $this->assertSame(0, Credito::where('usuario_id', $this->usuario->id)->count());
+    }
+
+    public function test_gasto_con_tarjeta_sin_tarjetas_registradas_exige_registrarla(): void
+    {
+        $this->postJson(route('gastos.store'), $this->payload(['medio_pago' => 'TARJETA_CREDITO']))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['credito_id' => 'Registra la tarjeta: elige "Registrar tarjeta nueva" e indica el banco, el interés anual y el cupo.']);
+        $this->assertSame(0, Gasto::where('usuario_id', $this->usuario->id)->count());
+    }
+
+    public function test_tarjeta_registrada_con_un_gasto_recibe_los_siguientes_gastos(): void
+    {
+        $tarjetaId = $this->postJson(route('gastos.store'), $this->payload($this->camposTarjeta()))->assertCreated()->json('data.credito_id');
+
+        // Con una sola tarjeta, el formulario la deja elegida y el gasto se suma a ella.
+        $this->get(route('gastos.create'))->assertOk()->assertSee('<option value="'.$tarjetaId.'" selected', false);
+        $id = $this->postJson(route('gastos.store'), $this->payload(['medio_pago' => 'TARJETA_CREDITO', 'monto_original' => '300000.00']))
+            ->assertCreated()->json('data.id');
+
+        $this->assertSame($tarjetaId, Gasto::findOrFail($id)->credito_id);
+        $this->assertSame('1500000.00', (string) Credito::findOrFail($tarjetaId)->monto);
+        $this->assertSame(1, Credito::where('usuario_id', $this->usuario->id)->count());
     }
 
     public function test_faltan_campos_de_tarjeta_devuelve_errores_y_no_crea_nada(): void
@@ -120,7 +154,7 @@ class GastoTarjetaCreditoTest extends TestCase
         $respuesta = $this->postJson(route('gastos.store'), $this->payload(['medio_pago' => 'TARJETA_CREDITO', 'credito_id' => 'NUEVA']));
 
         $respuesta->assertStatus(422)->assertJsonValidationErrors([
-            'banco_tarjeta', 'numero_cuotas', 'fecha_corte', 'fecha_pago', 'tasa_interes_anual',
+            'banco_tarjeta', 'numero_cuotas', 'fecha_corte', 'fecha_pago', 'tasa_interes_anual', 'cupo_tarjeta',
         ]);
         $this->assertSame(0, Credito::where('usuario_id', $this->usuario->id)->count());
         $this->assertSame(0, Gasto::where('usuario_id', $this->usuario->id)->count());
@@ -286,8 +320,11 @@ class GastoTarjetaCreditoTest extends TestCase
 
     public function test_formulario_de_gasto_ofrece_la_opcion_nueva_compra_incluso_sin_tarjetas(): void
     {
+        // Sin tarjetas, "Registrar tarjeta nueva" queda elegida para que el formulario aparezca.
         $this->get(route('gastos.create'))->assertOk()
-            ->assertSee('<option value="NUEVA"', false);
+            ->assertSee('<option value="NUEVA" selected', false)
+            ->assertSee('name="cupo_tarjeta"', false)
+            ->assertDontSee('Sin tarjeta vinculada');
     }
 
     public function test_formulario_de_gasto_trae_los_campos_de_tarjeta_ocultos(): void

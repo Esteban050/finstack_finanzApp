@@ -25,6 +25,7 @@ export function validateCreditCard(values) {
     if (!isDate(values.fecha_pago)) errors.fecha_pago = ['Indica la fecha de pago de la tarjeta.'];
     else if (isDate(values.fecha) && values.fecha_pago <= values.fecha) errors.fecha_pago = ['La fecha de pago debe ser posterior a la fecha del gasto.'];
     if ((values.tasa_interes_anual ?? '') === '' || Number.isNaN(rate) || rate < 0 || rate > 100) errors.tasa_interes_anual = ['Indica el interés anual (% E.A.), entre 0 y 100.'];
+    if (!/^\d{1,12}(\.0{1,2})?$/.test(String(values.cupo_tarjeta ?? '')) || Number(values.cupo_tarjeta) <= 0) errors.cupo_tarjeta = ['Indica el cupo de la tarjeta en pesos, mayor que $ 0.'];
     return errors;
 }
 export function validateExpense(values, categories, { recurrent = false, limit = 'none', frozen = {}, cardRequired = false } = {}) {
@@ -42,7 +43,7 @@ export function validateExpense(values, categories, { recurrent = false, limit =
     else if (!children.some((sub) => sub.id === values.subcategoria_id)) errors.subcategoria_id = ['Selecciona una subcategoría activa de esta categoría.'];
     if (!has(Object.keys(PAYMENT_LABELS), values.medio_pago)) errors.medio_pago = ['Selecciona el medio de pago.'];
     if (cardRequired && values.medio_pago === 'TARJETA_CREDITO' && !values.credito_id) {
-        errors.credito_id = ['Selecciona la tarjeta usada para pagar el gasto.'];
+        errors.credito_id = ['Selecciona la tarjeta usada para pagar el gasto o registra una nueva.'];
     }
     // Compra a cuotas nueva: los campos del crédito solo viajan (habilitados) con esa opción.
     if (values.medio_pago === 'TARJETA_CREDITO' && values.credito_id === 'NUEVA') Object.assign(errors, validateCreditCard(values));

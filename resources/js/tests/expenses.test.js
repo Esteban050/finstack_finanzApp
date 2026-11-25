@@ -102,18 +102,19 @@ test('G-02: todas las opciones aceptadas por el contrato se conservan sin avisos
 
 test('Compra a cuotas con tarjeta: la opción nueva exige los cinco campos del crédito', () => {
     const nueva = {...expense, credito_id: 'NUEVA'};
-    assert.deepEqual(Object.keys(validateExpense(nueva, catalog)).sort(), ['banco_tarjeta', 'fecha_corte', 'fecha_pago', 'numero_cuotas', 'tasa_interes_anual']);
-    const completa = {...nueva, banco_tarjeta: 'Bancolombia', numero_cuotas: '12', fecha_corte: '2026-01-10', fecha_pago: '2026-01-20', tasa_interes_anual: '24.5'};
+    assert.deepEqual(Object.keys(validateExpense(nueva, catalog)).sort(), ['banco_tarjeta', 'cupo_tarjeta', 'fecha_corte', 'fecha_pago', 'numero_cuotas', 'tasa_interes_anual']);
+    const completa = {...nueva, banco_tarjeta: 'Bancolombia', numero_cuotas: '12', fecha_corte: '2026-01-10', fecha_pago: '2026-01-20', tasa_interes_anual: '24.5', cupo_tarjeta: '5000000'};
     assert.deepEqual(validateExpense(completa, catalog), {});
     // Una tarjeta existente no pide esos campos.
     assert.deepEqual(validateExpense({...expense, credito_id: 'tarjeta-1'}, catalog), {});
 });
 
 test('Compra a cuotas con tarjeta: cuotas, tasa y fecha de pago respetan sus rangos', () => {
-    const base = {banco_tarjeta: 'Banco', numero_cuotas: '12', fecha_corte: '2026-01-10', fecha_pago: '2026-01-20', tasa_interes_anual: '10', fecha: '2026-01-01'};
+    const base = {banco_tarjeta: 'Banco', numero_cuotas: '12', fecha_corte: '2026-01-10', fecha_pago: '2026-01-20', tasa_interes_anual: '10', cupo_tarjeta: '5000000', fecha: '2026-01-01'};
     assert.deepEqual(validateCreditCard(base), {});
     assert.ok(validateCreditCard({...base, numero_cuotas: '73'}).numero_cuotas);
     assert.ok(validateCreditCard({...base, numero_cuotas: '0'}).numero_cuotas);
     assert.ok(validateCreditCard({...base, tasa_interes_anual: '101'}).tasa_interes_anual);
     assert.ok(validateCreditCard({...base, fecha_pago: '2026-01-01'}).fecha_pago);
+    for (const cupo of ['', '0', '-5', '1500000.5', 'abc']) assert.ok(validateCreditCard({...base, cupo_tarjeta: cupo}).cupo_tarjeta);
 });

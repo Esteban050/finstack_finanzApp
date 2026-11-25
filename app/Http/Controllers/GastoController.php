@@ -596,6 +596,7 @@ class GastoController extends Controller
                 'sistema_amortizacion' => 'FRANCES',
                 'fecha_inicio' => $validated['fecha'],
                 'fecha_primer_pago' => $validated['fecha_pago'],
+                'cupo' => explode('.', (string) $validated['cupo_tarjeta'])[0],
             ]);
         } catch (ValidationException $e) {
             // Los errores del crédito se informan con los nombres del formulario de gasto.
@@ -606,6 +607,7 @@ class GastoController extends Controller
                 'plazo_meses' => 'numero_cuotas',
                 'monto' => 'monto_original',
                 'proposito' => 'comercio_beneficiario',
+                'cupo' => 'cupo_tarjeta',
             ];
 
             throw ValidationException::withMessages(collect($e->errors())
@@ -750,6 +752,8 @@ class GastoController extends Controller
             'fecha_corte' => [...$condicion, 'date'],
             'fecha_pago' => [...$condicion, 'date', 'after:fecha'],
             'tasa_interes_anual' => [...$condicion, 'numeric', 'min:0', 'max:100', 'regex:/^\d{1,3}(\.\d{1,6})?$/'],
+            // CP-CRE-013: cupo total de la tarjeta, en pesos enteros.
+            'cupo_tarjeta' => [...$condicion, 'regex:/^\d{1,12}(\.0{1,2})?$/', 'not_regex:/^0+(\.0{1,2})?$/'],
             // RN-025.1: la fecha no puede ser posterior a la fecha actual.
             'fecha' => ['required', 'date', 'before_or_equal:today'],
             // CA-025.1 / RNG-09: un gasto con monto 0 o negativo se rechaza.
@@ -809,6 +813,9 @@ class GastoController extends Controller
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
             'credito_id.string' => 'Seleccione una tarjeta válida.',
             'banco_tarjeta.required' => 'Indique el banco de la tarjeta de crédito.',
+            'cupo_tarjeta.required' => 'Indique el cupo de la tarjeta de crédito.',
+            'cupo_tarjeta.regex' => 'El cupo va en pesos enteros, con hasta 12 dígitos.',
+            'cupo_tarjeta.not_regex' => 'El cupo debe ser mayor que $ 0.',
             'banco_tarjeta.string' => 'El banco debe ser texto.',
             'banco_tarjeta.max' => 'El banco no puede superar los 80 caracteres.',
             'numero_cuotas.required' => 'Indique el número de cuotas.',
