@@ -284,7 +284,11 @@ class PagoCreditoService
         $diasCausado = max(0, self::dias($referencia, $fecha));
         $capitalNoExigible = $sumar($futuras, 'capital_pendiente');
         $siguiente = array_values(array_filter($filas, $futuras))[0] ?? null;
-        $causado = CreditoService::interesPorDias($capitalNoExigible, (string) $credito->tasa_ea, $diasCausado);
+        // N01: en una tarjeta el interés a la fecha se causa por compra y días reales; las compras
+        // posteriores a la fecha aún no causan y las anteriores a la referencia causan desde ella.
+        $causado = $credito->tipo_credito === 'TARJETA_CREDITO'
+            ? CreditoService::interesComprasPorDias($capitalNoExigible, self::comprasTarjeta($credito), (string) $credito->tasa_ea, $referencia, $fecha)
+            : CreditoService::interesPorDias($capitalNoExigible, (string) $credito->tasa_ea, $diasCausado);
         // Lo que ya se anticipó del interés de la próxima cuota cubre el causado.
         $causadoPendiente = self::noNegativo(bcsub($causado, $siguiente['interes_pagado'] ?? '0', 0));
 
@@ -603,7 +607,9 @@ class PagoCreditoService
 
         foreach ($futuras as $k => $futura) {
             $interes = $k === 0 && $irregular
-                ? CreditoService::interesPorDias($saldo, (string) $credito->tasa_ea, self::dias($fecha, CarbonImmutable::parse($futura['fecha'])))
+                ? ($credito->tipo_credito === 'TARJETA_CREDITO'
+                    ? CreditoService::interesComprasPorDias($saldo, $opciones['compras'] ?? [], (string) $credito->tasa_ea, $fecha, CarbonImmutable::parse($futura['fecha']))
+                    : CreditoService::interesPorDias($saldo, (string) $credito->tasa_ea, self::dias($fecha, CarbonImmutable::parse($futura['fecha']))))
                 : CreditoService::alPeso(bcmul($saldo, $k === 0 ? $primera : $i, 30));
 
             if ($aleman) {
