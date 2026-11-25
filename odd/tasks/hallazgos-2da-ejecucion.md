@@ -41,5 +41,17 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 - T5 done: RED 3 tests (109.7 vs 109.66; 6.75 vs 6.76; 2000 vs 1797.42); GREEN con round 2 decimales, redondeo de % de valorizacion, retencion exacta en ahorro (saldo declaracion sigue a miles), nota "Ajustado para sumar 100 %" en Reportes 50/30/20 (JS); `php artisan test`: 428 passed; `npm run build` ok; `npm test` 9 fallos preexistentes.
 - T6 done: RED `ingreso_base_tipo` ausente (2 tests); GREEN con `ingreso_base_tipo` (MES_EN_CURSO|MESES_CERRADOS) en payload y /base, etiqueta "Ingreso del mes en curso", "Frente a tus ingresos" = gastado/ingreso y linea aparte "Proyeccion frente a tus ingresos"; `php artisan test`: 430 passed (flake preexistente: tests con documento 10203040NN pueden chocar con el usuario real ...037); `npm run build` ok; JS sin tests de este modulo (npm test: 9 fallos preexistentes).
 
+- Native review (review-reliability, medium) on main..29546e2: approved and acknowledged (lineage review-786f6e9b0842fbf0). 8 informational findings.
+
+## Review hardening (approved by the user 2026-11-25; R3-js-unproved explicitly excluded)
+- [x] T7a — Migration: sum abonos with bcadd; restrict the fix to system-derived valuations (same date as an abono and value = previous valuation + monto) so user-typed values are untouched; add a migration test (inflated lowered, user-typed kept, negative skipped, date matching, liquidated CDT untouched).
+- [ ] T7b — `InversionService` ABONO_INTERES no-effect rule explicit for `tipo === 'CDT'`; valuation % rounded with bcmath half-up instead of float round.
+- [ ] T7c — Calculator: `estimar()` failure must not break the simulation (try/catch → estimacion_sistema null/"No disponible"), with test.
+- [ ] T7d — Test: card without registered purchases in regenerar() keeps flat interest by days (blindaje).
+- [ ] T7e — `RentaCalculadoraEstimacionSistemaTest`: own category and guaranteed-unique document.
+
 ## Next step
-Entregar: push/PR a decision del usuario.
+T7a–T7e, then push/PR at the user's decision.
+
+### Review hardening evidence
+- T7a done: RED valor digitado por el usuario bajado (5043000 -> 4999862.02); GREEN con identificacion por marcas de tiempo (misma fecha del abono sin reedicion posterior; fechas posteriores con creado_en <= creado_en del abono) y bcsub/bcadd. 5 tests de migracion (inflada baja, digitada se respeta, negativa omitida, liquidado intacto, precision decimal). La migracion sigue Pending en la BD local (no se ejecuto sobre datos reales; los tests la invocan dentro de una transaccion que se revierte). `php artisan test`: 435 passed.
