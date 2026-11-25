@@ -219,7 +219,8 @@ class IndicadoresSaludService
 
         // 4. Gasto diario promedio: gastos periodo / días periodo
         $diasGasto = self::diasParaPromedio($mes, $hoy);
-        $gastoDiario = round((float) bcdiv($gastosTotales, (string) $diasGasto, 4), 2);
+        $gastosParaPromedio = self::gastosHastaHoy($usuario->id, $mes, $hoy);
+        $gastoDiario = round((float) bcdiv($gastosParaPromedio, (string) $diasGasto, 4), 2);
         $gastoDiarioAnt = round((float) bcdiv($gastosTotalesAnt, (string) max($diasMesAnterior, 1), 4), 2);
         $varGastoDiario = $gastoDiarioAnt > 0 ? round((($gastoDiario - $gastoDiarioAnt) / $gastoDiarioAnt) * 100, 2) : null;
         $historicoGastoDiario = $this->obtenerHistoricoGastoDiario($usuario, $mes, $hoy);
@@ -235,7 +236,7 @@ class IndicadoresSaludService
             'detalle' => [
                 'formula' => 'Gastos totales del periodo / Días transcurridos (mes en curso) o días del mes (mes cerrado)',
                 'variables' => [
-                    'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
+                    'Gastos totales' => '$ '.number_format((float) $gastosParaPromedio, 0, ',', '.'),
                     'Días transcurridos' => (string) $diasGasto,
                     'Gasto diario mes anterior' => '$ '.number_format($gastoDiarioAnt, 0, ',', '.'),
                 ],
@@ -458,6 +459,26 @@ class IndicadoresSaludService
     }
 
     /**
+     * Gastos confirmados del mes para el promedio diario: en el mes en curso solo hasta hoy (los
+     * posteriores aun no ocurren y no estan en los dias transcurridos); en los demas, todo el mes.
+     */
+    private static function gastosHastaHoy(string $usuarioId, CarbonImmutable $mes, CarbonImmutable $hoy): string
+    {
+        $inicio = $mes->startOfMonth();
+        $fin = $mes->endOfMonth();
+
+        if ($hoy->gte($inicio) && $hoy->lt($fin->startOfDay())) {
+            $fin = $hoy;
+        }
+
+        return (string) (Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuarioId)
+            ->whereBetween('fecha', [$inicio->toDateString(), $fin->toDateString()])
+            ->where('estado', 'CONFIRMADO')
+            ->sum('monto_cop') ?? '0');
+    }
+
+    /**
      * Obtiene serie de 6 meses para el gasto diario promedio.
      *
      * @return array<int, array{mes: string, promedio_diario: float}>
@@ -470,11 +491,7 @@ class IndicadoresSaludService
             $fin = $m->endOfMonth();
             $dias = self::diasParaPromedio($m, $hoy ?? CarbonImmutable::today());
 
-            $gas = (string) (Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
-                ->where('usuario_id', $usuario->id)
-                ->whereBetween('fecha', [$m->toDateString(), $fin->toDateString()])
-                ->where('estado', 'CONFIRMADO')
-                ->sum('monto_cop') ?? '0');
+            $gas = self::gastosHastaHoy($usuario->id, $m, $hoy ?? CarbonImmutable::today());
 
             $prom = round((float) bcdiv($gas, (string) max($dias, 1), 4), 2);
 

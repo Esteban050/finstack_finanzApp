@@ -26,7 +26,7 @@ class ReporteInversionController extends Controller
         $anio = $this->resolverAnio($request);
         $aniosDisponibles = $this->aniosDisponibles();
 
-        $movimientos = MovimientoInversion::with(['inversion.entidadFinanciera'])
+        $movimientos = MovimientoInversion::with(['inversion.entidadFinanciera', 'inversion.detalleCdt'])
             ->where('usuario_id', Auth::id())
             ->whereYear('fecha', $anio)
             ->where(function ($query) {
@@ -43,7 +43,23 @@ class ReporteInversionController extends Controller
             ->get()
             ->groupBy('transaccion_id')
             ->map(fn ($filas) => (string) $filas->sum('valor_bruto'));
-        $base = fn ($m) => (float) ($rendimientos[$m->id] ?? $m->monto_bruto ?? $m->monto);
+        // Sin puente: sin monto bruto no se suma el monto neto; una redencion de CDT descuenta el capital.
+        $base = function ($m) use ($rendimientos): float {
+            if (isset($rendimientos[$m->id])) {
+                return (float) $rendimientos[$m->id];
+            }
+            if ($m->monto_bruto === null) {
+                return 0.0;
+            }
+            $bruto = (string) $m->monto_bruto;
+            if ($m->inversion?->tipo === 'CDT' && $m->tipo === 'REDENCION') {
+                $capital = (string) ($m->inversion->detalleCdt?->capital ?? $m->inversion->monto_inicial);
+
+                return max(0.0, (float) bcsub($bruto, $capital, 2));
+            }
+
+            return (float) $bruto;
+        };
 
         // Agrupación por producto y entidad
         $resumenPorProducto = $movimientos->groupBy(fn ($m) => $m->inversion?->tipo ?? 'OTRO')
@@ -125,10 +141,12 @@ class ReporteInversionController extends Controller
             ->where('tipo', 'VENTA')
             ->get();
 
+        $deduciblesPuente = $deduciblesPuente->reject(fn ($d) => str_starts_with((string) $d->concepto, 'RETE'))->values();
+
         $totales = [
             'utilidad_total' => $ingresosPuente->sum('valor_bruto'),
             'retencion_total' => $ingresosPuente->sum('retencion'),
-            'deducibles_total' => $deduciblesPuente->reject(fn ($d) => str_starts_with((string) $d->concepto, 'RETE'))->sum('valor'),
+            'deducibles_total' => $deduciblesPuente->sum('valor'),
         ];
 
         if ($request->expectsJson()) {

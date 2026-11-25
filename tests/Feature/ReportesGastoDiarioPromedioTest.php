@@ -100,4 +100,15 @@ class ReportesGastoDiarioPromedioTest extends TestCase
 
         $this->assertSame('$ 100.000', $ind['referencia_anterior']);
     }
+
+    public function test_t12b_el_mes_en_curso_excluye_los_gastos_posteriores_a_hoy(): void
+    {
+        $this->gasto('2026-11-02', '4118900');
+        $this->gasto('2026-11-28', '1000000');   // futuro: aun no ocurre
+
+        $ind = $this->indicador('2026-11', '2026-11-24');
+
+        $this->assertEqualsWithDelta(171620.83, $ind['valor'], 0.005);
+        $this->assertEqualsWithDelta(171620.83, end($ind['tendencia_6m'])['promedio_diario'], 0.005);
+    }
 }

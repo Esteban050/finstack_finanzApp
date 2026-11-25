@@ -8,7 +8,6 @@ use App\Models\Notificacion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\Usuario;
 use App\Services\AlertaService;
-use App\Services\NotificacionService;
 use App\Services\ReglaAlertaService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
@@ -149,21 +148,24 @@ class UsoCupoTarjetaAlertaTest extends TestCase
         $this->assertSame(1, Credito::where('usuario_id', $this->usuario->id)->count());
     }
 
-    public function test_el_texto_del_correo_incluye_banco_porcentaje_cupo_y_disponible(): void
+    public function test_el_correo_enviado_incluye_banco_porcentaje_cupo_y_disponible(): void
     {
+        $this->putJson('/perfil/alertas', ['reglas' => [['tipo' => 'USO_CUPO_TARJETA', 'enviar_correo' => true]]])->assertOk();
         $id = $this->tarjeta('1000000');
-        $this->gastoTarjeta('1500000', ['credito_id' => $id]);
-        $notificacion = $this->notificaciones()[0];
+        $this->gastoTarjeta('1700000', ['credito_id' => $id]);       // 2.700.000 de 3.000.000 = 90 %; disponible 300.000
 
-        $metodo = new \ReflectionMethod(NotificacionService::class, 'textoCorreo');
-        [$asunto, $cuerpo] = $metodo->invoke(null, $this->usuario, $notificacion);
+        $mensajes = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $mensajes);
+        $correo = $mensajes[0]->getOriginalMessage();
+        $asunto = $correo->getSubject();
+        $cuerpo = $correo->getTextBody();
 
         $this->assertStringContainsString('Bancolombia', $asunto);
-        $this->assertStringContainsString('83', $asunto);
-        $this->assertStringContainsString('3.000.000', $cuerpo);
-        $this->assertStringContainsString('2.500.000', $cuerpo);
-        $this->assertStringContainsString('500.000', $cuerpo);
-        $this->assertStringContainsString('80 %', $cuerpo);
+        $this->assertStringContainsString('90', $asunto);
+        $this->assertStringContainsString('3.000.000', $cuerpo);   // cupo
+        $this->assertStringContainsString('2.700.000', $cuerpo);   // usado
+        $this->assertStringContainsString('disponible: $ 300.000', $cuerpo);
+        $this->assertStringContainsString('80 %', $cuerpo);        // umbral
         $this->assertStringNotContainsString('Hola ,', $cuerpo);
     }
 

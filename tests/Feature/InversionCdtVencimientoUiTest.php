@@ -46,4 +46,20 @@ class InversionCdtVencimientoUiTest extends TestCase
         $this->assertStringContainsString("fechaTrxEl.min = '2026-09-24'", $html);
         $this->assertStringContainsString("document.getElementById('fecha') || document.getElementById('trx_fecha')", $html);
     }
+
+    public function test_t12b_sin_detalle_cdt_el_minimo_cae_al_vencimiento_de_la_inversion(): void
+    {
+        $u = $this->crearUsuario();
+        $this->actingAs($u);
+        $cdt = Inversion::create([
+            'usuario_id' => $u->id, 'nombre' => 'CDT sin detalle', 'tipo' => 'CDT', 'moneda' => 'COP',
+            'fecha_apertura' => '2026-09-24', 'monto_inicial' => 5000000.00, 'tasa_ea' => '11.5000',
+            'plazo_dias' => 180, 'fecha_vencimiento' => '2027-03-20', 'estado' => 'ACTIVA',
+        ]);
+        $this->assertNull($cdt->detalleCdt);
+
+        $html = $this->get(route('inversiones.show', $cdt->id))->assertOk()->getContent();
+
+        $this->assertStringContainsString("fechaEl.min = '2027-03-20'", $html);
+    }
 }
