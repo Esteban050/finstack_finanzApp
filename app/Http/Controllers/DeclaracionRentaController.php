@@ -14,6 +14,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -231,12 +232,18 @@ class DeclaracionRentaController extends Controller
         }
 
         // N03: la "Estimación del sistema" es la de Renta › Estimación (con las retenciones del usuario).
-        $estimacion = $this->estimacionService->estimar(auth()->user(), $anio);
-        $resultado['estimacion_sistema'] = [
-            'impuesto_cop' => $estimacion['paso7']['impuesto_redondeado_cop'],
-            'saldo_valor' => $estimacion['paso8']['saldo_valor_mostrado_cop'],
-            'saldo_label' => $estimacion['paso8']['saldo_label'],
-        ];
+        // Si falla, la simulación sigue y la tarjeta muestra "No disponible".
+        try {
+            $estimacion = $this->estimacionService->estimar(auth()->user(), $anio);
+            $resultado['estimacion_sistema'] = [
+                'impuesto_cop' => $estimacion['paso7']['impuesto_redondeado_cop'],
+                'saldo_valor' => $estimacion['paso8']['saldo_valor_mostrado_cop'],
+                'saldo_label' => $estimacion['paso8']['saldo_label'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Calculadora de renta: no se pudo calcular la estimación del sistema.', ['anio' => $anio, 'error' => $e->getMessage()]);
+            $resultado['estimacion_sistema'] = null;
+        }
 
         return response()->json($resultado);
     }

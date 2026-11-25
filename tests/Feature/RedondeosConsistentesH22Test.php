@@ -65,6 +65,13 @@ class RedondeosConsistentesH22Test extends TestCase
 
     public function test_el_porcentaje_de_valoracion_redondea_en_vez_de_truncar(): void
     {
+        $this->assertSame("6.76", $this->porcentajeValoracion("100.00000000", "106.75700000"));
+        $this->assertSame("6.76", $this->porcentajeValoracion("200.00000000", "213.51000000"), "x,xx5 exacto sube");
+        $this->assertSame("-6.76", $this->porcentajeValoracion("200.00000000", "186.49000000"), "x,xx5 negativo se aleja de cero");
+    }
+
+    private function porcentajeValoracion(string $costo, string $precio): string
+    {
         $u = $this->crearUsuario();
         $accion = Inversion::create([
             'usuario_id' => $u->id, 'nombre' => 'Accion', 'tipo' => 'ACCION_ETF', 'moneda' => 'COP',
@@ -73,13 +80,13 @@ class RedondeosConsistentesH22Test extends TestCase
         ]);
         $accion->detalleRentaVariable()->create([
             'simbolo' => 'XX', 'nombre_instrumento' => 'XX', 'tipo' => 'ACCION', 'mercado' => 'BVC',
-            'unidades_total' => '10.00000000', 'costo_promedio_unitario' => '100.00000000',
-            'valor_actual_unidad' => '106.75700000', 'fecha_primera_compra' => '2026-01-01', 'tipo_reparto' => 'NO_APLICA',
+            'unidades_total' => '10.00000000', 'costo_promedio_unitario' => $costo,
+            'valor_actual_unidad' => $precio, 'fecha_primera_compra' => '2026-01-01', 'tipo_reparto' => 'NO_APLICA',
         ]);
 
         $vnr = InversionService::valoracionNoRealizada($accion->fresh());
 
-        $this->assertSame('6.76', $vnr['porcentaje']);
+        return $vnr['porcentaje'];
     }
 
     public function test_el_ahorro_por_inversiones_usa_la_retencion_exacta_y_el_saldo_sigue_a_miles(): void

@@ -46,7 +46,7 @@
             </x-ui.card>
             <x-ui.card title="Estimación del sistema">
                 <p class="ui-help">Esta estimación usa tus registros del año en la aplicación: no cambia con los valores que simulas arriba. Los topes de arriba sí comparan los montos ingresados.</p>
-                <dl class="finance-stats"><div class="finance-stat"><dt>Impuesto estimado</dt><dd x-text="money(result.estimacion_sistema?.impuesto_cop)"></dd></div><div class="finance-stat"><dt>Saldo estimado</dt><dd x-text="money(result.estimacion_sistema?.saldo_valor)"></dd><span class="ui-help" x-text="result.estimacion_sistema?.saldo_label"></span></div></dl>
+                <dl class="finance-stats"><div class="finance-stat"><dt>Impuesto estimado</dt><dd x-text="result.estimacion_sistema ? money(result.estimacion_sistema.impuesto_cop) : 'No disponible'"></dd></div><div class="finance-stat"><dt>Saldo estimado</dt><dd x-text="result.estimacion_sistema ? money(result.estimacion_sistema.saldo_valor) : 'No disponible'"></dd><span class="ui-help" x-text="result.estimacion_sistema?.saldo_label ?? ''"></span></div></dl>
                 <x-ui.calculation-notice />
             </x-ui.card>
         </section>

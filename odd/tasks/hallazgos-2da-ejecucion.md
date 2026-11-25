@@ -45,13 +45,18 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 
 ## Review hardening (approved by the user 2026-11-25; R3-js-unproved explicitly excluded)
 - [x] T7a — Migration: sum abonos with bcadd; restrict the fix to system-derived valuations (same date as an abono and value = previous valuation + monto) so user-typed values are untouched; add a migration test (inflated lowered, user-typed kept, negative skipped, date matching, liquidated CDT untouched).
-- [ ] T7b — `InversionService` ABONO_INTERES no-effect rule explicit for `tipo === 'CDT'`; valuation % rounded with bcmath half-up instead of float round.
-- [ ] T7c — Calculator: `estimar()` failure must not break the simulation (try/catch → estimacion_sistema null/"No disponible"), with test.
-- [ ] T7d — Test: card without registered purchases in regenerar() keeps flat interest by days (blindaje).
-- [ ] T7e — `RentaCalculadoraEstimacionSistemaTest`: own category and guaranteed-unique document.
+- [x] T7b — `InversionService` ABONO_INTERES no-effect rule explicit for `tipo === 'CDT'`; valuation % rounded with bcmath half-up instead of float round.
+- [x] T7c — Calculator: `estimar()` failure must not break the simulation (try/catch → estimacion_sistema null/"No disponible"), with test.
+- [x] T7d — Test: card without registered purchases in regenerar() keeps flat interest by days (blindaje).
+- [x] T7e — `RentaCalculadoraEstimacionSistemaTest`: own category and guaranteed-unique document.
 
 ## Next step
-T7a–T7e, then push/PR at the user's decision.
+Push/PR at the user decision.
 
 ### Review hardening evidence
 - T7a done: RED valor digitado por el usuario bajado (5043000 -> 4999862.02); GREEN con identificacion por marcas de tiempo (misma fecha del abono sin reedicion posterior; fechas posteriores con creado_en <= creado_en del abono) y bcsub/bcadd. 5 tests de migracion (inflada baja, digitada se respeta, negativa omitida, liquidado intacto, precision decimal). La migracion sigue Pending en la BD local (no se ejecuto sobre datos reales; los tests la invocan dentro de una transaccion que se revierte). `php artisan test`: 435 passed.
+- T7b done: `$sinEfecto` ahora `tipo === 'CDT'`; % de valorizacion con bcmath mitad-arriba (`redondearMitadArriba`). Test de borde (x,xx5 exacto sube, negativo se aleja de cero) paso de inmediato (el round() de PHP ya lo hacia bien): es blindaje, no RED.
+- T7c done: RED 500 cuando `estimar()` lanza; GREEN con try/catch + `Log::warning`, `estimacion_sistema` null y la tarjeta muestra "No disponible".
+- T7d done: test de blindaje (tarjeta sin compras en `regenerar()` cobra interes plano por dias, 13.618 en el ejemplo); paso de inmediato.
+- T7e done: `RentaCalculadoraEstimacionSistemaTest` crea su categoria INGRESO y usa documento unico basado en hrtime.
+- `php artisan test`: 437 passed (el flake preexistente de documentos 10203040NN en otros tests aparecio varias veces y pasa al repetir).

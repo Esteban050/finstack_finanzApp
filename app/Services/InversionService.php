@@ -182,6 +182,12 @@ class InversionService
     /**
      * RF-VAL-02: Mostrar valorización no realizada = (valor actual - costo) * unidades
      */
+    /** Redondea a 2 decimales con bcmath, mitad alejándose de cero (como PresupuestoService::porcentaje). */
+    private static function redondearMitadArriba(string $valor): string
+    {
+        return bccomp($valor, '0', 10) === -1 ? bcsub($valor, '0.005', 2) : bcadd($valor, '0.005', 2);
+    }
+
     public static function valoracionNoRealizada(Inversion $inversion): ?array
     {
         if ($inversion->tipo === 'ACCION_ETF') {
@@ -193,7 +199,7 @@ class InversionService
             $diferenciaUnit = bcsub((string) $precioActual, (string) $detalle->costo_promedio_unitario, 8);
             $valor = IngresoService::redondear(bcmul($diferenciaUnit, (string) $detalle->unidades_total, 4));
             $porcentaje = bccomp((string) $detalle->costo_promedio_unitario, '0', 8) > 0
-                ? number_format(round((float) bcdiv(bcmul($diferenciaUnit, '100', 8), (string) $detalle->costo_promedio_unitario, 8), 2), 2, '.', '')
+                ? self::redondearMitadArriba(bcdiv(bcmul($diferenciaUnit, '100', 10), (string) $detalle->costo_promedio_unitario, 10))
                 : '0.00';
 
             return [
@@ -295,7 +301,8 @@ class InversionService
         $montoEfecto = $movimiento->monto_bruto ?? $movimiento->monto;
 
         // N02: el interés cobrado de un CDT sale de la posición; solo la cuenta de alto rendimiento lo capitaliza.
-        $sinEfecto = $movimiento->tipo === 'ABONO_INTERES' && $inversion->tipo !== 'CUENTA_ALTO_RENDIMIENTO';
+        // (Inversion::MOVIMIENTOS_PERMITIDOS solo admite ABONO_INTERES en CDT y CUENTA_ALTO_RENDIMIENTO.)
+        $sinEfecto = $movimiento->tipo === 'ABONO_INTERES' && $inversion->tipo === 'CDT';
 
         if ($sinEfecto) {
             $nuevoValor = $valorBase;
