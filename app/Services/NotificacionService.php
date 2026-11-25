@@ -214,6 +214,10 @@ class NotificacionService
                 ($notificacion->tipo === ReglaAlertaService::TOPE_DIAN_TARJETA ? 'Tus consumos con tarjeta de crédito' : 'Tus compras y consumos')
                     ." de {$d['anio']} suman ".self::pesos($d['acumulado']).' de '.self::pesos($d['tope'])." ({$d['tope_uvt']} UVT): el ".self::porcentaje($d['porcentaje']).'.',
             ],
+            ReglaAlertaService::USO_CUPO_TARJETA => [
+                "SCFP - Tu tarjeta {$d['banco']} usa el ".self::porcentaje($d['porcentaje']).' del cupo',
+                "Los consumos de tu tarjeta {$d['banco']} suman ".self::pesos($d['saldo']).' de un cupo de '.self::pesos($d['cupo']).' (disponible: '.self::pesos($d['disponible']).'). Superaste tu umbral del '.$d['umbral'].' %.',
+            ],
             ReglaAlertaService::ENDEUDAMIENTO => [
                 'SCFP - Tu nivel de endeudamiento subió',
                 'Tus cuotas de este mes son el '.self::porcentaje($d['indicador_porc']).' de tu ingreso promedio (superan el '.$d['umbral'].' %).',

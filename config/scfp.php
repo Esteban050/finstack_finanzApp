@@ -139,6 +139,14 @@ return [
                 'prioridad' => 'ADVERTENCIA',
             ],
 
+            // H06: el saldo de capital de una tarjeta llega a este % de su cupo (no es el tope de la DIAN).
+            'USO_CUPO_TARJETA' => [
+                'activa' => true,
+                'enviar_correo' => false,
+                'parametros' => ['umbral' => 80],
+                'prioridad' => 'ADVERTENCIA',
+            ],
+
             // Obligaciones: el indicador de RF-053 sube de franja frente al mes anterior.
             'ENDEUDAMIENTO' => [
                 'activa' => true,

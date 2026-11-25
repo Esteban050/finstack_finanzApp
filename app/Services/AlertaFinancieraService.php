@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
  *   LIMITE_GASTO_MENSUAL.
  * - Hábitos de gasto: GASTO_INUSUAL, GASTOS_HORMIGA y GASTO_DISCRECIONAL_ALTO.
  * - Topes de la DIAN: TOPE_DIAN_TARJETA y TOPE_DIAN_COMPRAS (1.400 UVT del año).
+ * - Uso del cupo de la tarjeta: USO_CUPO_TARJETA (saldo de capital / cupo).
  * - Obligaciones: ENDEUDAMIENTO (sube de franja) y VENCIMIENTOS (cuotas y
  *   recurrentes por confirmar).
  *
@@ -75,6 +76,10 @@ class AlertaFinancieraService
                     $emitidas += self::topeDian($usuarioId, $reglas[$tipo], $anio, $parametros);
                 }
             }
+        }
+
+        if ($activa(ReglaAlertaService::USO_CUPO_TARJETA)) {
+            $emitidas += self::usoCupoTarjeta($usuarioId, $reglas[ReglaAlertaService::USO_CUPO_TARJETA], $hoy);
         }
 
         // Cambian con los días y no con los gastos: solo en el job diario.
@@ -133,7 +138,7 @@ class AlertaFinancieraService
     {
         $proyeccion = PresupuestoService::proyeccionGlobal($usuarioId, $hoy);
 
-        if ($proyeccion['dia_corte'] * 2 <= $proyeccion['dias_mes']) {
+        if ($proyeccion['dias_mes'] >= $proyeccion['dia_corte'] * 2) {
             return 0;
         }
 
@@ -344,6 +349,45 @@ class AlertaFinancieraService
             'uvt' => $uvt,
             'porcentaje' => $porcentaje,
         ]);
+    }
+
+    /**
+     * H06: el saldo de capital de una tarjeta con cupo llega al umbral % de ese cupo.
+     * Una notificación por tarjeta y umbral (RN-057.2).
+     */
+    private static function usoCupoTarjeta(string $usuarioId, array $regla, CarbonImmutable $hoy): int
+    {
+        $umbral = (int) $regla['parametros']['umbral'];
+        $emitidas = 0;
+
+        $tarjetas = Credito::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuarioId)
+            ->where('tipo_credito', 'TARJETA_CREDITO')
+            ->whereNotNull('cupo')
+            ->get();
+
+        foreach ($tarjetas as $tarjeta) {
+            $cupo = CreditoService::alPeso((string) $tarjeta->cupo);
+            $saldo = PagoCreditoService::situacion($tarjeta, $hoy)['saldo_capital'];
+            $porcentaje = self::porcentaje($saldo, $cupo);
+
+            if ($porcentaje === null || bccomp($porcentaje, (string) $umbral, 2) < 0) {
+                continue;
+            }
+
+            $emitidas += self::emitir($usuarioId, $regla, "USO_CUPO_TARJETA:{$tarjeta->id}:{$umbral}", [
+                'credito_id' => $tarjeta->id,
+                'banco' => $tarjeta->banco,
+                'nombre' => $tarjeta->banco,
+                'umbral' => $umbral,
+                'cupo' => $cupo,
+                'saldo' => $saldo,
+                'disponible' => bcsub($cupo, $saldo, 0),
+                'porcentaje' => $porcentaje,
+            ], 'CREDITO', $tarjeta->id);
+        }
+
+        return $emitidas;
     }
 
     /*

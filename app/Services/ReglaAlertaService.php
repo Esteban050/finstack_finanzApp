@@ -18,26 +18,38 @@ class ReglaAlertaService
 {
     // Presupuesto
     public const UMBRAL_LINEA = 'UMBRAL_LINEA';
+
     public const PRESUPUESTO_TOTAL = 'PRESUPUESTO_TOTAL';
+
     public const PROYECCION_LINEA = 'PROYECCION_LINEA';
 
     // Ingresos frente a gastos
     public const INGRESOS_VS_GASTOS = 'INGRESOS_VS_GASTOS';
+
     public const GASTO_PROYECTADO_ALTO = 'GASTO_PROYECTADO_ALTO';
+
     public const LIMITE_GASTO_MENSUAL = 'LIMITE_GASTO_MENSUAL';
 
     // Hábitos de gasto
     public const GASTO_INUSUAL = 'GASTO_INUSUAL';
+
     public const GASTOS_HORMIGA = 'GASTOS_HORMIGA';
+
     public const GASTO_DISCRECIONAL_ALTO = 'GASTO_DISCRECIONAL_ALTO';
 
     // Topes de la DIAN
     public const TOPE_DIAN_TARJETA = 'TOPE_DIAN_TARJETA';
+
     public const TOPE_DIAN_COMPRAS = 'TOPE_DIAN_COMPRAS';
+
+    // Cupo de la tarjeta de crédito (no es el tope de la DIAN)
+    public const USO_CUPO_TARJETA = 'USO_CUPO_TARJETA';
 
     // Obligaciones y cuenta
     public const ENDEUDAMIENTO = 'ENDEUDAMIENTO';
+
     public const VENCIMIENTOS = 'VENCIMIENTOS';
+
     public const SEGURIDAD_CUENTA = 'SEGURIDAD_CUENTA';
 
     /** @return array<int, string> */
@@ -198,7 +210,7 @@ class ReglaAlertaService
             // RN-057.3
             self::PROYECCION_LINEA => self::unEntero($parametros, 'umbral', $campo, $cfg['proyeccion_min'], $cfg['proyeccion_max'], '%', $errores),
             self::GASTO_PROYECTADO_ALTO => self::unEntero($parametros, 'umbral', $campo, 1, 200, '%', $errores),
-            self::GASTO_DISCRECIONAL_ALTO, self::TOPE_DIAN_TARJETA, self::TOPE_DIAN_COMPRAS => self::unEntero($parametros, 'umbral', $campo, 1, 100, '%', $errores),
+            self::GASTO_DISCRECIONAL_ALTO, self::TOPE_DIAN_TARJETA, self::TOPE_DIAN_COMPRAS, self::USO_CUPO_TARJETA => self::unEntero($parametros, 'umbral', $campo, 1, 100, '%', $errores),
             self::GASTO_INUSUAL => self::unEntero($parametros, 'veces', $campo, 2, 20, 'veces', $errores),
             self::VENCIMIENTOS => self::unEntero($parametros, 'dias_antes', $campo, 0, 7, 'días', $errores),
             self::LIMITE_GASTO_MENSUAL => self::limiteMensual($parametros, $campo, $errores),
