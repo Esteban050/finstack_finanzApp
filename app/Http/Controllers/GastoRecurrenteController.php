@@ -130,7 +130,11 @@ class GastoRecurrenteController extends Controller
             usuarioId: Auth::id()
         );
 
-        $mensaje = 'Gasto recurrente creado. La primera ocurrencia se generará el '.$fechaInicio->format('d/m/Y').'.';
+        // H15: con la fecha de inicio ya llegada, la ocurrencia se genera al guardar.
+        $generadas = RecurrenciaService::generarAlGuardar($plantilla);
+        $mensaje = $generadas > 0
+            ? 'Gasto recurrente creado. Se generó la ocurrencia del '.$fechaInicio->format('d/m/Y').'.'
+            : 'Gasto recurrente creado. La primera ocurrencia se generará el '.$fechaInicio->format('d/m/Y').'.';
 
         if ($request->expectsJson()) {
             return response()->json(['mensaje' => $mensaje, 'data' => $plantilla], 201);

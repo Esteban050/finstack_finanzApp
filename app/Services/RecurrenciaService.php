@@ -192,6 +192,27 @@ class RecurrenciaService
     }
 
     /**
+     * H15: al guardar una plantilla cuya fecha de inicio ya llegó, genera de inmediato las ocurrencias
+     * vencidas (la de la fecha de inicio) sin esperar al job de las 00:05: el usuario las ve al instante.
+     * Con el mismo aislamiento del job: una falla se registra y la plantilla queda guardada.
+     *
+     * @return int ocurrencias generadas
+     */
+    public static function generarAlGuardar(PlantillaRecurrencia $plantilla): int
+    {
+        $hoy = CarbonImmutable::today();
+
+        if (CarbonImmutable::parse($plantilla->fecha_inicio)->greaterThan($hoy)) {
+            return 0;
+        }
+
+        $generadas = self::generarConAislamiento($plantilla, $hoy);
+        $plantilla->refresh();
+
+        return $generadas;
+    }
+
+    /**
      * RN-022.2 / RN-028.1: `scfp:generar-recurrencias` corre a diario para todo
      * el sistema. Una plantilla que falle no puede impedir que se generen las
      * ocurrencias de los demás usuarios, así que el error se registra y la
