@@ -2,20 +2,19 @@
 
 namespace Tests\Feature;
 
-use App\Models\EntidadFinanciera;
+use App\Http\Middleware\CheckPoliticaAceptadaMiddleware;
 use App\Models\FicCatalogo;
+use App\Models\Ingreso;
 use App\Models\IngresoInversion;
 use App\Models\Inversion;
 use App\Models\MovimientoInversion;
-use App\Models\ParametroTributario;
 use App\Models\TasaCambio;
 use App\Models\Usuario;
-use App\Models\UsuarioPerfilTributario;
 use App\Models\ValoracionInversion;
 use App\Models\ValorDeducibleRegistro;
 use App\Services\CalculoImpuestoInversionService;
 use App\Services\InversionService;
-use App\Services\ParametroTributarioService;
+use App\Services\RentabilidadService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -46,7 +45,7 @@ class InversionesTributariasTest extends TestCase
         $this->usuario = $usuario;
 
         $this->actingAs($this->usuario);
-        $this->withoutMiddleware(\App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class);
+        $this->withoutMiddleware(CheckPoliticaAceptadaMiddleware::class);
     }
 
     /**
@@ -1135,7 +1134,7 @@ class InversionesTributariasTest extends TestCase
 
         // 4. Al eliminar la transacción, el ingreso se marca como eliminado y la deducción se remueve
         $this->delete(route('inversiones.movimientos.destroy', [$accionExt->id, $mov->id]));
-        $this->assertNotNull(\App\Models\Ingreso::withTrashed()->find($mov->ingreso_id)?->eliminado_en);
+        $this->assertNotNull(Ingreso::withTrashed()->find($mov->ingreso_id)?->eliminado_en);
         $this->assertDatabaseMissing('valor_deducible_registro', ['transaccion_id' => $mov->id]);
     }
 
@@ -1280,7 +1279,7 @@ class InversionesTributariasTest extends TestCase
 
         // 3. Verificar que se creó el registro en el módulo de Ingresos (RENTAS_CAPITAL, 200 USD / 820.000 COP)
         $this->assertNotNull($movVenta->ingreso_id);
-        $ingreso = \App\Models\Ingreso::find($movVenta->ingreso_id);
+        $ingreso = Ingreso::find($movVenta->ingreso_id);
         $this->assertNotNull($ingreso);
         $this->assertEquals('RENTAS_CAPITAL', $ingreso->clasificacion_tributaria);
         $this->assertEquals('USD', $ingreso->moneda);
@@ -1288,7 +1287,7 @@ class InversionesTributariasTest extends TestCase
         $this->assertEquals('920000.00', $ingreso->monto_bruto_cop);
 
         // 4. RentabilidadService: refleja ganancia neta positiva de +200 USD (+20.00% ROI) y no una pérdida
-        $indicadores = \App\Services\RentabilidadService::indicadores($accion->fresh(), CarbonImmutable::parse('2026-06-16'));
+        $indicadores = RentabilidadService::indicadores($accion->fresh(), CarbonImmutable::parse('2026-06-16'));
         $this->assertEquals('200.00', $indicadores['ganancia']);
         $this->assertEquals('20.00', $indicadores['roi']);
         $this->assertEquals('GANANCIA', $indicadores['resultado']);
@@ -1350,7 +1349,7 @@ class InversionesTributariasTest extends TestCase
         $movVenta = MovimientoInversion::where('inversion_id', $accion->id)->where('tipo', 'VENTA')->first();
         $this->assertNotNull($movVenta->ingreso_id);
 
-        $ingreso = \App\Models\Ingreso::find($movVenta->ingreso_id);
+        $ingreso = Ingreso::find($movVenta->ingreso_id);
         $this->assertNotNull($ingreso);
         $this->assertEquals('GANANCIA_OCASIONAL', $ingreso->clasificacion_tributaria);
         $this->assertEquals('2500000.00', $ingreso->monto_bruto_cop);
@@ -1638,5 +1637,42 @@ class InversionesTributariasTest extends TestCase
         $this->assertEquals('ACTIVA', $fpv->estado);
         $this->assertEquals('3000000.00', (string) $fpv->detalleFpv->saldo_actual);
         $this->assertNull($fpv->detalleFpv->unidades);
+    }
+
+    /**
+     * H04 (decisión: bloquear): un CDT no se redime antes de su vencimiento y el formulario
+     * de redención usa la fecha de vencimiento como fecha mínima.
+     */
+    public function test_h04_la_redencion_de_un_cdt_antes_del_vencimiento_se_rechaza(): void
+    {
+        $this->actingAs($this->usuario);
+
+        $cdt = Inversion::create([
+            'usuario_id' => $this->usuario->id, 'nombre' => 'CDT Davivienda', 'tipo' => 'CDT', 'moneda' => 'COP',
+            'fecha_apertura' => '2026-09-24', 'monto_inicial' => 5000000.00, 'tasa_ea' => '11.5000',
+            'plazo_dias' => 180, 'fecha_vencimiento' => '2027-03-23', 'estado' => 'ACTIVA',
+        ]);
+        $cdt->movimientos()->create([
+            'usuario_id' => $this->usuario->id, 'tipo' => 'APORTE', 'fecha' => '2026-09-24', 'monto' => 5000000.00,
+            'monto_cop' => 5000000.00, 'monto_bruto' => 5000000.00, 'es_inicial' => true,
+        ]);
+        $cdt->detalleCdt()->create([
+            'capital' => '5000000.00', 'tasa_valor' => '11.5000', 'tipo_tasa' => 'EA', 'plazo_dias' => 180,
+            'base_dias' => 365, 'fecha_vencimiento' => '2027-03-23', 'periodicidad_pago' => 'VENCIMIENTO',
+        ]);
+
+        $this->post(route('inversiones.movimientos.store', $cdt->id), [
+            'tipo' => 'REDENCION', 'fecha' => '2026-11-24', 'monto' => 5000000.00,
+        ])->assertSessionHasErrors('fecha');
+
+        $this->assertSame(0, MovimientoInversion::where('inversion_id', $cdt->id)->where('tipo', 'REDENCION')->count());
+        $this->assertSame('ACTIVA', $cdt->fresh()->estado);
+
+        $this->get(route('inversiones.show', $cdt->id))->assertOk()->assertSee("fechaEl.min = '2027-03-23'", false);
+
+        $this->post(route('inversiones.movimientos.store', $cdt->id), [
+            'tipo' => 'REDENCION', 'fecha' => '2027-03-23', 'monto' => 5000000.00,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('LIQUIDADA', $cdt->fresh()->estado);
     }
 }

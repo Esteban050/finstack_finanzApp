@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Inversion;
-use App\Models\Gasto;
 use App\Models\Categoria;
+use App\Models\Gasto;
+use App\Models\Ingreso;
+use App\Models\Inversion;
 use App\Models\MovimientoInversion;
-use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\UsuarioPerfilTributario;
-use App\Models\ValoracionInversion;
 use App\Models\ValorDeducibleRegistro;
 use App\Services\BitacoraService;
 use App\Services\CalculoImpuestoInversionService;
@@ -87,7 +86,7 @@ class MovimientoInversionController extends Controller
                 $normalizados[$campo] = self::normalizarNumero($request->input($campo));
             }
         }
-        if (!empty($normalizados)) {
+        if (! empty($normalizados)) {
             $request->merge($normalizados);
         }
 
@@ -272,6 +271,14 @@ class MovimientoInversionController extends Controller
 
         // 4b. REDENCION en CDT (Liquidación de capital y rendimientos con retención en la fuente 4% - Art. 395 E.T. / Dec. 572/2025)
         if ($inversion->tipo === 'CDT' && $tipo === 'REDENCION') {
+            // H04: un CDT no se redime antes de su vencimiento.
+            $vencimiento = $inversion->detalleCdt?->fecha_vencimiento ?? $inversion->fecha_vencimiento;
+            if ($vencimiento !== null && CarbonImmutable::parse($fecha)->lt(CarbonImmutable::parse($vencimiento->toDateString()))) {
+                throw ValidationException::withMessages([
+                    'fecha' => 'El CDT no se puede redimir antes de su vencimiento ('.$vencimiento->format('d/m/Y').').',
+                ]);
+            }
+
             $capital = (string) ($inversion->detalleCdt?->capital ?? $inversion->monto_inicial);
             $interesesPrevios = MovimientoInversion::where('inversion_id', $inversion->id)
                 ->where('tipo', 'ABONO_INTERES')
@@ -334,7 +341,7 @@ class MovimientoInversionController extends Controller
             $saldoDisponible = $valoracion ? (string) $valoracion->valor : (string) ($detalle?->saldo_inicial ?? $inversion->monto_inicial);
             if (bccomp($monto, $saldoDisponible, 2) === 1) {
                 throw ValidationException::withMessages([
-                    'monto' => "No puede retirar más del saldo disponible. Saldo actual: $" . number_format((float) $saldoDisponible, 2),
+                    'monto' => 'No puede retirar más del saldo disponible. Saldo actual: $'.number_format((float) $saldoDisponible, 2),
                 ]);
             }
 
@@ -635,7 +642,7 @@ class MovimientoInversionController extends Controller
                 entidadAfectada: 'movimientos_inversion',
                 entidadId: $movimiento->id,
                 valorNuevo: $movimiento->fresh()->toArray(),
-                justificacion: "Transacción {$tipo} con retención $" . number_format((float) $retencionAplicada, 2) . " y GMF $" . number_format((float) $gmfAplicado, 2),
+                justificacion: "Transacción {$tipo} con retención $".number_format((float) $retencionAplicada, 2).' y GMF $'.number_format((float) $gmfAplicado, 2),
                 usuarioId: Auth::id()
             );
 
@@ -708,7 +715,7 @@ class MovimientoInversionController extends Controller
             $movimiento->ingresosInversion()->delete();
 
             if ($movimiento->ingreso_id) {
-                \App\Models\Ingreso::where('id', $movimiento->ingreso_id)->delete();
+                Ingreso::where('id', $movimiento->ingreso_id)->delete();
             }
 
             Gasto::where('movimiento_gmf_id', $movimiento->id)->first()?->delete();
@@ -775,7 +782,7 @@ class MovimientoInversionController extends Controller
     {
         return [
             'tipo' => ['required', Rule::in(Inversion::MOVIMIENTOS_PERMITIDOS[$inversion->tipo] ?? MovimientoInversion::TIPOS)],
-            'fecha' => ['required', 'date', 'after_or_equal:' . $inversion->fecha_apertura->toDateString()],
+            'fecha' => ['required', 'date', 'after_or_equal:'.$inversion->fecha_apertura->toDateString()],
             'monto' => ['required', 'numeric', 'gt:0', 'max:999999999999.99'],
             // RN-037.3: unidades > 0 y hasta 8 decimales.
             'unidades' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d{1,16}(\.\d{1,8})?$/'],
@@ -813,7 +820,7 @@ class MovimientoInversionController extends Controller
             return null;
         }
 
-        if (!is_string($val)) {
+        if (! is_string($val)) {
             return (string) $val;
         }
 
@@ -826,7 +833,7 @@ class MovimientoInversionController extends Controller
         if (str_contains($limpio, '.') && str_contains($limpio, ',')) {
             $limpio = str_replace('.', '', $limpio);
             $limpio = str_replace(',', '.', $limpio);
-        } elseif (str_contains($limpio, ',') && !str_contains($limpio, '.')) {
+        } elseif (str_contains($limpio, ',') && ! str_contains($limpio, '.')) {
             // Formato con coma decimal (ej. 1050700,50)
             $limpio = str_replace(',', '.', $limpio);
         } elseif (substr_count($limpio, '.') > 1) {

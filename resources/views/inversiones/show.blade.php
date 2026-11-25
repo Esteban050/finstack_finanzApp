@@ -983,6 +983,10 @@ function adaptarFormularioTrx(tipo) {
     const fpvPermanencia = document.getElementById('trx-fpv-permanencia');
     const notaEl = document.querySelector('input[name="nota"]');
 
+    // La fecha mínima vuelve a la apertura; la redención de un CDT la sube al vencimiento (H04).
+    const fechaTrxEl = document.getElementById('trx_fecha');
+    if (fechaTrxEl) fechaTrxEl.min = '{{ $inversion->fecha_apertura->format('Y-m-d') }}';
+
     function autoCalcular() {
         if (!unidadesEl || !precioEl || !montoEl) return;
         const u = window.FinanzMoney.decimal(desformatearMiles(unidadesEl.value) || '0');
@@ -1024,6 +1028,9 @@ function adaptarFormularioTrx(tipo) {
             const fechaEl = document.getElementById('fecha') || document.getElementById('trx_fecha');
             if (fechaEl) {
                 fechaEl.removeAttribute('max');
+                @if ($inversion->fecha_vencimiento)
+                fechaEl.min = '{{ $inversion->fecha_vencimiento->format('Y-m-d') }}';
+                @endif
                 if ('{{ $inversion->fecha_vencimiento?->format('Y-m-d') }}') {
                     fechaEl.value = '{{ $inversion->fecha_vencimiento?->format('Y-m-d') }}';
                 }
