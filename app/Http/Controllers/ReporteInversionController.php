@@ -3,15 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\IngresoInversion;
-use App\Models\Inversion;
 use App\Models\MovimientoInversion;
 use App\Models\ValorDeducibleRegistro;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -39,12 +36,21 @@ class ReporteInversionController extends Controller
             ->orderBy('fecha', 'asc')
             ->get();
 
+        // H12: la base sujeta a retención es el rendimiento (valor bruto del puente tributario), no el
+        // monto total del movimiento (una redención de CDT incluye el capital devuelto).
+        $rendimientos = IngresoInversion::where('usuario_id', Auth::id())
+            ->whereIn('transaccion_id', $movimientos->pluck('id'))
+            ->get()
+            ->groupBy('transaccion_id')
+            ->map(fn ($filas) => (string) $filas->sum('valor_bruto'));
+        $base = fn ($m) => (float) ($rendimientos[$m->id] ?? $m->monto_bruto ?? $m->monto);
+
         // Agrupación por producto y entidad
         $resumenPorProducto = $movimientos->groupBy(fn ($m) => $m->inversion?->tipo ?? 'OTRO')
-            ->map(function ($grupo, $tipo) {
+            ->map(function ($grupo, $tipo) use ($base) {
                 return [
                     'tipo' => $tipo,
-                    'total_bruto' => $grupo->sum('monto_bruto'),
+                    'total_bruto' => $grupo->sum($base),
                     'total_retencion' => $grupo->sum('retencion_aplicada'),
                     'total_gmf' => $grupo->sum('gmf_aplicado'),
                     'total_neto' => $grupo->sum('monto'),
@@ -53,10 +59,10 @@ class ReporteInversionController extends Controller
             });
 
         $resumenPorEntidad = $movimientos->groupBy(fn ($m) => $m->inversion?->entidadFinanciera?->nombre ?? $m->inversion?->entidad ?? 'Sin entidad')
-            ->map(function ($grupo, $entidad) {
+            ->map(function ($grupo, $entidad) use ($base) {
                 return [
                     'entidad' => $entidad,
-                    'total_bruto' => $grupo->sum('monto_bruto'),
+                    'total_bruto' => $grupo->sum($base),
                     'total_retencion' => $grupo->sum('retencion_aplicada'),
                     'total_gmf' => $grupo->sum('gmf_aplicado'),
                     'total_neto' => $grupo->sum('monto'),
@@ -65,7 +71,7 @@ class ReporteInversionController extends Controller
             });
 
         $totales = [
-            'total_bruto' => $movimientos->sum('monto_bruto'),
+            'total_bruto' => $movimientos->sum($base),
             'total_retencion' => $movimientos->sum('retencion_aplicada'),
             'total_gmf' => $movimientos->sum('gmf_aplicado'),
             'total_neto' => $movimientos->sum('monto'),
@@ -122,7 +128,7 @@ class ReporteInversionController extends Controller
         $totales = [
             'utilidad_total' => $ingresosPuente->sum('valor_bruto'),
             'retencion_total' => $ingresosPuente->sum('retencion'),
-            'deducibles_total' => $deduciblesPuente->sum('valor'),
+            'deducibles_total' => $deduciblesPuente->reject(fn ($d) => str_starts_with((string) $d->concepto, 'RETE'))->sum('valor'),
         ];
 
         if ($request->expectsJson()) {
