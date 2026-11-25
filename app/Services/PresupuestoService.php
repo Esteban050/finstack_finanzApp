@@ -682,6 +682,7 @@ class PresupuestoService
             'mes' => $mes->format('Y-m'),
             'meses_promedio' => $meses,
             'ingreso_promedio' => self::ingresoBase($usuarioId, $mes),
+            'ingreso_base_tipo' => EndeudamientoService::baseIngresos($usuarioId, $mes)['base'],
             'gasto_promedio_total' => CreditoService::alPeso(bcdiv($gastoTotal, (string) self::MESES_HISTORIA, 10)),
             'categorias' => $categorias,
         ];
@@ -730,6 +731,7 @@ class PresupuestoService
             'repetir_cada_mes' => $presupuesto->repetir_cada_mes,
             'trasladar_saldo' => $presupuesto->trasladar_saldo,
             'ingreso_base' => CreditoService::alPeso((string) $presupuesto->ingreso_base),
+            'ingreso_base_tipo' => EndeudamientoService::baseIngresos($presupuesto->usuario_id, $ctx['inicio'])['base'],
         ];
     }
 

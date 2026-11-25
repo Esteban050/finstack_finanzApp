@@ -31,7 +31,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 - [x] T3 — N03: calculator system estimate from estimar().
 - [x] T4 — H10: projection alert also when already exceeded.
 - [x] T5 — H22 (a)(b)(c)(d): rounding consistency.
-- [ ] T6 — H09: income label and "frente a tus ingresos".
+- [x] T6 — H09: income label and "frente a tus ingresos".
 
 ## Progress / evidence
 - T1 done: RED saldo_para_cancelar 3030590 vs 3012236 esperado; GREEN tras interesComprasPorDias en situacion()/regenerar(); `php artisan test`: 421 passed (003021a).
@@ -39,6 +39,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 - T3 done: RED `estimacion_sistema` ausente en la respuesta; GREEN con estimar() (saldo 1.212.000); `php artisan test`: 425 passed. `npm test` tiene 9 fallos preexistentes (iguales sin mis cambios).
 - T4 done: RED nuevo test (total al 105 % sin alerta, 0 vs 1); GREEN al quitar la supresion por ejecucion >= 100 % (linea y total). Tests existentes ajustados: el de "alerta una sola vez" ahora espera 2 alertas (linea A al 100 % + total) y el de umbral usa 130 % porque la linea A (125 %) ya alerta; el de "no alerta si el total paso 100 %" invertido. `php artisan test`: 425 passed.
 - T5 done: RED 3 tests (109.7 vs 109.66; 6.75 vs 6.76; 2000 vs 1797.42); GREEN con round 2 decimales, redondeo de % de valorizacion, retencion exacta en ahorro (saldo declaracion sigue a miles), nota "Ajustado para sumar 100 %" en Reportes 50/30/20 (JS); `php artisan test`: 428 passed; `npm run build` ok; `npm test` 9 fallos preexistentes.
+- T6 done: RED `ingreso_base_tipo` ausente (2 tests); GREEN con `ingreso_base_tipo` (MES_EN_CURSO|MESES_CERRADOS) en payload y /base, etiqueta "Ingreso del mes en curso", "Frente a tus ingresos" = gastado/ingreso y linea aparte "Proyeccion frente a tus ingresos"; `php artisan test`: 430 passed (flake preexistente: tests con documento 10203040NN pueden chocar con el usuario real ...037); `npm run build` ok; JS sin tests de este modulo (npm test: 9 fallos preexistentes).
 
 ## Next step
-T6.
+Entregar: push/PR a decision del usuario.
