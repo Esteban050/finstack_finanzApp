@@ -20,10 +20,13 @@ use Illuminate\Validation\ValidationException;
 class InversionService
 {
     public const FUENTE_RENDIMIENTOS = 'Rendimientos de inversiones';
+
     public const TIPO_FUENTE_RENDIMIENTOS = 'Rendimientos financieros';
+
     public const CLASIFICACION_RENDIMIENTOS = 'RENTAS_CAPITAL';
 
     public const DIAS_VALORACION_VIGENTE = 35;
+
     private const ESCALA_UNIDADES = 8;
 
     public static function fechaVencimiento(CarbonImmutable $apertura, int $plazoDias): CarbonImmutable
@@ -34,12 +37,14 @@ class InversionService
     public static function factorCapitalizacion(string $tasaEaPorc, int $dias, int $baseDias = 365): string
     {
         $factor = (1 + ((float) $tasaEaPorc) / 100) ** ($dias / $baseDias);
+
         return sprintf('%.15F', $factor);
     }
 
     public static function rendimientoEstimado(string $capital, string $tasaEaPorc, int $dias, int $baseDias = 365): string
     {
         $rendimiento = bcmul($capital, bcsub(self::factorCapitalizacion($tasaEaPorc, $dias, $baseDias), '1', 15), 6);
+
         return IngresoService::redondear($rendimiento);
     }
 
@@ -131,6 +136,7 @@ class InversionService
             if (in_array($movimiento->tipo, ['VENTA', 'REDENCION', 'RETIRO', 'RETIRO_PARCIAL'], true)) {
                 return bcsub($total, (string) $movimiento->unidades, self::ESCALA_UNIDADES);
             }
+
             return $total;
         }, bcadd('0', '0', self::ESCALA_UNIDADES));
     }
@@ -349,7 +355,7 @@ class InversionService
                     'transaccion_id' => $movimiento->id,
                     'anio' => $anio,
                     'concepto' => 'AJUSTE_FPV_RETIRO',
-                    'valor' => '-' . bcadd((string) $aportesRetirados, '0', 2),
+                    'valor' => '-'.bcadd((string) $aportesRetirados, '0', 2),
                 ]);
             }
 
@@ -426,7 +432,7 @@ class InversionService
                     'aportes_descontados_cop' => '0.00',
                     'origen' => 'MANUAL',
                     'estado' => 'CONFIRMADO',
-                    'descripcion' => "Utilidad en venta de «{$inversion->nombre}» ({$movimiento->unidades} títulos - " . ($clasificacion === 'GANANCIA_OCASIONAL' ? 'Ganancia Ocasional ≥ 2 años' : 'Rentas de Capital < 2 años') . ")",
+                    'descripcion' => "Utilidad en venta de «{$inversion->nombre}» ({$movimiento->unidades} títulos - ".($clasificacion === 'GANANCIA_OCASIONAL' ? 'Ganancia Ocasional ≥ 2 años' : 'Rentas de Capital < 2 años').')',
                 ]);
 
                 $movimiento->update(['ingreso_id' => $ingreso->id]);
@@ -535,7 +541,8 @@ class InversionService
                 );
 
                 $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
-                $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+                // H03: el ingreso guarda bruto y retención por separado; el neto lo calcula la base.
+                [$montoIngreso, $retencionIngreso] = self::brutoYRetencionIngreso((string) $bruto, (string) $retencion, (string) $neto);
 
                 $ingreso = Ingreso::create([
                     'usuario_id' => $movimiento->usuario_id,
@@ -543,14 +550,14 @@ class InversionService
                     'fecha_recepcion' => $movimiento->fecha,
                     'clasificacion_tributaria' => self::CLASIFICACION_RENDIMIENTOS,
                     'moneda' => $inversion->moneda,
-                    'monto_original' => (string) $neto,
+                    'monto_original' => $montoIngreso,
                     'tasa_cambio_usada' => $tasa,
-                    'monto_bruto_cop' => $netoCop,
-                    'retencion_fuente_cop' => '0.00',
+                    'monto_bruto_cop' => IngresoService::convertirACop($montoIngreso, $tasa),
+                    'retencion_fuente_cop' => IngresoService::convertirACop($retencionIngreso, $tasa),
                     'aportes_descontados_cop' => '0.00',
                     'origen' => 'MANUAL',
                     'estado' => 'CONFIRMADO',
-                    'descripcion' => "Rendimiento/Interés neto de «{$inversion->nombre}»",
+                    'descripcion' => "Rendimiento/Interés de «{$inversion->nombre}» (bruto, con retención aparte)",
                 ]);
 
                 $movimiento->update(['ingreso_id' => $ingreso->id]);
@@ -584,7 +591,7 @@ class InversionService
         }
 
         // 6b. Redención de CDT con rendimientos liquidados al vencimiento
-        if ($inversion->tipo === 'CDT' && $movimiento->tipo === 'REDENCION' && !empty($datos['parte_utilidad'])) {
+        if ($inversion->tipo === 'CDT' && $movimiento->tipo === 'REDENCION' && ! empty($datos['parte_utilidad'])) {
             $rendimientoBruto = $datos['parte_utilidad'];
             $retencion = $movimiento->retencion_aplicada ?? '0.00';
             $neto = bcsub((string) $rendimientoBruto, (string) $retencion, 2);
@@ -597,7 +604,7 @@ class InversionService
             );
 
             $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
-            $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+            [$montoIngreso, $retencionIngreso] = self::brutoYRetencionIngreso((string) $rendimientoBruto, (string) $retencion, (string) $neto);
 
             $ingreso = Ingreso::create([
                 'usuario_id' => $movimiento->usuario_id,
@@ -605,14 +612,14 @@ class InversionService
                 'fecha_recepcion' => $movimiento->fecha,
                 'clasificacion_tributaria' => self::CLASIFICACION_RENDIMIENTOS,
                 'moneda' => $inversion->moneda,
-                'monto_original' => (string) $neto,
+                'monto_original' => $montoIngreso,
                 'tasa_cambio_usada' => $tasa,
-                'monto_bruto_cop' => $netoCop,
-                'retencion_fuente_cop' => '0.00',
+                'monto_bruto_cop' => IngresoService::convertirACop($montoIngreso, $tasa),
+                'retencion_fuente_cop' => IngresoService::convertirACop($retencionIngreso, $tasa),
                 'aportes_descontados_cop' => '0.00',
                 'origen' => 'MANUAL',
                 'estado' => 'CONFIRMADO',
-                'descripcion' => "Rendimiento neto por liquidación al vencimiento de CDT «{$inversion->nombre}»",
+                'descripcion' => "Rendimiento por liquidación al vencimiento de CDT «{$inversion->nombre}» (bruto, con retención aparte)",
             ]);
 
             $movimiento->update(['ingreso_id' => $ingreso->id]);
@@ -657,7 +664,7 @@ class InversionService
                 );
 
                 $tasa = (string) ($movimiento->tasa_cambio_usada ?: '1.0000');
-                $netoCop = IngresoService::convertirACop((string) $neto, $tasa);
+                [$montoIngreso, $retencionIngreso] = self::brutoYRetencionIngreso((string) $parteUtilidad, (string) $retencion, (string) $neto);
 
                 $ingreso = Ingreso::create([
                     'usuario_id' => $movimiento->usuario_id,
@@ -665,14 +672,14 @@ class InversionService
                     'fecha_recepcion' => $movimiento->fecha,
                     'clasificacion_tributaria' => 'RENTAS_CAPITAL',
                     'moneda' => $inversion->moneda,
-                    'monto_original' => (string) $neto,
+                    'monto_original' => $montoIngreso,
                     'tasa_cambio_usada' => $tasa,
-                    'monto_bruto_cop' => $netoCop,
-                    'retencion_fuente_cop' => '0.00',
+                    'monto_bruto_cop' => IngresoService::convertirACop($montoIngreso, $tasa),
+                    'retencion_fuente_cop' => IngresoService::convertirACop($retencionIngreso, $tasa),
                     'aportes_descontados_cop' => '0.00',
                     'origen' => 'MANUAL',
                     'estado' => 'CONFIRMADO',
-                    'descripcion' => "Rendimiento neto por redención en FIC «{$inversion->nombre}» ({$movimiento->unidades} unidades)",
+                    'descripcion' => "Rendimiento por redención en FIC «{$inversion->nombre}» ({$movimiento->unidades} unidades; bruto, con retención aparte)",
                 ]);
 
                 $movimiento->update(['ingreso_id' => $ingreso->id]);
@@ -699,6 +706,22 @@ class InversionService
                 }
             }
         }
+    }
+
+    /**
+     * H03: monto bruto y retención con que se registra el ingreso de un rendimiento.
+     * Si la retención deja el neto en cero o negativo (dato inconsistente) se registra
+     * el neto sin retención, como antes, para no violar chk_ingreso_neto_positivo.
+     *
+     * @return array{0: string, 1: string} [bruto, retención]
+     */
+    private static function brutoYRetencionIngreso(string $bruto, string $retencion, string $neto): array
+    {
+        if (bccomp(bcsub($bruto, $retencion, 2), '0', 2) <= 0) {
+            return [$neto, '0.00'];
+        }
+
+        return [$bruto, $retencion];
     }
 
     public static function fuenteDeRendimientos(
