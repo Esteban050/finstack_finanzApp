@@ -9,6 +9,7 @@ use App\Models\LiquidacionSeguridadSocial;
 use App\Models\PagoSeguridadSocial;
 use App\Models\ParametroNormativo;
 use App\Models\PerfilTributario;
+use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\TarifaEscalonada;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
@@ -46,7 +47,9 @@ class SeguridadSocialService
      * Porcentaje legal/UGPP de presunción de costos para Rentistas de capital (28,08%).
      */
     public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA = '28.08';
+
     public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA_HASTA_ABRIL_2026 = '27.50';
+
     public const PORCENTAJE_PRESUNCION_COSTOS_RENTISTA_DESDE_MAYO_2026 = '28.08';
 
     /**
@@ -80,6 +83,7 @@ class SeguridadSocialService
      * la misma que siembra CategoriaPredeterminadaSeeder.
      */
     public const CATEGORIA_GASTO_PILA = 'Seguridad social';
+
     public const SUBCATEGORIA_GASTO_PILA = 'Aporte PILA independiente';
 
     /** RN-035.3: medio de pago del gasto si el Usuario no indica otro. */
@@ -552,6 +556,7 @@ class SeguridadSocialService
                         number_format((float) ($calculo['excedente_desafectado_tope'] ?? '0'), 0, ',', '.')
                     );
                 }
+
                 return $avisos;
             })(),
             'parametros_usados' => array_merge($calculo['parametros_usados'], [
@@ -578,7 +583,7 @@ class SeguridadSocialService
         ?string $periodo = null
     ): array {
         $brutos = bcadd($ingresoBruto, '0', 2);
-        
+
         if ($usarCostosReales && $costosReales !== null && bccomp($costosReales, '0', 2) > 0) {
             $deduccionCostos = bcadd($costosReales, '0', 2);
             $porcentajePresuncion = null;
@@ -1020,16 +1025,16 @@ class SeguridadSocialService
      */
     public static function validarSalarioIntegral(string $salario, bool $esIntegral, ParametroNormativo $parametro): void
     {
-        if (!$esIntegral) {
+        if (! $esIntegral) {
             return;
         }
 
         $minimo = bcmul((string) $parametro->valor_smmlv, self::SMMLV_SALARIO_INTEGRAL_MINIMO, 2);
         if (bccomp($salario, $minimo, 2) < 0) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'salario' => 'El salario integral no puede ser inferior a 13 SMMLV ($ '
-                    . number_format((float) $minimo, 0, ',', '.')
-                    . '): 10 salarios mínimos más el 30 % de factor prestacional. Si tu salario es menor, no es integral: márcalo como "No" en tu perfil.',
+                    .number_format((float) $minimo, 0, ',', '.')
+                    .'): 10 salarios mínimos más el 30 % de factor prestacional. Si tu salario es menor, no es integral: márcalo como "No" en tu perfil.',
             ]);
         }
     }
@@ -1050,7 +1055,7 @@ class SeguridadSocialService
 
         // RN-034.2 / RF-03: IBC = salario ordinario 100 % (o 70 % del integral), acotado a 25 SMMLV.
         $base = $esIntegral ? self::porcentaje($salario, (string) $parametro->porc_ibc_integral) : $salario;
-        
+
         $excedenteTope = '0.00';
         $topeAlcanzado = false;
         if (bccomp($base, $tope25, 2) > 0) {
@@ -1353,7 +1358,8 @@ class SeguridadSocialService
      */
     public static function resumenAnual(string $usuarioId, int $anio): array
     {
-        $fila = PagoSeguridadSocial::where('usuario_id', $usuarioId)
+        $fila = PagoSeguridadSocial::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuarioId)
             ->whereYear('fecha_pago', $anio)
             ->selectRaw('COUNT(*) AS cantidad, COALESCE(SUM(salud), 0) AS salud, COALESCE(SUM(pension), 0) AS pension')
             ->first();

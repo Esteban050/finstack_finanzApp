@@ -8,7 +8,9 @@ use App\Models\MovimientoInversion;
 use App\Models\ParametroNormativo;
 use App\Models\ParametroTributario;
 use App\Models\Usuario;
+use App\Services\SeguridadSocialService;
 use Carbon\CarbonImmutable;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class ConsolidadoRentaService
 {
@@ -22,7 +24,7 @@ class ConsolidadoRentaService
             ->first();
 
         if ($normativo === null) {
-            throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException(
+            throw new UnprocessableEntityHttpException(
                 "No hay una vigencia normativa activa para {$anioGravable}.",
             );
         }
@@ -113,6 +115,9 @@ class ConsolidadoRentaService
                 ];
             }
         }
+
+        // 1b. H01 / RN-035.4: salud y pensión pagados por PILA en el año (INCRNGO).
+        $aportesSaludPensionCop += (float) SeguridadSocialService::resumenAnual((string) $usuario->id, $anioGravable)['ingreso_no_constitutivo_pila'];
 
         // 2. MÓDULO DE INVERSIONES
         $inversiones = Inversion::withoutGlobalScopes()
@@ -449,4 +454,3 @@ class ConsolidadoRentaService
         return round($cop / $uvt, 2);
     }
 }
-

@@ -24,7 +24,7 @@ Group 1 — data reaching other modules wrong (route: delegated writer, writer t
 - [x] T1 — H03: investment-generated income stores gross, retention and net separately.
 - [x] T2 — H05: Resumen "Portafolio de inversiones" uses the Inversiones consolidated value.
 - [x] T3 — H14: Resumen "Próximos 15 días" shows the recurring amount.
-- [ ] T4 — H01: paid PILA health + pension reach Renta INCRNGO.
+- [x] T4 — H01: paid PILA health + pension reach Renta INCRNGO.
 - [ ] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
 
 Group 2 — credit card
@@ -46,7 +46,11 @@ Group 4 — UX / verify
 
 - [ ] T16 — H08 (decided 2026-11-24: USE CURRENT MONTH): when closed months lack enough income, the debt ratio uses the current month's income as denominator.
 
-Pending decisions (ask user, one at a time): H11, H16, H17, H20, H24, H26.
+- [ ] T17 — H11 (decided 2026-11-24: RECOGNIZE AT PURCHASE): card installment payments no longer create a duplicate expense for capital; only the interest portion is an expense (financial obligations).
+
+- [ ] T18 — H16 (decided 2026-11-24: REAL DAYS): payment before the installment due date charges current interest accrued by real days since disbursement/last installment (daily equivalent rate); the rest goes to capital.
+
+Pending decisions (ask user, one at a time): H16, H17, H20, H24, H26.
 Config only (report): H18 usury rate, H25 Resend domain / terms page.
 
 ## Acceptance criteria
@@ -57,3 +61,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - T1 (H03) done: RED 2 failed -> GREEN 2 passed (IngresoRendimientoInversionBrutoTest); suite subset Inversion|Ingreso|Reportes 92 green. Root cause: InversionService::registrarPuentesTributarios sections 6/6b/7 created Ingreso with net as bruto and retention 0. Commit: see git log (fix(ingresos) H03).
 - T2 (H05) done: RED 1 failed -> GREEN 1 passed (ResumenPortafolioInversionesTest); Resumen|Dashboard filter 12 green. Root cause: DashboardResumenService read nonexistent keys totales.valor_actual_cop (real: valor_total). Cut-off clamped to today.
 - T3 (H14) done: RED 1 failed -> GREEN 1 passed (ResumenProximos15DiasTest). Root cause: DashboardResumenService::obtenerProximos15Dias read datos_plantilla['monto'] (stored key is monto_cop).
+- T4 (H01) done: RED 1 failed -> GREEN 1 passed (RentaIncrngoSeguridadSocialTest); Renta|SeguridadSocial|PagoSeguridad filter 100 green. Root cause: ConsolidadoRentaService::consolidar summed only ingresos.aportes_descontados_cop, never PagoSeguridadSocial (PILA). Now adds SeguridadSocialService::resumenAnual (by fecha_pago year, paid rows).
