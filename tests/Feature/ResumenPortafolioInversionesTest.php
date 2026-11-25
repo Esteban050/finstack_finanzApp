@@ -59,5 +59,6 @@ class ResumenPortafolioInversionesTest extends TestCase
 
         $this->assertSame($consolidado['valor_total'], $kpi['valor']);
         $this->assertSame(1, $kpi['inversiones_activas']);
+        $this->assertSame((string) $consolidado['ganancia'], (string) $kpi['rendimiento_estimado']);
     }
 }

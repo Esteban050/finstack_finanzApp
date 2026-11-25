@@ -9,6 +9,7 @@ use App\Models\MovimientoInversion;
 use App\Models\ParametroNormativo;
 use App\Models\ParametroTributario;
 use App\Models\Usuario;
+use App\Services\CalculoImpuestoInversionService;
 use App\Services\SeguridadSocialService;
 use Carbon\CarbonImmutable;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -86,9 +87,17 @@ class ConsolidadoRentaService
         $drillDownIngresosTrabajo = [];
         $drillDownIngresosNoLaborales = [];
 
+        // Los ingresos generados por movimientos de inversión ya guardan su retención (H03), pero esa
+        // misma retención se suma desde MovimientoInversion más abajo: se excluye aquí para contarla una vez.
+        $ingresosDeInversion = MovimientoInversion::withoutGlobalScopes()
+            ->where('usuario_id', $usuario->id)
+            ->whereNotNull('ingreso_id')
+            ->pluck('ingreso_id')
+            ->flip();
+
         foreach ($ingresos as $ingreso) {
             $montoBruto = (float) $ingreso->monto_bruto_cop;
-            $retencion = (float) $ingreso->retencion_fuente_cop;
+            $retencion = $ingresosDeInversion->has($ingreso->id) ? 0.0 : (float) $ingreso->retencion_fuente_cop;
             $aportes = (float) $ingreso->aportes_descontados_cop;
 
             $aportesSaludPensionCop += $aportes;
@@ -215,7 +224,9 @@ class ConsolidadoRentaService
                         if ($diasTenencia < 730) {
                             // Tenencia < 2 años: Cédula General (Rentas no laborales)
                             // H02: misma utilidad que Ingresos (costo promedio ponderado), no el precio de la primera compra.
-                            $utilidadVenta = max(0.0, (float) ($utilidadesVenta[$mov->id] ?? 0));
+                            $utilidadVenta = max(0.0, isset($utilidadesVenta[$mov->id])
+                                ? (float) $utilidadesVenta[$mov->id]
+                                : self::utilidadVentaSinPuente($mov, $inv));
 
                             if ($utilidadVenta > 0) {
                                 $utilidadVentaAccionesMenor2AniosCop += $utilidadVenta;
@@ -445,6 +456,32 @@ class ConsolidadoRentaService
                 'total_uvt' => self::aUvt($pisoInversionesC5Cop, $uvt),
             ],
         ];
+    }
+
+    /**
+     * Ventas legadas sin fila puente UTILIDAD_VENTA: misma fórmula que Inversiones
+     * (costo promedio ponderado vigente del detalle de renta variable).
+     */
+    private static function utilidadVentaSinPuente(MovimientoInversion $mov, Inversion $inv): float
+    {
+        $detalle = $inv->detalleRentaVariable;
+        if ($detalle === null || $mov->unidades === null || $mov->valor_unidad === null) {
+            return 0.0;
+        }
+
+        $venta = CalculoImpuestoInversionService::calcularVentaAcciones(
+            unidadesVendidas: (string) $mov->unidades,
+            precioVenta: (string) $mov->valor_unidad,
+            costoPromedioUnitario: (string) $detalle->costo_promedio_unitario,
+            comisionVenta: (string) ($mov->comision ?? '0.00'),
+            estaInscritoBvc: (bool) $detalle->esta_inscrito_bvc,
+            fechaPrimeraCompra: $detalle->fecha_primera_compra ? $detalle->fecha_primera_compra->toDateString() : '',
+            fechaVenta: CarbonImmutable::parse($mov->fecha)->toDateString(),
+            trmVenta: (string) ($mov->tasa_cambio_usada ?: '1.0000'),
+            trmCompra: (string) ($detalle->trm_compra ?? '1.0000'),
+        );
+
+        return (float) $venta['utilidad_cop'];
     }
 
     /**
