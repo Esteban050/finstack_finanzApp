@@ -39,7 +39,7 @@
                     <template x-for="criterion in criteria" :key="criterion.id"><tr>
                         <td data-label="Concepto" x-text="criterion.nombre"></td>
                         <td data-label="Monto ingresado" class="ui-number" x-text="money(criterion.valor_cop)"></td>
-                        <td data-label="Tope" class="ui-number"><span x-text="money(criterion.tope_cop)"></span><span class="ui-help" x-text="quantity(criterion.tope_uvt) + ' UVT · ' + (criterion.operador === '>=' ? 'Mayor o igual' : 'Mayor')"></span></td>
+                        <td data-label="Tope" class="ui-number"><span x-text="money(criterion.tope_cop)"></span> <span class="ui-help" x-text="quantity(criterion.tope_uvt) + ' UVT · ' + (criterion.operador === '>=' ? 'Mayor o igual' : 'Mayor')"></span></td>
                         <td data-label="Resultado"><span class="ui-badge" :class="criterion.cumple ? 'ui-badge--warning' : ''" x-text="criterion.cumple ? 'Tope alcanzado' : 'Bajo el tope'"></span></td>
                     </tr></template>
                 </tbody></table></div>
