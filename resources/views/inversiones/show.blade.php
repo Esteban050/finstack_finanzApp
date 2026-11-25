@@ -86,7 +86,10 @@
         <h2 style="margin: 0.25rem 0; color: {{ (string)$indicadores['ganancia'] >= 0 ? '#16a34a' : '#dc2626' }};">
             {{ (string)$indicadores['ganancia'] >= 0 ? '+' : '' }}$ {{ $formatValue((string) $indicadores['ganancia'], 2) }}
         </h2>
-        <p class="ui-help" style="margin: 0;">ROI: <strong>{{ $indicadores['roi'] ?? '0.00' }}%</strong> · XIRR: <strong>{{ $indicadores['xirr'] }}</strong></p>
+        <p class="ui-help" style="margin: 0;">ROI: <strong>{{ $indicadores['roi'] ?? '0.00' }}%</strong> · {{ !empty($indicadores['xirr_periodo_corto']) ? 'XIRR anualizada' : 'XIRR' }}: <strong>{{ $indicadores['xirr'] }}</strong></p>
+        @if(!empty($indicadores['xirr_periodo_corto']))
+            <p class="ui-help" role="note" style="margin: 0.25rem 0 0;">Periodo de menos de 1 año: la XIRR es una tasa anualizada y puede exagerar el rendimiento real; guíate por el ROI.</p>
+        @endif
     </x-ui.card>
 
     @if($vnr)
@@ -826,7 +829,7 @@
                     <th>Tipo</th>
                     <th data-align="right">Monto Bruto</th>
                     <th data-align="right">Retención</th>
-                    <th data-align="right">GMF (4x1000)</th>
+                    <th data-align="right">GMF (4x1000) <x-ui.help-tip label="Sobre el GMF" text="El 4x1000 (GMF) no se registra en cada movimiento: el sistema no registra la exención de hasta 350 UVT mensuales ni su marcación por cuenta, así que «—» significa «sin GMF registrado», no necesariamente «exento». Verifica con tu extracto bancario." /></th>
                     <th data-align="right">Neto Flujo</th>
                     <th>Nota / Detalle</th>
                     <th>Acción</th>
@@ -871,7 +874,7 @@
                             @endif
                         </td>
                         <td class="ui-number" style="color: {{ (string)$mov->gmf_aplicado > 0 ? '#dc2626' : '#666' }};">
-                            {{ (string)$mov->gmf_aplicado > 0 ? '-$' . $formatValue((string)$mov->gmf_aplicado, 2) : '—' }}
+                            @if((string)$mov->gmf_aplicado > 0){{ '-$' . $formatValue((string)$mov->gmf_aplicado, 2) }}@else<span title="Sin GMF registrado: no se registra la exención 4x1000">—</span>@endif
                         </td>
                         <td class="ui-number" style="font-weight: 600;">
                             $ {{ $formatValue((string) $mov->monto_cop, 2) }}

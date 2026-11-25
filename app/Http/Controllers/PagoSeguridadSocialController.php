@@ -99,7 +99,7 @@ class PagoSeguridadSocialController extends Controller
     public function ingresosPeriodo(Request $request): JsonResponse
     {
         $request->validate([
-            'periodo' => ['required', 'string', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
+            'periodo' => ['required', 'string', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/', SeguridadSocialService::validarPeriodoMaximo()],
             'tipo_servicio' => ['nullable', 'string'],
             'es_rentista' => ['nullable'],
             'gastos' => ['nullable'],
@@ -702,13 +702,7 @@ class PagoSeguridadSocialController extends Controller
                 'required',
                 'string',
                 'regex:/^\d{4}-(0[1-9]|1[0-2])$/',
-                function (string $atributo, mixed $valor, \Closure $falla) {
-                    if (is_string($valor)
-                        && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $valor)
-                        && SeguridadSocialService::inicioDelPeriodo($valor)->gt(CarbonImmutable::today()->startOfMonth())) {
-                        $falla('El periodo cotizado no puede ser posterior al mes actual.');
-                    }
-                },
+                SeguridadSocialService::validarPeriodoMaximo(),
             ],
             'fecha_pago' => ['required', 'date', 'before_or_equal:today'],
             'numero_planilla' => ['nullable', 'string', 'max:20'],

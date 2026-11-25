@@ -24,9 +24,13 @@ class RentabilidadService
 
     /** RN-040.2 */
     private const TOLERANCIA_XIRR = 1e-6;
+
     private const MAX_ITERACIONES_XIRR = 100;
 
     public const NO_CALCULABLE = 'No calculable';
+
+    /** H26: por debajo de este plazo la XIRR (tasa anualizada) puede exagerar el rendimiento real. */
+    public const DIAS_XIRR_REPRESENTATIVA = 365;
 
     /** RN-040.1: flujos que salen del bolsillo del Usuario (negativos en la XIRR). */
     private const SALIDAS = ['APORTE', 'COMPRA', 'COMISION', 'RETENCION'];
@@ -100,6 +104,7 @@ class RentabilidadService
             'ganancia' => $calculo['ganancia'],
             'roi' => $calculo['roi'],
             'xirr' => $calculo['xirr'] === null ? self::NO_CALCULABLE : self::porcentaje($calculo['xirr']),
+            'xirr_periodo_corto' => $calculo['xirr'] !== null && self::periodoCorto($datos['flujos']),
             'inflacion_vigencia' => $inflacion,
             'rentabilidad_real' => $real ?? self::NO_CALCULABLE,
             'resultado' => self::resultado($calculo['ganancia']),
@@ -171,6 +176,7 @@ class RentabilidadService
                 'valor_actual_cop' => $valorCop,
                 'roi' => $calculoPropio['roi'],
                 'xirr' => $calculoPropio['xirr'] === null ? self::NO_CALCULABLE : self::porcentaje($calculoPropio['xirr']),
+                'xirr_periodo_corto' => $calculoPropio['xirr'] !== null && self::periodoCorto($propios['flujos']),
                 'fecha_ultima_valoracion' => $valoracion?->fecha?->toDateString(),
                 'estado' => $inversion->estado,
                 'valoracion_desactualizada' => InversionService::valoracionDesactualizada($inversion, InversionService::valorActual($inversion), $hoy),
@@ -206,6 +212,7 @@ class RentabilidadService
             'ganancia' => $ganancia,
             'roi' => bccomp($totalAportesPortafolio, '0', 2) === 1 ? self::redondear(bcdiv(bcmul($ganancia, '100', 10), $totalAportesPortafolio, 10)) : null,
             'xirr' => $xirr === null ? self::NO_CALCULABLE : self::porcentaje($xirr),
+            'xirr_periodo_corto' => $xirr !== null && self::periodoCorto($flujos),
             'resultado' => self::resultado($ganancia),
             // RN-041.2: distribución del valor actual.
             'distribucion' => [
@@ -389,6 +396,7 @@ class RentabilidadService
                 if ($inversion->tipo === 'CUENTA_ALTO_RENDIMIENTO' && $m->tipo === 'ABONO_INTERES') {
                     return false;
                 }
+
                 return true;
             })
             ->map(fn (MovimientoInversion $movimiento) => [
@@ -466,6 +474,18 @@ class RentabilidadService
                 : null,
             'xirr' => self::xirr($flujos),
         ];
+    }
+
+    /** H26: true si entre el primer y el último flujo hay menos de un año. */
+    private static function periodoCorto(array $flujos): bool
+    {
+        if ($flujos === []) {
+            return false;
+        }
+
+        $fechas = array_map(fn (array $flujo) => $flujo[0], $flujos);
+
+        return (int) min($fechas)->diffInDays(max($fechas)) < self::DIAS_XIRR_REPRESENTATIVA;
     }
 
     /** RN-040.2: por qué la XIRR no se pudo calcular. */

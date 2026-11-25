@@ -71,7 +71,7 @@
 
                 {{-- Campo Periodo Común --}}
                 <x-ui.field name="periodo" label="Periodo a cotizar" :required="true" help="Mes y año de la cotización o liquidación.">
-                    <input id="periodo" name="periodo" type="month" x-model="periodo" @change="cambiarPeriodo()" required max="{{ now()->format('Y-m') }}">
+                    <input id="periodo" name="periodo" type="month" x-model="periodo" @change="cambiarPeriodo()" required max="{{ \App\Services\SeguridadSocialService::periodoMaximo()->format('Y-m') }}">
                 </x-ui.field>
 
                 {{-- INGRESOS REGISTRADOS DEL MES (INDEPENDIENTE Y RENTISTA): el usuario decide con qué monto calcular --}}

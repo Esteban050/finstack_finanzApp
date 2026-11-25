@@ -162,6 +162,32 @@ class SeguridadSocialService
     }
 
     /**
+     * H24: último periodo que se puede consultar, liquidar o pagar: el mes siguiente al actual (la PILA se
+     * paga mes vencido, así que en noviembre ya se prepara diciembre). La misma regla en todos los caminos.
+     */
+    public static function periodoMaximo(?CarbonImmutable $hoy = null): CarbonImmutable
+    {
+        return ($hoy ?? CarbonImmutable::today())->startOfMonth()->addMonthNoOverflow();
+    }
+
+    public static function mensajePeriodoMaximo(?CarbonImmutable $hoy = null): string
+    {
+        return 'El periodo no puede ser posterior a '.self::periodoMaximo($hoy)->format('Y-m').' (el mes siguiente al actual).';
+    }
+
+    /** Regla de validación (closure) con el límite único y el mensaje único del periodo. */
+    public static function validarPeriodoMaximo(): \Closure
+    {
+        return function (string $atributo, mixed $valor, \Closure $falla) {
+            if (is_string($valor)
+                && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $valor)
+                && self::inicioDelPeriodo($valor)->gt(self::periodoMaximo())) {
+                $falla(self::mensajePeriodoMaximo());
+            }
+        };
+    }
+
+    /**
      * Mes vencido: el periodo que se cotiza se paga con los ingresos del mes
      * anterior (cotizar noviembre usa los ingresos de octubre).
      */
@@ -265,8 +291,8 @@ class SeguridadSocialService
      * Si es rentista de capital, permite descontar los gastos asociados de los ingresos
      * brutos antes de calcular el 40 % de IBC y aportes.
      *
-     * Como PILA se paga mes vencido, el periodo cotizado (AAAA-MM) corresponde al mes en
-     * el que se devengaron los ingresos.
+     * H24: como PILA se paga mes vencido, el periodo cotizado M se liquida con los ingresos
+     * confirmados de M-1 (la misma regla de ingresosParaSeguridadSocial y de la liquidación).
      */
     public static function consultarIngresosPeriodoCotizado(
         string $usuarioId,
@@ -274,8 +300,10 @@ class SeguridadSocialService
         string $tipoCotizante = 'PRESTACION_SERVICIOS',
         string $gastos = '0'
     ): array {
-        $inicioMes = self::inicioDelPeriodo($periodo);
+        $inicioPeriodo = self::inicioDelPeriodo($periodo);
+        $inicioMes = self::mesDeIngresos($inicioPeriodo);
         $finMes = $inicioMes->endOfMonth();
+        $mesIngresos = $inicioMes->format('Y-m');
 
         $esRentista = in_array(strtoupper($tipoCotizante), ['RENTISTA_CAPITAL', 'RENTISTA'], true);
 
@@ -295,12 +323,11 @@ class SeguridadSocialService
         $suma = $ingresos->sum('monto_bruto_cop');
         $totalIngresos = bcadd((string) $suma, '0', 2);
         $tieneIngresos = bccomp($totalIngresos, '0', 2) > 0;
-        $parametroPeriodo = self::parametrosDe($inicioMes->year);
+        $parametroPeriodo = self::parametrosDe($inicioPeriodo->year);
 
         if (! $tieneIngresos) {
-            $msg = $esRentista
-                ? "No se encontraron ingresos de rentas de capital o trabajo asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente."
-                : "No se encontraron ingresos de rentas de trabajo o de capital asociados al periodo cotizado {$periodo}. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.";
+            $clase = $esRentista ? 'rentas de capital o trabajo' : 'rentas de trabajo';
+            $msg = "Para cotizar {$periodo} se toman los ingresos de {$mesIngresos} (mes vencido), y no hay ingresos confirmados de {$clase} en ese mes. Puedes registrarlos en el módulo de Ingresos o diligenciar los valores de aportes manualmente.";
 
             return [
                 'periodo' => $periodo,
@@ -321,7 +348,7 @@ class SeguridadSocialService
         }
 
         $parametro = $parametroPeriodo;
-        $perfil = self::perfilDelPeriodo($usuarioId, $inicioMes);
+        $perfil = self::perfilDelPeriodo($usuarioId, $inicioPeriodo);
 
         $liquidacion = LiquidacionSeguridadSocial::where('usuario_id', $usuarioId)
             ->where('periodo', $periodo)
@@ -384,7 +411,7 @@ class SeguridadSocialService
                 'arl' => (string) $liquidacion->arl,
                 'total' => (string) $liquidacion->total,
             ] : null,
-            'mensaje' => "Se encontraron {$ingresos->count()} ingreso(s) de {$tipoMensaje} en el periodo {$periodo}.",
+            'mensaje' => "Para cotizar {$periodo} se toman los ingresos de {$mesIngresos} (mes vencido): se encontraron {$ingresos->count()} ingreso(s) de {$tipoMensaje}.",
         ];
     }
 

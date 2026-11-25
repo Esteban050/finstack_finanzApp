@@ -18,7 +18,9 @@ use Tests\TestCase;
 class SeguridadSocialRentistaTest extends TestCase
 {
     private ParametroNormativo $parametro;
+
     private PerfilTributario $perfil;
+
     private Usuario $usuario;
 
     protected function setUp(): void
@@ -309,7 +311,8 @@ class SeguridadSocialRentistaTest extends TestCase
         ]);
         $ingreso->save();
 
-        $periodo = '2026-05';
+        // H24: el periodo cotizado (junio) se liquida con los ingresos de mayo (mes vencido).
+        $periodo = '2026-06';
         $gastos = '10000000.00';
 
         $resultado = SeguridadSocialService::consultarIngresosPeriodoCotizado(

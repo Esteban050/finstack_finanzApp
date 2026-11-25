@@ -5,7 +5,7 @@
 <header class="income-page-header"><div><h1>Liquidaciones del independiente</h1><p>Consulta el ingreso base, el IBC y el desglose de aportes mensuales.</p></div></header>
 <div class="finance-grid finance-grid--forms">
 <x-ui.card title="Ingresos registrados"><form method="POST" action="{{ route('seguridad-social.liquidaciones.store') }}" data-finance-form="liquidation" data-finance-result="liquidation-result">@csrf
-<p class="ui-help">Se usan los ingresos confirmados de rentas de trabajo no asalariado del periodo seleccionado.</p>
+<p class="ui-help">Se usan los ingresos confirmados de rentas de trabajo no asalariado del mes anterior al periodo seleccionado (mes vencido).</p>
 <x-ui.field name="periodo" label="Periodo a liquidar" :required="true"><input id="periodo" name="periodo" type="month" required value="{{ old('periodo', now('America/Bogota')->format('Y-m')) }}"></x-ui.field>
 <label class="ui-check"><input name="es_voluntario" type="checkbox" value="1" @checked(old('es_voluntario'))> Cotización voluntaria</label>
 <x-ui.module-status /><x-ui.button type="submit">Calcular y guardar liquidación estimada</x-ui.button></form></x-ui.card>

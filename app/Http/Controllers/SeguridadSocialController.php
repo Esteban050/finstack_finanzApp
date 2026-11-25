@@ -90,8 +90,7 @@ class SeguridadSocialController extends Controller
         $tieneSalario = $fuentes->contains(fn ($f) => stripos($f->tipoFuente?->nombre ?? '', 'salario') !== false)
             || in_array(SeguridadSocialService::OCUPACION_ASALARIADO, $ocupaciones, true);
 
-        $tienePrestacionServicios = $fuentes->contains(fn ($f) => 
-            stripos($f->tipoFuente?->nombre ?? '', 'honorarios') !== false
+        $tienePrestacionServicios = $fuentes->contains(fn ($f) => stripos($f->tipoFuente?->nombre ?? '', 'honorarios') !== false
             || stripos($f->tipoFuente?->nombre ?? '', 'servicios') !== false
             || stripos($f->nombre, 'prestaci') !== false
             || stripos($f->nombre, 'honorario') !== false
@@ -220,7 +219,7 @@ class SeguridadSocialController extends Controller
                 $perfil = clone $perfil;
                 $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
             } elseif ($clase > 0) {
-                $perfil = new PerfilTributario();
+                $perfil = new PerfilTributario;
                 $perfil->clase_riesgo_arl = $clase;
                 $perfil->arl_obligatoria = true;
             }
@@ -434,7 +433,7 @@ class SeguridadSocialController extends Controller
 
         [$inicio, $parametro, $perfil] = $this->contextoIndependiente($validated['periodo'], $request->boolean('es_voluntario'));
 
-        $ingresoBase = SeguridadSocialService::ingresoBaseDelPeriodo(Auth::id(), $inicio);
+        $ingresoBase = SeguridadSocialService::ingresoBaseDelPeriodo(Auth::id(), SeguridadSocialService::mesDeIngresos($inicio));
         $calculo = SeguridadSocialService::calcularIndependiente($ingresoBase, $parametro, $perfil);
 
         [$anterior, $liquidacion] = DB::transaction(function () use ($validated, $calculo, $parametro) {
@@ -462,6 +461,7 @@ class SeguridadSocialController extends Controller
         if ($request->expectsJson()) {
             $request->session()->flash('calculo_reciente', array_merge(['id' => $liquidacion->id, 'periodo' => $liquidacion->periodo], $calculo));
             $request->session()->flash('status', $anterior === null ? 'Liquidación estimada calculada y guardada.' : 'Liquidación estimada recalculada.');
+
             return response()->json([
                 'mensaje' => $anterior === null
                     ? 'Liquidación estimada calculada y guardada.'
@@ -502,7 +502,7 @@ class SeguridadSocialController extends Controller
                 $perfil = clone $perfil;
                 $perfil->clase_riesgo_arl = $clase > 0 ? $clase : null;
             } elseif ($clase > 0) {
-                $perfil = new PerfilTributario();
+                $perfil = new PerfilTributario;
                 $perfil->clase_riesgo_arl = $clase;
                 $perfil->arl_obligatoria = true;
             }
@@ -764,10 +764,10 @@ class SeguridadSocialController extends Controller
                 ->where(function ($q) {
                     $q->whereHas('tipoFuente', function ($tf) {
                         $tf->where('nombre', 'LIKE', '%Honorarios%')
-                           ->orWhere('nombre', 'LIKE', '%Servicios%');
+                            ->orWhere('nombre', 'LIKE', '%Servicios%');
                     })
-                    ->orWhere('nombre', 'LIKE', '%prestaci%')
-                    ->orWhere('nombre', 'LIKE', '%contrat%');
+                        ->orWhere('nombre', 'LIKE', '%prestaci%')
+                        ->orWhere('nombre', 'LIKE', '%contrat%');
                 })
                 ->exists();
 
@@ -831,7 +831,7 @@ class SeguridadSocialController extends Controller
     }
 
     /**
-     * RN-033.7: periodo AAAA-MM, que no puede ser posterior al mes actual.
+     * RN-033.7 / H24: periodo AAAA-MM, hasta el mes siguiente al actual (una sola regla y un solo mensaje).
      */
     private function reglaPeriodo(): array
     {
@@ -839,13 +839,7 @@ class SeguridadSocialController extends Controller
             'required',
             'string',
             'regex:/^\d{4}-(0[1-9]|1[0-2])$/',
-            function (string $atributo, mixed $valor, \Closure $falla) {
-                if (is_string($valor)
-                    && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $valor)
-                    && SeguridadSocialService::inicioDelPeriodo($valor)->gt(CarbonImmutable::today()->startOfMonth())) {
-                    $falla('El periodo no puede ser posterior al mes actual.');
-                }
-            },
+            SeguridadSocialService::validarPeriodoMaximo(),
         ];
     }
 

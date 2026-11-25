@@ -36,8 +36,11 @@
             <x-ui.finance-stat label="Capital aportado neto" :value="$portafolio['capital_aportado_neto']" />
             <x-ui.finance-stat label="Ganancia o pérdida" :value="$portafolio['ganancia']" format="sign-money" />
             <x-ui.finance-stat label="ROI" :value="$portafolio['roi']" format="percent" />
-            <x-ui.finance-stat label="XIRR" :value="$portafolio['xirr']" format="percent" />
+            <x-ui.finance-stat :label="!empty($portafolio['xirr_periodo_corto']) ? 'XIRR anualizada' : 'XIRR'" :value="$portafolio['xirr']" format="percent" />
         </dl>
+        @if(!empty($portafolio['xirr_periodo_corto']))
+            <p class="ui-help" role="note">Periodo de menos de 1 año: la XIRR es una tasa anualizada y puede exagerar el rendimiento real; guíate por el ROI.</p>
+        @endif
     </x-ui.card>
 
     @if(empty($portafolio['detalle']))
@@ -106,7 +109,7 @@
                             <td class="ui-number"><span data-money="{{ $inv['valor_actual_cop'] }}">{{ $inv['valor_actual_cop'] }}</span></td>
                             <td class="ui-number"><span data-percent="{{ $inv['porcentaje_portafolio'] }}">{{ $inv['porcentaje_portafolio'] }}</span></td>
                             <td class="ui-number"><span data-percent="{{ $inv['roi'] }}">{{ $inv['roi'] ?? 'No calculable' }}</span></td>
-                            <td class="ui-number"><span data-percent="{{ $inv['xirr'] }}">{{ $inv['xirr'] }}</span></td>
+                            <td class="ui-number"><span data-percent="{{ $inv['xirr'] }}">{{ $inv['xirr'] }}</span>@if(!empty($inv['xirr_periodo_corto'])) <small class="ui-help" title="Periodo de menos de 1 año: la XIRR es una tasa anualizada y puede exagerar el rendimiento real; guíate por el ROI.">anualizada · menos de 1 año</small>@endif</td>
                             <td>
                                 @if($inv['fecha_ultima_valoracion'])
                                     <time data-date="{{ $inv['fecha_ultima_valoracion'] }}">{{ $inv['fecha_ultima_valoracion'] }}</time>
