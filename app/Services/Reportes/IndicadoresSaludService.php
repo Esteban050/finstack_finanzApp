@@ -147,7 +147,7 @@ class IndicadoresSaludService
             $gastadoPresupuesto = (string) ($ejecucion['totales']['gastado'] ?? '0');
 
             if (bccomp($asignadoPresupuesto, '0', 2) === 1) {
-                $porcPresupuesto = round((float) bcdiv(bcmul($gastadoPresupuesto, '100', 6), $asignadoPresupuesto, 4), 1);
+                $porcPresupuesto = self::porcentaje2($gastadoPresupuesto, $asignadoPresupuesto);
                 if ($porcPresupuesto < 80.0) {
                     $estadoPresupuesto = 'EN_CONTROL';
                     $etiquetaPresupuesto = 'En control (< 80%)';
@@ -264,7 +264,7 @@ class IndicadoresSaludService
         foreach ($categoriasGastos->take(3) as $c) {
             $m = (string) $c->total;
             $acumTop3 = bcadd($acumTop3, $m, 2);
-            $p = bccomp($gastosTotales, '0', 2) === 1 ? round((float) bcdiv(bcmul($m, '100', 6), $gastosTotales, 4), 1) : 0.0;
+            $p = bccomp($gastosTotales, '0', 2) === 1 ? self::porcentaje2($m, $gastosTotales) : 0.0;
             $top3[] = [
                 'nombre' => $nombresCats[$c->categoria_id] ?? 'Categoría',
                 'monto' => $m,
@@ -273,7 +273,7 @@ class IndicadoresSaludService
         }
 
         $restoMonto = bcsub($gastosTotales, $acumTop3, 2);
-        $restoPorc = bccomp($gastosTotales, '0', 2) === 1 ? round((float) bcdiv(bcmul($restoMonto, '100', 6), $gastosTotales, 4), 1) : 0.0;
+        $restoPorc = bccomp($gastosTotales, '0', 2) === 1 ? self::porcentaje2($restoMonto, $gastosTotales) : 0.0;
 
         $porcMax = $top3[0]['porcentaje'] ?? 0.0;
         $estadoConcentracion = 'DIVERSIFICADO';
@@ -300,7 +300,7 @@ class IndicadoresSaludService
                 'variables' => [
                     'Categoría principal' => ($top3[0]['nombre'] ?? 'Ninguna').' ($ '.number_format((float) ($top3[0]['monto'] ?? 0), 0, ',', '.').')',
                     'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
-                    'Participación de las 3 principales' => round((float) bcdiv(bcmul($acumTop3, '100', 6), max($gastosTotales, '1'), 4), 1).'%',
+                    'Participación de las 3 principales' => self::porcentaje2($acumTop3, max($gastosTotales, '1')).'%',
                 ],
                 'interpretacion' => 'Mide si tus finanzas dependen excesivamente de un solo rubro. Si una categoría supera el 40%-50%, cualquier imprevisto en ella afectará fuertemente tu presupuesto.',
             ],
@@ -345,12 +345,7 @@ class IndicadoresSaludService
         $ahorroCOP = bccomp($balance, '0', 2) === 1 ? $balance : '0';
 
         $baseCalculo = bccomp($ingresosNetos, '0', 2) === 1 ? $ingresosNetos : bcadd($gastosTotales, '1', 2);
-
-        $porcEsenciales = round((float) bcdiv(bcmul($esencialesCOP, '100', 6), $baseCalculo, 4), 1);
-        $porcDiscrecionales = round((float) bcdiv(bcmul($discrecionalesCOP, '100', 6), $baseCalculo, 4), 1);
-        $porcAhorro = bccomp($ingresosNetos, '0', 2) === 1 && bccomp($balance, '0', 2) === 1
-            ? round((float) bcdiv(bcmul($ahorroCOP, '100', 6), $ingresosNetos, 4), 1)
-            : 0.0;
+        [$porcEsenciales, $porcDiscrecionales, $porcAhorro] = self::regla503020($esencialesCOP, $discrecionalesCOP, $ahorroCOP, $ingresosNetos, $baseCalculo);
 
         $indRegla503020 = [
             'id' => 'regla_50_30_20',
@@ -437,6 +432,52 @@ class IndicadoresSaludService
         }
 
         return $historico;
+    }
+
+    /** H22: porcentaje a 2 decimales, redondeado una sola vez desde el valor crudo. */
+    private static function porcentaje2(string $parte, string $total): float
+    {
+        return round((float) bcdiv(bcmul($parte, '100', 10), $total, 8), 2);
+    }
+
+    /**
+     * H22: porcentajes 50/30/20 a 2 decimales. Si hay ahorro (ingresos = gastos + ahorro) los tres suman
+     * exactamente 100 por el método del mayor residuo; si no, cada uno se redondea desde su valor crudo.
+     *
+     * @return array{0: float, 1: float, 2: float}
+     */
+    private static function regla503020(string $esenciales, string $discrecionales, string $ahorro, string $ingresos, string $base): array
+    {
+        $conAhorro = bccomp($ingresos, '0', 2) === 1 && bccomp($ahorro, '0', 2) === 1;
+        $partes = [$esenciales, $discrecionales, $conAhorro ? $ahorro : '0'];
+        $denominador = $conAhorro ? $ingresos : $base;
+
+        // En centésimas de punto porcentual (100,00 % = 10.000).
+        $enteros = [];
+        $residuos = [];
+        foreach ($partes as $i => $parte) {
+            $exacto = bcdiv(bcmul($parte, '10000', 10), $denominador, 10);
+            $enteros[$i] = (int) bcadd($exacto, '0', 0);
+            $residuos[$i] = (float) bcsub($exacto, (string) $enteros[$i], 10);
+        }
+
+        if ($conAhorro && abs(array_sum($enteros) - 10000) <= 3) {
+            $faltan = 10000 - array_sum($enteros);
+            arsort($residuos);
+            foreach (array_keys($residuos) as $i) {
+                if ($faltan <= 0) {
+                    break;
+                }
+                $enteros[$i]++;
+                $faltan--;
+            }
+        } else {
+            foreach ($partes as $i => $parte) {
+                $enteros[$i] = (int) round((float) bcdiv(bcmul($parte, '10000', 10), $denominador, 10));
+            }
+        }
+
+        return [$enteros[0] / 100, $enteros[1] / 100, $enteros[2] / 100];
     }
 
     /**

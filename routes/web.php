@@ -32,6 +32,7 @@ use App\Http\Controllers\SimulacionInversionController;
 use App\Http\Controllers\TasaCambioController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ValoracionInversionController;
+use App\Services\RentaAnioService;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -249,7 +250,7 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
         Route::get('/{anio}/calculadora', [DeclaracionRentaController::class, 'calculadora'])->whereNumber('anio')->name('calculadora');
         Route::post('/{anio}/calculadora/calcular', [DeclaracionRentaController::class, 'calcularSimulacion'])->whereNumber('anio')->name('calculadora.calcular');
         Route::get('/calculadora', function () {
-            return redirect()->route('renta.calculadora', ['anio' => 2025]);
+            return redirect()->route('renta.calculadora', ['anio' => RentaAnioService::porDefecto((string) auth()->id())]);
         });
         Route::post('/{anio}/marcar-presentada', [DeclaracionRentaController::class, 'marcarPresentada'])->whereNumber('anio')->name('marcarPresentada');
         Route::get('/{anio}/pdf', [DeclaracionRentaController::class, 'descargarPdf'])->whereNumber('anio')->name('pdf');

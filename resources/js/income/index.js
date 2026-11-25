@@ -1,6 +1,6 @@
 import { mapFieldErrors, bindErrorRevalidation } from '../ui/foundation.js';
 import { request, safeMessage, showRequestError } from '../api/index.js';
-import { formatMoney } from '../utils/money.js';
+import { formatCurrencyAmount } from '../utils/money.js';
 import { todayBogota } from '../utils/date.js';
 import { catalogVisual, categoryPalette, legacyIcons } from './catalog.js';
 import { ENABLE_FOREIGN_CURRENCY } from '../config/currency.js';
@@ -82,7 +82,7 @@ export function mountIncome() {
         const date = editor.querySelector('[data-income-date]');
         if (date && !date.value) date.value = todayBogota();
         const summary = (override = {}) => {
-            try { if (!(override.monto_original ?? valuesOf(form).monto_original)) throw new Error(); const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatMoney(result[output.dataset.incomeSummary]); }
+            try { if (!(override.monto_original ?? valuesOf(form).monto_original)) throw new Error(); const result = incomeSummary({ ...valuesOf(form), ...override }); for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = formatCurrencyAmount(result[output.dataset.incomeSummary], valuesOf(form).moneda); }
             catch { for (const output of editor.querySelectorAll('[data-income-summary]')) output.textContent = '—'; }
         };
         editor.addEventListener('money-change', (event) => {

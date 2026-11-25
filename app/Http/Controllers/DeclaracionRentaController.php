@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\DeclaracionRenta;
+use App\Models\ParametroNormativo;
 use App\Services\Renta\CalculadoraRentaService;
 use App\Services\Renta\CalendarioVencimientoService;
 use App\Services\Renta\ConsolidadoRentaService;
 use App\Services\Renta\EstimacionRentaService;
 use App\Services\Renta\EvaluacionObligacionService;
 use App\Services\Renta\InformacionComplementariaService;
+use App\Services\RentaAnioService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class DeclaracionRentaController extends Controller
 {
@@ -28,11 +30,12 @@ class DeclaracionRentaController extends Controller
     ) {}
 
     /**
-     * Entrada principal al módulo de Renta. Redirige al año relevante (por defecto 2025).
+     * Entrada principal al módulo de Renta. Redirige al año relevante: el año en curso con registros (H27), o el último con datos.
      */
     public function index(Request $request, ?int $anio = null): RedirectResponse
     {
-        $anio = $anio ?? (int) $request->query('anio', 2025);
+        $anio = $anio ?? (int) $request->query('anio', RentaAnioService::porDefecto((string) auth()->id()));
+
         return redirect()->route('renta.consolidado', ['anio' => $anio]);
     }
 
@@ -192,7 +195,7 @@ class DeclaracionRentaController extends Controller
     public function calculadora(Request $request, int $anio): View
     {
         $usuario = auth()->user();
-        $vigencias = \App\Models\ParametroNormativo::where('es_activa', true)
+        $vigencias = ParametroNormativo::where('es_activa', true)
             ->orderByDesc('anio_vigencia')->pluck('anio_vigencia')->map(fn ($year) => (int) $year)->all();
         $sinVigencia = ! in_array($anio, $vigencias, true);
 
@@ -223,11 +226,10 @@ class DeclaracionRentaController extends Controller
 
         try {
             $resultado = $this->calculadoraService->calcularCompleto($validated, $anio);
-        } catch (\Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException $e) {
+        } catch (UnprocessableEntityHttpException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
         return response()->json($resultado);
     }
 }
-

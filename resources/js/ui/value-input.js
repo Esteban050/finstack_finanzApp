@@ -4,7 +4,23 @@ import { bindMoneyGrouping } from './money-format.js';
 // Adaptador de controles existentes. El control original mantiene ID, nombre y
 // decimal canónico para sus manejadores; el visible solo representa ese valor.
 // No se infieren montos a partir de su texto: las vistas los marcan explícitamente.
+let zeroSelectBound = false;
+
+// H23: cualquier campo numérico con "0" precargado queda seleccionado al enfocarlo; lo que se escribe lo
+// reemplaza en vez de concatenarse ("11" ya no queda "110").
+function bindSelectZeroOnFocus() {
+    if (zeroSelectBound || typeof document === 'undefined') return;
+    zeroSelectBound = true;
+    document.addEventListener('focusin', event => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || input.readOnly || input.disabled) return;
+        if (!['text', 'number', 'tel', ''].includes(input.type)) return;
+        if (/^0(?:[.,]0+)?$/.test(input.value)) setTimeout(() => { try { input.select(); } catch { /* tipo sin selección */ } }, 0);
+    });
+}
+
 export function mountValueInputs(root = document) {
+    bindSelectZeroOnFocus();
     for (const canonical of root.querySelectorAll('input[data-value-input]:not([data-value-bound])')) {
         canonical.dataset.valueBound = 'true';
         const visible = canonical.cloneNode(false);
@@ -41,8 +57,11 @@ export function mountValueInputs(root = document) {
         validate = (notify = true) => {
             let error = '';
             try {
+                const maxAttr = canonical.getAttribute('max');
                 const value = visible.value === '' ? '' : parseLocalizedValue(visible.value, {
-                    precision, min: canonical.getAttribute('min') || '0', max: canonical.getAttribute('max') || MAX_AMOUNT,
+                    precision, min: canonical.getAttribute('min') || '0', max: maxAttr || MAX_AMOUNT,
+                    // Tasas y porcentajes (máximo < 1.000) aceptan punto o coma como decimal.
+                    dotDecimal: maxAttr !== null && Number(maxAttr) < 1000,
                 });
                 if (!value && visible.required) error = 'Este campo es obligatorio.';
                 if (value && canonical.dataset.positive === 'true' && decimal(value).lte('0')) error = 'El valor debe ser mayor que cero.';

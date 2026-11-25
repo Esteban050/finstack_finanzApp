@@ -20,7 +20,7 @@
             ['inversiones.simulaciones.index', 'Simulador', request()->routeIs('inversiones.simulaciones.*')],
         ];
     } elseif (request()->routeIs('renta.*')) {
-        $anioRenta = request()->route('anio', 2025);
+        $anioRenta = request()->route('anio') ?? \App\Services\RentaAnioService::porDefecto((string) auth()->id());
         $tabs = [
             ['renta.consolidado', 'Consolidado y evaluación', request()->routeIs('renta.consolidado', 'renta.evaluacion'), ['anio' => $anioRenta]],
             ['renta.complementaria', 'Información complementaria', request()->routeIs('renta.complementaria'), ['anio' => $anioRenta]],

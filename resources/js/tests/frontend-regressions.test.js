@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { complementaryTotal, validateRentaAmounts, registerRenta } from '../renta/index.js';
 import { simulateBenefits } from '../renta/benefits.js';
-import { projectedInterest } from '../finance/projections.js';
+import { projectedInterest, cdtSimulation } from '../finance/projections.js';
 import { contractPayload } from '../api/index.js';
 
 test('renta: admite pesos y centavos, cero y ajustes exactos sin exigir múltiplos de mil', () => {
@@ -66,4 +66,14 @@ test('renta: una respuesta tardía no restaura el resultado tras editar un monto
         state.invalidate();reply();await pending;
         assert.equal(state.result,null);assert.equal(state.calculating,false);
     } finally {Object.assign(globalThis,previous);}
+});
+
+test('H23: la simulación del CDT calcula con punto o coma en la tasa y solo falta cuando faltan datos', () => {
+    const base = { capital: '10000000', dias: '365', base: '365' };
+    assert.deepEqual(cdtSimulation({ ...base, tasa: '10' }), { bruto: '1000000.00', retencion: '40000.00', neto: '960000.00' });
+    assert.deepEqual(cdtSimulation({ ...base, tasa: '10,00' }), cdtSimulation({ ...base, tasa: '10.00' }));
+    assert.equal(cdtSimulation({ ...base, capital: '10.000.000,00', tasa: '11,90' }).bruto, cdtSimulation({ ...base, tasa: '11.9' }).bruto);
+    assert.equal(cdtSimulation({ ...base, tasa: '' }), null);
+    assert.equal(cdtSimulation({ ...base, dias: '0', tasa: '10' }), null);
+    assert.ok(Number(cdtSimulation({ capital: '5000000', tasa: '11.5', dias: '180' }).bruto) > 0);
 });

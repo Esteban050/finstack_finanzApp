@@ -71,8 +71,46 @@ class InversionService
             return false;
         }
 
-        return $valoracion === null
-            || CarbonImmutable::parse($valoracion->fecha)->addDays(self::DIAS_VALORACION_VIGENTE)->lt($hoy);
+        // H23: la referencia es lo más reciente entre la última valoración y la creación del registro; una
+        // inversión recién creada con fecha de apertura antigua no nace "desactualizada".
+        $referencias = array_filter([
+            $valoracion?->fecha ? CarbonImmutable::parse($valoracion->fecha)->startOfDay() : null,
+            $inversion->creado_en ? CarbonImmutable::parse($inversion->creado_en)->startOfDay() : null,
+        ]);
+
+        if ($referencias === []) {
+            return true;
+        }
+
+        return max($referencias)->addDays(self::DIAS_VALORACION_VIGENTE)->lt($hoy);
+    }
+
+    /**
+     * H22: antigüedad desde una fecha, en años enteros o meses (nunca un decimal largo).
+     *
+     * @return array{anios: int, meses: int, texto: string}
+     */
+    public static function antiguedadTexto(?string $fecha, ?CarbonImmutable $hoy = null): array
+    {
+        $hoy ??= CarbonImmutable::today();
+
+        if ($fecha === null || CarbonImmutable::parse($fecha)->startOfDay()->greaterThan($hoy)) {
+            return ['anios' => 0, 'meses' => 0, 'texto' => 'menos de 1 mes'];
+        }
+
+        $totalMeses = (int) CarbonImmutable::parse($fecha)->startOfDay()->diffInMonths($hoy->startOfDay());
+        $anios = intdiv($totalMeses, 12);
+        $meses = $totalMeses % 12;
+
+        $partes = [];
+        if ($anios > 0) {
+            $partes[] = $anios.($anios === 1 ? ' año' : ' años');
+        }
+        if ($meses > 0) {
+            $partes[] = $meses.($meses === 1 ? ' mes' : ' meses');
+        }
+
+        return ['anios' => $anios, 'meses' => $meses, 'texto' => $partes === [] ? 'menos de 1 mes' : implode(' y ', $partes)];
     }
 
     public static function valorCausado(Inversion $inversion, CarbonImmutable $fecha): array

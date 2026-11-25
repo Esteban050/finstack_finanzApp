@@ -102,6 +102,11 @@ export function formatMoney(amount) {
     return `${value.isNegative() && !value.isZero() ? '-' : ''}$\u00a0${grouped}${fraction}`;
 }
 
+// H23: un monto en otra moneda se rotula con su código ("USD 500"), no con el $ del peso.
+export function formatCurrencyAmount(amount, currency = 'COP') {
+    return !currency || currency === 'COP' ? formatMoney(amount) : formatMoney(amount).replace('$\u00a0', currency + '\u00a0');
+}
+
 // Separadores únicamente de presentación; el parser conserva el decimal canónico.
 export function formatMoneyDraft(value, { regroup = false } = {}) {
     const raw = normalizeMoneyInput(String(value));
@@ -116,8 +121,11 @@ export function formatMoneyDraft(value, { regroup = false } = {}) {
 }
 
 // Tasas, precios y cantidades conservan su precisión contractual, sin pasar por Number.
-export function parseLocalizedValue(value, { precision = 2, min, max } = {}) {
-    const raw = normalizeMoneyInput(value);
+// dotDecimal (tasas y porcentajes, cuyo máximo no llega a 1.000 y no tienen separador de miles): un único
+// punto sin coma es el separador decimal, así que "11.90" y "11,90" valen lo mismo.
+export function parseLocalizedValue(value, { precision = 2, min, max, dotDecimal = false } = {}) {
+    let raw = normalizeMoneyInput(value);
+    if (dotDecimal && typeof raw === 'string' && /^-?\d+\.\d+$/.test(raw)) raw = raw.replace('.', ',');
     const fraction = String(precision) === '0' ? '' : `(?:,\\d{1,${precision}})?`;
     if (typeof raw !== 'string' || !new RegExp(`^-?(?:\\d+|\\d{1,3}(?:\\.\\d{3})+)${fraction}$`).test(raw)) {
         throw new TypeError(`Usa puntos para los miles y coma para los decimales; máximo ${precision} decimales.`);

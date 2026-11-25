@@ -829,13 +829,11 @@ function toggleTrmDividendo(val) {
 }
 
 function calcularProyeccionCdt() {
-    if(!window.FinanzMoney)return;const {decimal,formatMoney}=window.FinanzMoney;
-    try{const capital=decimal(document.getElementById('monto_inicial').value||'0'),tasa=decimal(document.getElementById('tasa_ea_cdt').value||'0'),dias=document.getElementById('plazo_dias').value||'0',base=document.getElementById('base_dias').value||'365';
-    if(capital.lte('0')||tasa.lt('0')||decimal(dias).lte('0'))return;
-    const nominal=document.getElementById('tipo_tasa')?.value==='NOMINAL',rate=nominal?tasa.div('100').div('12').plus('1').pow('12').minus('1'):tasa.div('100'),bruto=capital.times(rate.plus('1').pow(decimal(dias).div(base)).minus('1'));
-    const ret=bruto.times('0.04'),neto=bruto.minus(ret);
-    for(const [id,value]of [['cdt-prev-bruto',bruto],['cdt-prev-ret',ret],['cdt-prev-neto',neto]])document.getElementById(id).textContent=formatMoney(value.toFixed(2));
-    }catch{for(const id of ['cdt-prev-bruto','cdt-prev-ret','cdt-prev-neto']){const el=document.getElementById(id);if(el)el.textContent='—';}}
+    if(!window.FinanzMoney)return;const {formatMoney,cdtSimulation}=window.FinanzMoney;
+    const value=id=>document.getElementById(id)?.value??'';
+    const sim=cdtSimulation({capital:value('monto_inicial'),tasa:value('tasa_ea_cdt'),tipoTasa:value('tipo_tasa'),dias:value('plazo_dias'),base:value('base_dias')||'365'});
+    const text=sim?{'cdt-prev-bruto':formatMoney(sim.bruto),'cdt-prev-ret':formatMoney(sim.retencion),'cdt-prev-neto':formatMoney(sim.neto)}:{'cdt-prev-bruto':'—','cdt-prev-ret':'—','cdt-prev-neto':'—'};
+    for(const [id,content]of Object.entries(text)){const el=document.getElementById(id);if(el)el.textContent=content;}
 }
 
 // Inicializar al cargar y asegurar deshabilitado en submit

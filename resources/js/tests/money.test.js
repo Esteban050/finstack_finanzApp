@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatMoney, formatMoneyDraft, formatQuantity, formatCanonicalValue, parseLocalizedValue, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
+import { formatCurrencyAmount, formatMoney, formatMoneyDraft, formatQuantity, formatCanonicalValue, parseLocalizedValue, validateAmount, addMoney, subtractMoney, parseMoneyInput, percentageOf, parsePercentage, deductionMode } from '../utils/money.js';
 
 test('captura común: conserva ocho decimales, ceros finales y límites sin transformar texto inválido', () => {
     assert.equal(parseLocalizedValue('1.234.567,89'), '1234567.89');
@@ -8,6 +8,13 @@ test('captura común: conserva ocho decimales, ceros finales y límites sin tran
     assert.equal(formatCanonicalValue('1234567.12000000'), '1.234.567,12000000');
     assert.equal(parseLocalizedValue('4.500', {precision: 0}), '4500');
     for (const value of ['1e3', '1..000', '1,123', '12.34']) assert.throws(() => parseLocalizedValue(value));
+    // H23: tasas (max < 1.000) aceptan punto o coma como decimal.
+    const tasa = { precision: 8, min: '0', max: '100', dotDecimal: true };
+    assert.equal(parseLocalizedValue('11.90', tasa), '11.90');
+    assert.equal(parseLocalizedValue('11,90', tasa), '11.90');
+    assert.equal(parseLocalizedValue('11.9000277', tasa), '11.9000277');
+    assert.throws(() => parseLocalizedValue('100.5', tasa));
+    assert.throws(() => parseLocalizedValue('12.34'), 'sin dotDecimal el punto sigue siendo separador de miles');
     assert.throws(() => parseLocalizedValue('-1.000', {min: '0'}));
     assert.throws(() => parseLocalizedValue('1.000,01', {max: '1000'}));
     assert.equal(parseLocalizedValue('-1.000,50', {min: '-2000'}), '-1000.50');
@@ -110,4 +117,12 @@ test('campos con más precisión (tasas, precios) conservan sus decimales', () =
     assert.equal(exceedsMoneyDigits('1,123456789', 8), true);
     assert.equal(exceedsMoneyDigits('1,1234', 4), false);
     assert.equal(exceedsMoneyDigits('1,123', 0), true);
+});
+
+test('H23: los montos en dólares muestran el código de la moneda, no el signo del peso', () => {
+    assert.equal(formatCurrencyAmount('500.00', 'USD'), 'USD\u00a0500');
+    assert.equal(formatCurrencyAmount('1234.50', 'USD'), 'USD\u00a01.234,50');
+    assert.equal(formatCurrencyAmount('-10.00', 'USD'), '-USD\u00a010');
+    assert.equal(formatCurrencyAmount('500.00', 'COP'), formatMoney('500.00'));
+    assert.equal(formatCurrencyAmount('500.00'), formatMoney('500.00'));
 });

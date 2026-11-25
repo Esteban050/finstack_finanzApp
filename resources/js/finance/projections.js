@@ -11,6 +11,29 @@ export function projectedInterest(capital, rate, days, base = '365') {
     return decimal(String(capital)).times(factor.pow(decimal(String(days)).div(String(base))).minus('1')).toFixed(2);
 }
 
+// H23: texto de un campo ("11.90", "11,90", "10.000.000") a decimal canónico, o null si no es un número.
+const aDecimal = texto => {
+    const limpio = String(texto ?? '').trim();
+    if (!limpio) return null;
+    const canonico = limpio.includes(',') ? limpio.replaceAll('.', '').replace(',', '.') : limpio;
+    return /^\d+(?:\.\d+)?$/.test(canonico) ? decimal(canonico) : null;
+};
+
+/**
+ * H23: simulación del CDT al vencimiento (rendimiento bruto, retención 4 % y neto). Acepta punto o coma como
+ * decimal en la tasa; devuelve null solo si faltan datos (capital, tasa o plazo), nunca por el separador.
+ */
+export function cdtSimulation({ capital, tasa, tipoTasa = 'EA', dias, base = '365', retencion = '0.04' }) {
+    const monto = aDecimal(capital), tasaAnual = aDecimal(tasa), plazo = aDecimal(dias), baseDias = aDecimal(base);
+    if (!monto || !tasaAnual || !plazo || !baseDias || monto.lte('0') || plazo.lte('0') || baseDias.lte('0')) return null;
+    const efectiva = tipoTasa === 'NOMINAL'
+        ? tasaAnual.div('100').div('12').plus('1').pow('12').minus('1')
+        : tasaAnual.div('100');
+    const bruto = monto.times(efectiva.plus('1').pow(plazo.div(baseDias)).minus('1'));
+    const retenido = bruto.times(retencion);
+    return { bruto: bruto.toFixed(2), retencion: retenido.toFixed(2), neto: bruto.minus(retenido).toFixed(2) };
+}
+
 export function addMonthsCivil(start, count) {
     const [year,month,day]=start.split('-').map(Number);
     const last=new Date(Date.UTC(year,month-1+count+1,0)).getUTCDate();

@@ -2,14 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\DeclaracionRenta;
-use App\Models\DeclaracionRentaAjuste;
+use App\Http\Middleware\CheckPoliticaAceptadaMiddleware;
+use App\Http\Middleware\PerfilCompletoMiddleware;
 use App\Models\DeclaracionRentaRecordatorio;
-use App\Models\EntidadFinanciera;
-use App\Models\Inversion;
-use App\Models\MovimientoInversion;
 use App\Models\Usuario;
-use App\Models\UsuarioPerfilTributario;
 use App\Services\Renta\CalendarioVencimientoService;
 use App\Services\Renta\ConsolidadoRentaService;
 use App\Services\Renta\EstimacionRentaService;
@@ -17,6 +13,7 @@ use App\Services\Renta\EvaluacionObligacionService;
 use App\Services\Renta\InformacionComplementariaService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -25,10 +22,15 @@ class DeclaracionRentaTest extends TestCase
     use DatabaseTransactions;
 
     protected Usuario $usuario;
+
     protected ConsolidadoRentaService $consolidadoService;
+
     protected InformacionComplementariaService $complementariaService;
+
     protected EvaluacionObligacionService $evaluacionService;
+
     protected EstimacionRentaService $estimacionService;
+
     protected CalendarioVencimientoService $vencimientoService;
 
     protected function setUp(): void
@@ -64,9 +66,9 @@ class DeclaracionRentaTest extends TestCase
         $this->usuario = $usuario;
 
         $this->actingAs($this->usuario);
-        $this->withoutMiddleware(\App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class);
+        $this->withoutMiddleware(CheckPoliticaAceptadaMiddleware::class);
         // El requisito de perfil completo (CA-008.1) se prueba en DefectosModuloGeneralTest.
-        $this->withoutMiddleware(\App\Http\Middleware\PerfilCompletoMiddleware::class);
+        $this->withoutMiddleware(PerfilCompletoMiddleware::class);
 
         $this->consolidadoService = app(ConsolidadoRentaService::class);
         $this->complementariaService = app(InformacionComplementariaService::class);
@@ -374,7 +376,7 @@ class DeclaracionRentaTest extends TestCase
         // Calendario DIAN 2026 (comunicado 090-2026): dígitos 37-38 vencen el 8 de septiembre de 2026.
         \DB::table('calendario_tributario')->where('anio_vigencia', 2026)->where('tipo_obligacion', 'RENTA_PN')->delete();
         \DB::table('calendario_tributario')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'anio_vigencia' => 2026,
             'tipo_obligacion' => 'RENTA_PN',
             'digito_desde' => '37',
@@ -443,7 +445,8 @@ class DeclaracionRentaTest extends TestCase
     {
         // 1. Redirección /renta
         $respIndex = $this->get('/renta');
-        $respIndex->assertRedirect('/renta/2025/consolidado');
+        // H27: sin registros abre en el año en curso (antes fijo en 2025).
+        $respIndex->assertRedirect('/renta/'.now()->year.'/consolidado');
 
         // 2. Consolidado
         $respConsolidado = $this->get('/renta/2025/consolidado');
@@ -493,4 +496,3 @@ class DeclaracionRentaTest extends TestCase
         $respPostPresentada->assertRedirect('/renta/2025/vencimiento');
     }
 }
-

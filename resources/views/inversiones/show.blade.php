@@ -172,11 +172,12 @@
             <div>
                 <span class="ui-help">Primera Compra / Antigüedad:</span>
                 @php
-                    $antiguedad = !empty($det['fecha_primera_compra']) ? \Carbon\CarbonImmutable::parse($det['fecha_primera_compra'])->diffInYears(now()) : 0;
+                    $tenencia = \App\Services\InversionService::antiguedadTexto(!empty($det['fecha_primera_compra']) ? (string) $det['fecha_primera_compra'] : null);
+                    $antiguedad = $tenencia['anios'];
                 @endphp
                 <p style="margin: 0.25rem 0; font-weight: 600;">
                     {{ $det['fecha_primera_compra'] ?? $inversion->fecha_apertura->format('Y-m-d') }}
-                    <span class="ui-help">({{ $antiguedad }} {{ $antiguedad == 1 ? 'año' : 'años' }} de tenencia)</span>
+                    <span class="ui-help">({{ $tenencia['texto'] }} de tenencia)</span>
                 </p>
             </div>
             <div>

@@ -10,7 +10,7 @@ import { moneyInputErrors } from '../income/index.js';
 import { decimal, formatMoney, formatQuantity, parseMoneyInput, formatMoneyDraft, parseLocalizedValue, formatCanonicalValue } from '../utils/money.js';
 import { bindMoneyGrouping, groupMoneyControl } from '../ui/money-format.js';
 import { canonicalDecimal, nestedFinanceValues, validateFinance, parameterText, financeMessage } from './rules.js';
-import { mountInvestmentGoals, projectedInterest } from './projections.js';
+import { mountInvestmentGoals, projectedInterest, cdtSimulation } from './projections.js';
 import { mountProjectionViews } from './projection-view.js';
 import { mountPilaAutofill } from './pila.js';
 
@@ -64,7 +64,7 @@ export function mountFinance() {
             if (Object.keys(failures).length) event.preventDefault();
         });
     }
-    window.FinanzMoney = { decimal, formatMoney, formatQuantity, formatMoneyDraft, parseLocalizedValue, formatCanonicalValue, bindMoneyGrouping, groupMoneyControl, projectedInterest };
+    window.FinanzMoney = { decimal, formatMoney, formatQuantity, formatMoneyDraft, parseLocalizedValue, formatCanonicalValue, bindMoneyGrouping, groupMoneyControl, projectedInterest, cdtSimulation };
 
     Chart.defaults.font.size=13;
     Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;
