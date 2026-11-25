@@ -28,7 +28,7 @@ Group 1 — data reaching other modules wrong (route: delegated writer, writer t
 - [x] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
 
 Group 2 — credit card
-- [ ] T6 — H07: first-installment interest computed per purchase and real days.
+- [x] T6 — H07: first-installment interest computed per purchase and real days.
 - [ ] T7 — H06: notifications at the configured card-usage threshold and when the limit is exceeded.
 
 Group 3 — cross-module consistency
@@ -46,11 +46,11 @@ Group 4 — UX / verify
 
 - [ ] T16 — H08 (decided 2026-11-24: USE CURRENT MONTH): when closed months lack enough income, the debt ratio uses the current month's income as denominator.
 
-- [ ] T17 — H11 (decided 2026-11-24: RECOGNIZE AT PURCHASE): card installment payments no longer create a duplicate expense for capital; only the interest portion is an expense (financial obligations).
+- [x] T17 — H11 (decided 2026-11-24: RECOGNIZE AT PURCHASE): card installment payments no longer create a duplicate expense for capital; only the interest portion is an expense (financial obligations).
 
 - [ ] T18 — H16 (decided 2026-11-24: REAL DAYS): payment before the installment due date charges current interest accrued by real days since disbursement/last installment (daily equivalent rate); the rest goes to capital.
 
-- [ ] T19 — H17 (decided 2026-11-24: BLOCK): an expense that exceeds the card's available limit is rejected with a validation error (create and edit). Consequence for T7/H06: the "limit exceeded" notification no longer applies; keep the threshold notification.
+- [x] T19 — H17 (decided 2026-11-24: BLOCK): an expense that exceeds the card's available limit is rejected with a validation error (create and edit). Consequence for T7/H06: the "limit exceeded" notification no longer applies; keep the threshold notification.
 
 - [ ] T20 — H20 (decided 2026-11-24: INCLUDE): dividends received in the year are added to C2 gross income.
 - [ ] T21 — H24 + H26 (no user decision needed, defaults): unify PILA period selector rule/messages (period M uses income of M−1; allow up to current month+1 consistently); portfolio ROI uses the same capital base as per-investment ROI; GMF behaviour documented in UI (exemption not tracked).
@@ -68,3 +68,9 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - T3 (H14) done: RED 1 failed -> GREEN 1 passed (ResumenProximos15DiasTest). Root cause: DashboardResumenService::obtenerProximos15Dias read datos_plantilla['monto'] (stored key is monto_cop).
 - T4 (H01) done: RED 1 failed -> GREEN 1 passed (RentaIncrngoSeguridadSocialTest); Renta|SeguridadSocial|PagoSeguridad filter 100 green. Root cause: ConsolidadoRentaService::consolidar summed only ingresos.aportes_descontados_cop, never PagoSeguridadSocial (PILA). Now adds SeguridadSocialService::resumenAnual (by fecha_pago year, paid rows).
 - T5 (H02) done: RED 1 failed (75000 vs 60066.67) -> GREEN 1 passed (RentaUtilidadVentaCostoPromedioTest). Root cause: ConsolidadoRentaService used inv.precio_unitario_compra * unidades; now reads IngresoInversion UTILIDAD_VENTA (weighted average, same as Ingresos). Note: legacy sales without a UTILIDAD_VENTA bridge row count as 0.
+- T5b (follow-ups, commit a67ae97) done: RED 2 failed (retention 3594.84 vs 1797.42; sale fallback 0 vs 60066.67) -> GREEN 3 passed (RentaConsolidadoSeguimientoTest). (a) Real double count: ConsolidadoRentaService summed ingresos.retencion_fuente_cop of investment-generated incomes AND MovimientoInversion.retencion_aplicada; now skips ingresos linked via movimientos_inversion.ingreso_id (Reportes > Retenciones reads only movimientos: no double count; Ingresos totals read only ingresos: correct 1.151.029,73). (b) PILA vs aportes_descontados are independent sources (RN-034.5 forbids payroll aportes on honorarios): documented with test, no code change. (c) fallback utilidadVentaSinPuente reuses CalculoImpuestoInversionService::calcularVentaAcciones. Added rendimiento_estimado assertion in ResumenPortafolioInversionesTest.
+- T6 (H07, commit 0852049) done: RED 42217 vs 24068 -> GREEN (TarjetaInteresPrimeraCuotaPorCompraTest). Root cause: CreditoService::tablaAmortizacion charged interest on the whole balance from fecha_inicio. Now option 'compras' => interesComprasPorDias (sum per purchase, rounded once). Purchases come from PagoCreditoService::comprasTarjeta (gastos with credito_id) or from ConsumoTarjetaService::aplicar (pending gasto not yet saved). Limitation: plans regenerated after payments (ajustarPlanTarjeta) keep the previous logic.
+- T19 (H17, commit fb54269) done: RED 3 failed -> GREEN 5 passed (CupoTarjetaTest rewritten). ConsumoTarjetaService::validarCupoDisponible (existing card, create/edit, uses cupo - saldo_capital) and GastoController::datosCredito (new card purchase > cupo_tarjeta); error on monto_original; form help text updated.
+- T17 (H11, commit 9d6535b) done: RED 94560 vs 20000 -> GREEN (PagoTarjetaGastoSoloInteresesTest). PagoCreditoService::crearGastos: for TARJETA_CREDITO the expense is valor - capital - abono extraordinario (interest, mora, seguro, cargos); gasto_id null if zero. Other types unchanged. Full suite 345/345 green.
+- T7 (H06) BLOCKED, needs decision: the preference 'Consumos con tarjeta de crédito' (default 80%) is TOPE_DIAN_TARJETA = annual card consumption vs the DIAN 1.400 UVT cap (AlertaFinancieraService::topeDian), not card-limit usage. It works as designed. A card-limit-usage notification would need a new alert type/preference (or re-purposing).
+- T18 (H16) BLOCKED, needs decision: disbursement date of the libre-inversion credit is not in the scenario (first cuota 24/12 monthly implies fecha_inicio 24/11 = payment day -> 0 days of interest). Also ANTICIPO semantics (cuota stays partial vs plan regeneration) undefined.
