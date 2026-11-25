@@ -808,7 +808,8 @@ class PagoCreditoService
     */
 
     /**
-     * Gasto en MOD-04 por el pago (decisión del usuario). En vivienda los
+     * Gasto en MOD-04 por el pago (decisión del usuario). En tarjeta de crédito solo los
+     * costos de financiación (la compra ya fue gasto). En vivienda los
      * intereses corrientes van en un gasto aparte, potencialmente deducible
      * (intereses de vivienda); el resto, no deducible.
      *
@@ -841,6 +842,15 @@ class PagoCreditoService
             'subtipo_deduccion' => $subtipo,
             'descripcion' => mb_substr($descripcion.$sufijo, 0, 255),
         ]);
+
+        // H11: la compra con tarjeta ya se registró como gasto; pagar la cuota solo amortiza deuda.
+        // Es gasto lo que no es capital: intereses, mora, seguros y cargos.
+        if ($credito->tipo_credito === 'TARJETA_CREDITO') {
+            $capital = bcadd($resumen['CAPITAL'], $resumen['ABONO_EXTRAORDINARIO'], 0);
+            $costos = bcsub($valor, $capital, 0);
+
+            return [self::esCero($costos) ? null : $crear($costos, 'NO_DEDUCIBLE', null, ' (intereses y cargos)'), null];
+        }
 
         if ($credito->tipo_credito !== 'VIVIENDA') {
             return [$crear($valor, 'NO_DEDUCIBLE', null, ''), null];
