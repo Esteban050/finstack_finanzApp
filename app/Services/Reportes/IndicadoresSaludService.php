@@ -24,6 +24,7 @@ class IndicadoresSaludService
     public const AVISO_LEGAL = 'Valores estimados con fines informativos. No constituyen asesoría tributaria, contable ni financiera.';
 
     public const META_AHORRO_DEFAULT = 10.0;
+
     public const REGLA_50_30_20_DEFAULT = [
         'esenciales' => 50.0,
         'discrecionales' => 30.0,
@@ -47,7 +48,7 @@ class IndicadoresSaludService
         ?CarbonImmutable $referencia = null
     ): array {
         $hoy = $referencia ?? CarbonImmutable::today();
-        $mes = $mesStr ? CarbonImmutable::parse($mesStr . '-01')->startOfMonth() : $hoy->startOfMonth();
+        $mes = $mesStr ? CarbonImmutable::parse($mesStr.'-01')->startOfMonth() : $hoy->startOfMonth();
         $finMes = $mes->endOfMonth();
         $diasMes = $mes->daysInMonth;
 
@@ -119,10 +120,10 @@ class IndicadoresSaludService
             'detalle' => [
                 'formula' => '((Ingresos Netos - Gastos) / Ingresos Netos) × 100',
                 'variables' => [
-                    'Ingresos netos' => '$ ' . number_format((float) $ingresosNetos, 0, ',', '.'),
-                    'Gastos totales' => '$ ' . number_format((float) $gastosTotales, 0, ',', '.'),
-                    'Balance' => '$ ' . number_format((float) $balance, 0, ',', '.'),
-                    'Meta sugerida' => self::META_AHORRO_DEFAULT . '%',
+                    'Ingresos netos' => '$ '.number_format((float) $ingresosNetos, 0, ',', '.'),
+                    'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
+                    'Balance' => '$ '.number_format((float) $balance, 0, ',', '.'),
+                    'Meta sugerida' => self::META_AHORRO_DEFAULT.'%',
                 ],
                 'interpretacion' => 'Representa el porcentaje de tus ingresos que logras conservar después de cubrir todos tus gastos. Un valor superior al 10% permite construir fondos de emergencia e invertir a largo plazo.',
             ],
@@ -173,9 +174,9 @@ class IndicadoresSaludService
             'detalle' => [
                 'formula' => '(Gastado en categorías presupuestadas / Asignado total) × 100',
                 'variables' => [
-                    'Monto asignado' => '$ ' . number_format((float) $asignadoPresupuesto, 0, ',', '.'),
-                    'Monto ejecutado' => '$ ' . number_format((float) $gastadoPresupuesto, 0, ',', '.'),
-                    'Diferencia' => '$ ' . number_format((float) bcsub($asignadoPresupuesto, $gastadoPresupuesto, 2), 0, ',', '.'),
+                    'Monto asignado' => '$ '.number_format((float) $asignadoPresupuesto, 0, ',', '.'),
+                    'Monto ejecutado' => '$ '.number_format((float) $gastadoPresupuesto, 0, ',', '.'),
+                    'Diferencia' => '$ '.number_format((float) bcsub($asignadoPresupuesto, $gastadoPresupuesto, 2), 0, ',', '.'),
                 ],
                 'interpretacion' => 'Mide cuánto de lo planificado para el mes ha sido consumido. Mantenerse por debajo del 80% antes del cierre del mes garantiza liquidez para imprevistos.',
             ],
@@ -206,10 +207,11 @@ class IndicadoresSaludService
             'estado' => $estadoEndeudamiento,
             'etiqueta_estado' => $etiquetaEndeudamiento,
             'detalle' => [
-                'formula' => '(Cuotas de deuda del mes / Ingreso neto promedio 3 meses) × 100',
+                'formula' => '(Cuotas de deuda del mes / Ingreso neto promedio de los últimos meses cerrados) × 100; si hay menos de 2 meses cerrados con ingresos, se usa el ingreso neto del mes en curso',
                 'variables' => [
-                    'Total cuotas mes' => '$ ' . number_format((float) ($endeudamientoCalc['pagos_mes']['total'] ?? 0), 0, ',', '.'),
-                    'Ingreso promedio 3 meses' => '$ ' . number_format((float) ($endeudamientoCalc['ingresos_netos']['promedio'] ?? 0), 0, ',', '.'),
+                    'Total cuotas mes' => '$ '.number_format((float) ($endeudamientoCalc['pagos_mes']['total'] ?? 0), 0, ',', '.'),
+                    'Base del ingreso' => ($endeudamientoCalc['ingresos_netos']['base'] ?? 'MESES_CERRADOS') === 'MES_EN_CURSO' ? 'Mes en curso' : 'Promedio de meses cerrados',
+                    'Ingreso neto usado' => '$ '.number_format((float) ($endeudamientoCalc['ingresos_netos']['promedio'] ?? 0), 0, ',', '.'),
                 ],
                 'interpretacion' => 'La Superintendencia Financiera recomienda que las obligaciones de crédito no superen el 30% al 40% de tus ingresos netos mensuales para evitar sobreendeudamiento.',
             ],
@@ -225,16 +227,16 @@ class IndicadoresSaludService
             'id' => 'gasto_diario_promedio',
             'nombre' => 'Gasto diario promedio',
             'valor' => $gastoDiario,
-            'valor_formateado' => '$ ' . number_format($gastoDiario, 0, ',', '.'),
-            'referencia_anterior' => '$ ' . number_format($gastoDiarioAnt, 0, ',', '.'),
+            'valor_formateado' => '$ '.number_format($gastoDiario, 0, ',', '.'),
+            'referencia_anterior' => '$ '.number_format($gastoDiarioAnt, 0, ',', '.'),
             'variacion_porc' => $varGastoDiario,
             'tendencia_6m' => $historicoGastoDiario,
             'detalle' => [
                 'formula' => 'Gastos totales del periodo / Días transcurridos en el periodo',
                 'variables' => [
-                    'Gastos totales' => '$ ' . number_format((float) $gastosTotales, 0, ',', '.'),
+                    'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
                     'Días del mes' => (string) $diasMes,
-                    'Gasto diario mes anterior' => '$ ' . number_format($gastoDiarioAnt, 0, ',', '.'),
+                    'Gasto diario mes anterior' => '$ '.number_format($gastoDiarioAnt, 0, ',', '.'),
                 ],
                 'interpretacion' => 'Indica el ritmo promedio de egresos diarios. Ayuda a establecer límites de consumo por día o semana.',
             ],
@@ -294,9 +296,9 @@ class IndicadoresSaludService
             'detalle' => [
                 'formula' => '(Gasto de la categoría principal / Gastos totales) × 100',
                 'variables' => [
-                    'Categoría principal' => ($top3[0]['nombre'] ?? 'Ninguna') . ' ($ ' . number_format((float) ($top3[0]['monto'] ?? 0), 0, ',', '.') . ')',
-                    'Gastos totales' => '$ ' . number_format((float) $gastosTotales, 0, ',', '.'),
-                    'Participación de las 3 principales' => round((float) bcdiv(bcmul($acumTop3, '100', 6), max($gastosTotales, '1'), 4), 1) . '%',
+                    'Categoría principal' => ($top3[0]['nombre'] ?? 'Ninguna').' ($ '.number_format((float) ($top3[0]['monto'] ?? 0), 0, ',', '.').')',
+                    'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
+                    'Participación de las 3 principales' => round((float) bcdiv(bcmul($acumTop3, '100', 6), max($gastosTotales, '1'), 4), 1).'%',
                 ],
                 'interpretacion' => 'Mide si tus finanzas dependen excesivamente de un solo rubro. Si una categoría supera el 40%-50%, cualquier imprevisto en ella afectará fuertemente tu presupuesto.',
             ],
@@ -311,16 +313,16 @@ class IndicadoresSaludService
             'id' => 'ticket_promedio',
             'nombre' => 'Ticket promedio',
             'valor' => $ticketPromedio,
-            'valor_formateado' => '$ ' . number_format($ticketPromedio, 0, ',', '.'),
+            'valor_formateado' => '$ '.number_format($ticketPromedio, 0, ',', '.'),
             'transacciones_totales' => $conteoGastos,
-            'referencia_anterior' => '$ ' . number_format($ticketPromedioAnt, 0, ',', '.'),
+            'referencia_anterior' => '$ '.number_format($ticketPromedioAnt, 0, ',', '.'),
             'variacion_porc' => $varTicket,
             'detalle' => [
                 'formula' => 'Gastos totales / Número total de transacciones de gasto',
                 'variables' => [
-                    'Gastos totales' => '$ ' . number_format((float) $gastosTotales, 0, ',', '.'),
+                    'Gastos totales' => '$ '.number_format((float) $gastosTotales, 0, ',', '.'),
                     'Número de transacciones' => (string) $conteoGastos,
-                    'Ticket mes anterior' => '$ ' . number_format($ticketPromedioAnt, 0, ',', '.'),
+                    'Ticket mes anterior' => '$ '.number_format($ticketPromedioAnt, 0, ',', '.'),
                 ],
                 'interpretacion' => 'Muestra el valor medio por cada desembolso realizado. Un aumento sostenido en el ticket puede indicar inflación en consumo o compras de mayor cuantía.',
             ],
@@ -365,10 +367,10 @@ class IndicadoresSaludService
             'detalle' => [
                 'formula' => 'Distribución % de Esenciales, Discrecionales y Ahorro frente a Ingresos Netos',
                 'variables' => [
-                    'Gastos esenciales (Necesidades)' => '$ ' . number_format((float) $esencialesCOP, 0, ',', '.') . " ({$porcEsenciales}%)",
-                    'Gastos discrecionales (Deseos)' => '$ ' . number_format((float) $discrecionalesCOP, 0, ',', '.') . " ({$porcDiscrecionales}%)",
-                    'Ahorro neto' => '$ ' . number_format((float) $ahorroCOP, 0, ',', '.') . " ({$porcAhorro}%)",
-                    'Base de ingresos netos' => '$ ' . number_format((float) $ingresosNetos, 0, ',', '.'),
+                    'Gastos esenciales (Necesidades)' => '$ '.number_format((float) $esencialesCOP, 0, ',', '.')." ({$porcEsenciales}%)",
+                    'Gastos discrecionales (Deseos)' => '$ '.number_format((float) $discrecionalesCOP, 0, ',', '.')." ({$porcDiscrecionales}%)",
+                    'Ahorro neto' => '$ '.number_format((float) $ahorroCOP, 0, ',', '.')." ({$porcAhorro}%)",
+                    'Base de ingresos netos' => '$ '.number_format((float) $ingresosNetos, 0, ',', '.'),
                 ],
                 'interpretacion' => 'La regla 50/30/20 asigna 50% de ingresos a necesidades básicas, 30% a gastos discrecionales y 20% al ahorro o amortización acelerada de deudas.',
             ],

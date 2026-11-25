@@ -19,7 +19,7 @@ class EndeudamientoService
     /**
      * RN-053.1: Σ pagos del mes de los créditos / promedio de ingresos netos
      * de los últimos meses completos con ingresos × 100 (ver
-     * ingresosUltimosMesesConIngresos). RN-053.3: sin ingresos en esos
+     * baseIngresos: H08 usa el mes en curso si los cerrados no bastan). RN-053.3: sin ingresos en esos
      * meses el indicador no es calculable (null).
      *
      * @return array<string, mixed>
@@ -28,7 +28,7 @@ class EndeudamientoService
     {
         $mes = ($hoy ?? CarbonImmutable::today())->startOfMonth();
         $pagos = self::pagosDelMes($usuarioId, $mes);
-        $ingresos = self::ingresosUltimosMesesConIngresos($usuarioId, $mes);
+        $ingresos = self::baseIngresos($usuarioId, $mes);
 
         $indicador = null;
         if (bccomp($ingresos['promedio'], '0', 0) === 1) {
@@ -41,6 +41,43 @@ class EndeudamientoService
             'pagos_mes' => $pagos,
             'ingresos_netos' => $ingresos,
             'indicador_porc' => $indicador,
+        ];
+    }
+
+    /**
+     * H08 (decisión: usar el mes en curso): denominador del indicador. Si menos de 2 de los
+     * últimos 3 meses cerrados tienen ingresos, o su promedio es 0, se usa el ingreso neto del
+     * mes en curso (si lo hay). `base` indica cuál se usó: MESES_CERRADOS o MES_EN_CURSO.
+     *
+     * @return array{base: string, meses_cerrados_con_ingresos: int, meses: array<int, array{mes: string, ingreso_neto: string}>, total: string, promedio: string}
+     */
+    public static function baseIngresos(string $usuarioId, CarbonImmutable $mes): array
+    {
+        $cerrados = self::ingresosUltimosMesesConIngresos($usuarioId, $mes);
+        $ventana = self::ingresosNetosPorMes($usuarioId, $mes)['meses'];
+        $conIngresos = count(array_filter($ventana, fn (array $m) => bccomp($m['ingreso_neto'], '0', 0) === 1));
+
+        if ($conIngresos >= 2 && bccomp($cerrados['promedio'], '0', 0) === 1) {
+            return ['base' => 'MESES_CERRADOS', 'meses_cerrados_con_ingresos' => $conIngresos] + $cerrados;
+        }
+
+        $inicio = $mes->startOfMonth();
+        $actual = CreditoService::alPeso((string) Ingreso::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuarioId)
+            ->where('estado', 'CONFIRMADO')
+            ->whereBetween('fecha_recepcion', [$inicio->toDateString(), $inicio->endOfMonth()->toDateString()])
+            ->sum('monto_neto_cop'));
+
+        if (bccomp($actual, '0', 0) !== 1) {
+            return ['base' => 'MESES_CERRADOS', 'meses_cerrados_con_ingresos' => $conIngresos] + $cerrados;
+        }
+
+        return [
+            'base' => 'MES_EN_CURSO',
+            'meses_cerrados_con_ingresos' => $conIngresos,
+            'meses' => [['mes' => $inicio->format('Y-m'), 'ingreso_neto' => $actual]],
+            'total' => $actual,
+            'promedio' => $actual,
         ];
     }
 
