@@ -36,6 +36,11 @@ class CalculadoraRentaControllerUnitTest extends TestCase
         $complementariaService = Mockery::mock(InformacionComplementariaService::class);
         $evaluacionService = Mockery::mock(EvaluacionObligacionService::class);
         $estimacionService = Mockery::mock(EstimacionRentaService::class);
+        $estimacionService->shouldReceive('estimar')->andReturn([
+            'paso7' => ['impuesto_redondeado_cop' => 0.0],
+            'paso8' => ['saldo_valor_mostrado_cop' => 1212000.0, 'saldo_label' => 'Saldo a favor'],
+        ]);
+        $this->actingAs(new \App\Models\Usuario);
         $vencimientoService = Mockery::mock(CalendarioVencimientoService::class);
         $this->calculadoraService = new CalculadoraRentaService();
 

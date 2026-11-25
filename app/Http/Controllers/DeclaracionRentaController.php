@@ -230,6 +230,14 @@ class DeclaracionRentaController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        // N03: la "Estimación del sistema" es la de Renta › Estimación (con las retenciones del usuario).
+        $estimacion = $this->estimacionService->estimar(auth()->user(), $anio);
+        $resultado['estimacion_sistema'] = [
+            'impuesto_cop' => $estimacion['paso7']['impuesto_redondeado_cop'],
+            'saldo_valor' => $estimacion['paso8']['saldo_valor_mostrado_cop'],
+            'saldo_label' => $estimacion['paso8']['saldo_label'],
+        ];
+
         return response()->json($resultado);
     }
 }
