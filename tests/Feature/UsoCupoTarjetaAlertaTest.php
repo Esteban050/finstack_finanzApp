@@ -7,7 +7,10 @@ use App\Models\Credito;
 use App\Models\Notificacion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\Usuario;
+use App\Services\AlertaService;
+use App\Services\NotificacionService;
 use App\Services\ReglaAlertaService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -144,6 +147,41 @@ class UsoCupoTarjetaAlertaTest extends TestCase
         $this->gastoTarjeta('100000', ['credito_id' => $id]);
         $this->assertSame([], $this->notificaciones());
         $this->assertSame(1, Credito::where('usuario_id', $this->usuario->id)->count());
+    }
+
+    public function test_el_texto_del_correo_incluye_banco_porcentaje_cupo_y_disponible(): void
+    {
+        $id = $this->tarjeta('1000000');
+        $this->gastoTarjeta('1500000', ['credito_id' => $id]);
+        $notificacion = $this->notificaciones()[0];
+
+        $metodo = new \ReflectionMethod(NotificacionService::class, 'textoCorreo');
+        [$asunto, $cuerpo] = $metodo->invoke(null, $this->usuario, $notificacion);
+
+        $this->assertStringContainsString('Bancolombia', $asunto);
+        $this->assertStringContainsString('83', $asunto);
+        $this->assertStringContainsString('3.000.000', $cuerpo);
+        $this->assertStringContainsString('2.500.000', $cuerpo);
+        $this->assertStringContainsString('500.000', $cuerpo);
+        $this->assertStringContainsString('80 %', $cuerpo);
+        $this->assertStringNotContainsString('Hola ,', $cuerpo);
+    }
+
+    public function test_el_job_diario_emite_el_aviso_si_aun_no_existe(): void
+    {
+        $id = $this->tarjeta('1000000');
+        $this->gastoTarjeta('1500000', ['credito_id' => $id]);
+        Notificacion::withoutGlobalScope(DelUsuarioAutenticado::class)->where('usuario_id', $this->usuario->id)->delete();
+        $this->assertSame([], $this->notificaciones());
+
+        $emitidas = AlertaService::evaluarUsuario($this->usuario->id, CarbonImmutable::parse('2026-11-24'), AlertaService::DIARIO);
+
+        $this->assertGreaterThanOrEqual(1, $emitidas);
+        $this->assertCount(1, $this->notificaciones());
+
+        // Segunda corrida del job: sin duplicados.
+        AlertaService::evaluarUsuario($this->usuario->id, CarbonImmutable::parse('2026-11-24'), AlertaService::DIARIO);
+        $this->assertCount(1, $this->notificaciones());
     }
 
     /** Las alertas se evalúan con DB::afterCommit: ver PresupuestoBordesTest. */

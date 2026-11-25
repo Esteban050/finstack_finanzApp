@@ -87,4 +87,46 @@ class PagoAdelantadoInteresPorDiasTest extends TestCase
         $this->assertSame($interes, $conceptos['INTERES_CORRIENTE']);
         $this->assertSame(bcsub('354868', $interes, 0), $conceptos['ABONO_EXTRAORDINARIO']);
     }
+
+    public function test_pago_total_sin_aplicacion_excedente_cancela_el_credito(): void
+    {
+        $credito = $this->libreInversion();
+        $saldo = $this->getJson("/creditos/{$credito['id']}")->assertOk()->json('data.estado_cuenta.saldo_para_cancelar');
+
+        $respuesta = $this->postJson("/creditos/{$credito['id']}/pagos", [
+            'fecha' => '2026-11-24', 'valor' => $saldo, 'medio' => 'TRANSFERENCIA',
+        ])->assertCreated()->json('data');
+
+        $this->assertSame('ABONO_CAPITAL', $respuesta['pago']['aplicacion_excedente']);
+        $this->assertSame('0', $this->getJson("/creditos/{$credito['id']}")->json('data.estado_cuenta.saldo_para_cancelar'));
+    }
+
+    public function test_anticipo_no_exige_ni_acepta_elegir_reducir_cuota(): void
+    {
+        $credito = $this->libreInversion();
+
+        // reducir=CUOTA con ANTICIPO esta prohibido por la validacion: ANTICIPO siempre reduce plazo.
+        $this->postJson("/creditos/{$credito['id']}/pagos", [
+            'fecha' => '2026-11-24', 'valor' => '354868', 'medio' => 'TRANSFERENCIA',
+            'aplicacion_excedente' => 'ANTICIPO', 'reducir' => 'CUOTA',
+        ])->assertStatus(422)->assertJsonValidationErrors(['reducir']);
+    }
+
+    public function test_anticipo_que_solo_cubre_el_interes_causado_da_un_mensaje_claro(): void
+    {
+        $credito = $this->libreInversion();
+        $this->travelTo(CarbonImmutable::parse('2026-12-04 10:00:00', 'America/Bogota'));
+        $this->entrarComo($this->usuario);
+
+        $interes = CreditoService::interesPorDias('10000000', '0.18', 10);
+
+        $respuesta = $this->postJson("/creditos/{$credito['id']}/pagos", [
+            'fecha' => '2026-12-04', 'valor' => $interes, 'medio' => 'TRANSFERENCIA', 'aplicacion_excedente' => 'ANTICIPO',
+        ])->assertStatus(422)->assertJsonValidationErrors(['valor']);
+
+        $mensaje = $respuesta->json('errors.valor.0');
+        $this->assertStringContainsString('anticipo', mb_strtolower($mensaje));
+        $this->assertStringContainsString('interés causado', $mensaje);
+        $this->assertStringNotContainsString('CUOTA', $mensaje);
+    }
 }

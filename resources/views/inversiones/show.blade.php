@@ -8,6 +8,7 @@
 @php
     $labels = require resource_path('views/components/ui/investment-labels.php');
     $det = $presentacion['detalle_especifico'] ?? [];
+    $vencimientoCdt = ($inversion->detalleCdt?->fecha_vencimiento ?? $inversion->fecha_vencimiento)?->format('Y-m-d');
     $vnr = $presentacion['valoracion_no_realizada'] ?? null;
 
     $diasPeriodo = match(strtoupper($det['periodicidad_pago'] ?? 'MENSUAL')) {
@@ -984,7 +985,7 @@ function adaptarFormularioTrx(tipo) {
     const notaEl = document.querySelector('input[name="nota"]');
 
     // La fecha mínima vuelve a la apertura; la redención de un CDT la sube al vencimiento (H04).
-    const fechaTrxEl = document.getElementById('trx_fecha');
+    const fechaTrxEl = document.getElementById('fecha') || document.getElementById('trx_fecha');
     if (fechaTrxEl) fechaTrxEl.min = '{{ $inversion->fecha_apertura->format('Y-m-d') }}';
 
     function autoCalcular() {
@@ -1028,12 +1029,10 @@ function adaptarFormularioTrx(tipo) {
             const fechaEl = document.getElementById('fecha') || document.getElementById('trx_fecha');
             if (fechaEl) {
                 fechaEl.removeAttribute('max');
-                @if ($inversion->fecha_vencimiento)
-                fechaEl.min = '{{ $inversion->fecha_vencimiento->format('Y-m-d') }}';
+                @if ($vencimientoCdt)
+                fechaEl.min = '{{ $vencimientoCdt }}';
+                fechaEl.value = '{{ $vencimientoCdt }}';
                 @endif
-                if ('{{ $inversion->fecha_vencimiento?->format('Y-m-d') }}') {
-                    fechaEl.value = '{{ $inversion->fecha_vencimiento?->format('Y-m-d') }}';
-                }
             }
         }
     } else if (tipoInv === 'ACCION_ETF') {

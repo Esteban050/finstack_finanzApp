@@ -377,8 +377,8 @@
                         <tr>
                             <td>Dividendos y participaciones</td>
                             <td class="mk-meta">Módulo Ingresos (dividendos recibidos en el año)</td>
-                            <td class="num">$ {{ $formatValue($consolidado['ingresos_brutos']['dividendos_cop'], 0, ',', '.') }}</td>
-                            <td class="num">{{ $formatValue($consolidado['ingresos_brutos']['dividendos_uvt'], 2, ',', '.') }}</td>
+                            <td class="num">$ {{ $formatValue($consolidado['ingresos_brutos']['dividendos_cop'] ?? 0, 0, ',', '.') }}</td>
+                            <td class="num">{{ $formatValue($consolidado['ingresos_brutos']['dividendos_uvt'] ?? 0, 2, ',', '.') }}</td>
                         </tr>
                         @if($declaracion->c2_ajuste_manual_cop != 0)
                             <tr class="is-row-current">

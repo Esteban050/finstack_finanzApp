@@ -492,7 +492,8 @@ class PagoCreditoService
             // H16: pagar antes del vencimiento ("anticipar cuotas") se trata como el abono a capital:
             // primero el interés causado por días reales, el resto a capital y el plan se regenera
             // con la misma cuota y menos plazo.
-            if ($aplicacion === 'ANTICIPO') {
+            $esAnticipo = $aplicacion === 'ANTICIPO';
+            if ($esAnticipo) {
                 $aplicacion = 'ABONO_CAPITAL';
                 $datos['reducir'] = 'PLAZO';
             }
@@ -522,7 +523,9 @@ class PagoCreditoService
 
                 if (! $total && self::esCero($resto)) {
                     throw ValidationException::withMessages([
-                        'valor' => 'El excedente ($ '.self::formato($excedente).') solo alcanza para el interés causado ($ '.self::formato($s['interes_causado']).'): aumente el valor.',
+                        'valor' => $esAnticipo
+                            ? 'El anticipo ($ '.self::formato($excedente).') solo alcanza para el interés causado ($ '.self::formato($s['interes_causado']).'): para anticipar cuotas el valor debe superar ese interés y el resto se aplica al capital.'
+                            : 'El excedente ($ '.self::formato($excedente).') solo alcanza para el interés causado ($ '.self::formato($s['interes_causado']).'): aumente el valor.',
                     ]);
                 }
 
