@@ -22,7 +22,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 ## Tasks
 Group 1 — data reaching other modules wrong (route: delegated writer, writer trigger: 2+ non-trivial files)
 - [x] T1 — H03: investment-generated income stores gross, retention and net separately.
-- [ ] T2 — H05: Resumen "Portafolio de inversiones" uses the Inversiones consolidated value.
+- [x] T2 — H05: Resumen "Portafolio de inversiones" uses the Inversiones consolidated value.
 - [ ] T3 — H14: Resumen "Próximos 15 días" shows the recurring amount.
 - [ ] T4 — H01: paid PILA health + pension reach Renta INCRNGO.
 - [ ] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
@@ -44,7 +44,9 @@ Group 4 — UX / verify
 
 - [ ] T15 — H04 (decided 2026-11-24: BLOCK): CDT redemption before maturity is rejected (server-side validation + form min date = maturity date).
 
-Pending decisions (ask user, one at a time): H08, H11, H16, H17, H20, H24, H26.
+- [ ] T16 — H08 (decided 2026-11-24: USE CURRENT MONTH): when closed months lack enough income, the debt ratio uses the current month's income as denominator.
+
+Pending decisions (ask user, one at a time): H11, H16, H17, H20, H24, H26.
 Config only (report): H18 usury rate, H25 Resend domain / terms page.
 
 ## Acceptance criteria
@@ -53,3 +55,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 ## Progress
 - Created 2026-11-24. Branch `fix/hallazgos-e2e-teban` created from `main` (a039e89).
 - T1 (H03) done: RED 2 failed -> GREEN 2 passed (IngresoRendimientoInversionBrutoTest); suite subset Inversion|Ingreso|Reportes 92 green. Root cause: InversionService::registrarPuentesTributarios sections 6/6b/7 created Ingreso with net as bruto and retention 0. Commit: see git log (fix(ingresos) H03).
+- T2 (H05) done: RED 1 failed -> GREEN 1 passed (ResumenPortafolioInversionesTest); Resumen|Dashboard filter 12 green. Root cause: DashboardResumenService read nonexistent keys totales.valor_actual_cop (real: valor_total). Cut-off clamped to today.

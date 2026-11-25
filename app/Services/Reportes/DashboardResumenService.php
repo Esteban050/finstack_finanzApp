@@ -50,7 +50,7 @@ class DashboardResumenService
                 $hasta = $hoy->subMonthNoOverflow()->endOfMonth();
                 $desdeAnterior = $desde->subMonthNoOverflow()->startOfMonth();
                 $hastaAnterior = $desde->subMonthNoOverflow()->endOfMonth();
-                $etiqueta = 'Mes anterior (' . $desde->translatedFormat('F Y') . ')';
+                $etiqueta = 'Mes anterior ('.$desde->translatedFormat('F Y').')';
                 break;
 
             case 'trimestre':
@@ -58,7 +58,7 @@ class DashboardResumenService
                 $hasta = $hoy->lastOfQuarter()->endOfDay();
                 $desdeAnterior = $desde->subMonthsNoOverflow(3)->firstOfQuarter()->startOfDay();
                 $hastaAnterior = $desde->subMonthsNoOverflow(3)->lastOfQuarter()->endOfDay();
-                $etiqueta = 'Trimestre ' . $hoy->quarter . ' de ' . $hoy->year;
+                $etiqueta = 'Trimestre '.$hoy->quarter.' de '.$hoy->year;
                 break;
 
             case 'ano':
@@ -66,7 +66,7 @@ class DashboardResumenService
                 $hasta = $hoy->endOfYear();
                 $desdeAnterior = $desde->subYearNoOverflow()->startOfYear();
                 $hastaAnterior = $desde->subYearNoOverflow()->endOfYear();
-                $etiqueta = 'Año ' . $hoy->year;
+                $etiqueta = 'Año '.$hoy->year;
                 break;
 
             case 'personalizado':
@@ -76,7 +76,7 @@ class DashboardResumenService
                     $dias = (int) $desde->startOfDay()->diffInDays($hasta->startOfDay()) + 1;
                     $hastaAnterior = $desde->subDay()->endOfDay();
                     $desdeAnterior = $hastaAnterior->subDays($dias - 1)->startOfDay();
-                    $etiqueta = 'Del ' . $desde->format('d/m/Y') . ' al ' . $hasta->format('d/m/Y');
+                    $etiqueta = 'Del '.$desde->format('d/m/Y').' al '.$hasta->format('d/m/Y');
                     break;
                 }
                 // Si faltan fechas, cae por defecto en mes actual
@@ -88,7 +88,7 @@ class DashboardResumenService
                 $hasta = $hoy->endOfMonth();
                 $desdeAnterior = $desde->subMonthNoOverflow()->startOfMonth();
                 $hastaAnterior = $desde->subMonthNoOverflow()->endOfMonth();
-                $etiqueta = 'Mes actual (' . $desde->translatedFormat('F Y') . ')';
+                $etiqueta = 'Mes actual ('.$desde->translatedFormat('F Y').')';
                 break;
         }
 
@@ -389,15 +389,17 @@ class DashboardResumenService
             'icono' => 'cat-obligaciones-financieras',
         ];
 
-        // 7. Portafolio de inversiones (RentabilidadService)
-        $portafolioData = RentabilidadService::portafolio($p['hasta']);
-        $valorPortafolio = (string) ($portafolioData['totales']['valor_actual_cop'] ?? '0');
+        // 7. Portafolio de inversiones: mismo consolidado que el módulo Inversiones (H05).
+        // La fecha de corte no puede ser posterior a hoy (RF-041), como en Inversiones.
+        $corteInversiones = $p['hasta']->startOfDay()->greaterThan($hoy->startOfDay()) ? $hoy->startOfDay() : $p['hasta']->startOfDay();
+        $portafolioData = RentabilidadService::portafolio($corteInversiones);
+        $valorPortafolio = (string) ($portafolioData['valor_total'] ?? '0');
         $kpiPortafolio = [
             'clave' => 'portafolio',
             'nombre' => 'Portafolio de inversiones',
             'valor' => $valorPortafolio,
-            'inversiones_activas' => count($portafolioData['inversiones'] ?? []),
-            'rendimiento_estimado' => $portafolioData['totales']['rendimiento_cop'] ?? '0',
+            'inversiones_activas' => (int) ($portafolioData['cantidad_inversiones'] ?? 0),
+            'rendimiento_estimado' => $portafolioData['ganancia'] ?? '0',
             'enlace' => route('inversiones.portafolio'),
             'icono' => 'src-rendimientos-financieros',
         ];
