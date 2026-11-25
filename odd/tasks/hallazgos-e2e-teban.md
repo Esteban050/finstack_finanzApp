@@ -23,7 +23,7 @@ Mode: enabled (global CLAUDE.md "Strict TDD Mode: enabled"). Runner: `php artisa
 Group 1 — data reaching other modules wrong (route: delegated writer, writer trigger: 2+ non-trivial files)
 - [x] T1 — H03: investment-generated income stores gross, retention and net separately.
 - [x] T2 — H05: Resumen "Portafolio de inversiones" uses the Inversiones consolidated value.
-- [ ] T3 — H14: Resumen "Próximos 15 días" shows the recurring amount.
+- [x] T3 — H14: Resumen "Próximos 15 días" shows the recurring amount.
 - [ ] T4 — H01: paid PILA health + pension reach Renta INCRNGO.
 - [ ] T5 — H02: single cost method (weighted average) for share-sale profit in Ingresos and Renta.
 
@@ -56,3 +56,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - Created 2026-11-24. Branch `fix/hallazgos-e2e-teban` created from `main` (a039e89).
 - T1 (H03) done: RED 2 failed -> GREEN 2 passed (IngresoRendimientoInversionBrutoTest); suite subset Inversion|Ingreso|Reportes 92 green. Root cause: InversionService::registrarPuentesTributarios sections 6/6b/7 created Ingreso with net as bruto and retention 0. Commit: see git log (fix(ingresos) H03).
 - T2 (H05) done: RED 1 failed -> GREEN 1 passed (ResumenPortafolioInversionesTest); Resumen|Dashboard filter 12 green. Root cause: DashboardResumenService read nonexistent keys totales.valor_actual_cop (real: valor_total). Cut-off clamped to today.
+- T3 (H14) done: RED 1 failed -> GREEN 1 passed (ResumenProximos15DiasTest). Root cause: DashboardResumenService::obtenerProximos15Dias read datos_plantilla['monto'] (stored key is monto_cop).

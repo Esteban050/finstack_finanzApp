@@ -163,7 +163,7 @@ class DashboardResumenService
             $fechaProx = CarbonImmutable::parse($rec->proxima_ejecucion);
             $datos = is_array($rec->datos_plantilla) ? $rec->datos_plantilla : json_decode($rec->datos_plantilla ?? '[]', true);
             $titulo = $datos['descripcion'] ?? $datos['comercio_beneficiario'] ?? 'Gasto recurrente';
-            $monto = (string) ($datos['monto'] ?? '0');
+            $monto = (string) ($datos['monto_cop'] ?? $datos['monto'] ?? '0');
 
             $items[] = [
                 'tipo' => 'GASTO_RECURRENTE',
