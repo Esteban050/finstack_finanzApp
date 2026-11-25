@@ -179,7 +179,10 @@ class NotificacionService
                 "SCFP - Tu presupuesto de {$mes} llegó al {$d['umbral']} %",
                 'Llevas '.self::pesos($d['gastado']).' de '.self::pesos($d['asignado']).' en todas las líneas del presupuesto: el '.self::porcentaje($d['ejecucion_porc']).'.',
             ],
-            ReglaAlertaService::PROYECCION_LINEA => [
+            ReglaAlertaService::PROYECCION_LINEA => ! empty($d['total']) ? [
+                "SCFP - Tu presupuesto de {$mes} podría cerrar por encima de lo asignado",
+                'Con lo que sueles gastar el resto del mes, tu presupuesto total cerraría en '.self::pesos($d['proyeccion']).': el '.self::porcentaje($d['proyeccion_porc']).' de '.self::pesos($d['asignado']).'. Te quedan '.self::pesos($d['disponible']).'.',
+            ] : [
                 "SCFP - {$d['nombre']} podría cerrar {$mes} por encima del presupuesto",
                 "Con lo que sueles gastar el resto del mes, {$d['nombre']} cerraría en ".self::pesos($d['proyeccion']).': el '.self::porcentaje($d['proyeccion_porc']).' de '.self::pesos($d['asignado']).'. Te quedan '.self::pesos($d['disponible']).'.',
             ],

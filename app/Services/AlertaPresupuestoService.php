@@ -13,6 +13,9 @@ use Carbon\CarbonImmutable;
  * - PRESUPUESTO_TOTAL: la ejecución total llega a un umbral.
  * - PROYECCION_LINEA (RN-057.3): desde la mitad del mes, la proyección al
  *   cierre de una línea supera el umbral y la línea aún no llegó al 100 %.
+ *   H10: lo mismo para el presupuesto TOTAL (una vez por mes, clave
+ *   PROYECCION_TOTAL), siempre que el total no haya llegado al 100 % y haya
+ *   más de una línea (con una sola, la alerta de la línea ya es la del total).
  *
  * CA-057.2: si una evaluación cruza varios umbrales a la vez se emite una
  * alerta por cada uno; la clave (RN-057.2) evita repetir los ya emitidos.
@@ -73,7 +76,7 @@ class AlertaPresupuestoService
 
         $regla = $reglas[ReglaAlertaService::PROYECCION_LINEA];
         // RN-057.3: "desde la mitad del mes".
-        if ($regla['activa'] && $ejecucion['dia_corte'] * 2 > $ejecucion['dias_mes']) {
+        if ($regla['activa'] && $ejecucion['dias_mes'] < $ejecucion['dia_corte'] * 2) {
             $umbral = (int) $regla['parametros']['umbral'];
 
             foreach ($ejecucion['lineas'] as $linea) {
@@ -92,9 +95,44 @@ class AlertaPresupuestoService
                     $emitidas++;
                 }
             }
+
+            $emitidas += self::proyeccionTotal($presupuesto, $regla, $ejecucion, $umbral);
         }
 
         return $emitidas;
+    }
+
+    /** H10: la proyección del presupuesto total supera el umbral y el total aún no llegó al 100 %. */
+    private static function proyeccionTotal(Presupuesto $presupuesto, array $regla, array $ejecucion, int $umbral): int
+    {
+        $totales = $ejecucion['totales'];
+
+        if (count($ejecucion['lineas']) < 2) {
+            return 0;
+        }
+
+        $yaExcedido = bccomp((string) $totales['ejecucion_porc'], '100', 2) >= 0;
+        $supera = $totales['proyeccion_porc'] !== null && bccomp((string) $totales['proyeccion_porc'], (string) $umbral, 2) === 1;
+
+        if ($yaExcedido || ! $supera) {
+            return 0;
+        }
+
+        return self::emitir($presupuesto, $regla, null, "PROYECCION_TOTAL:{$ejecucion['mes']}", [
+            'mes' => $ejecucion['mes'],
+            'presupuesto_id' => $presupuesto->id,
+            'total' => true,
+            'nombre' => 'Presupuesto total',
+            'umbral' => $umbral,
+            'ejecucion_porc' => $totales['ejecucion_porc'],
+            'asignado' => bcadd($totales['monto_asignado'], $totales['saldo_trasladado'], 0),
+            'gastado' => $totales['gastado'],
+            'disponible' => $totales['disponible'],
+            'proyeccion' => $totales['proyeccion'],
+            'proyeccion_porc' => $totales['proyeccion_porc'],
+            'gasto_habitual' => $totales['gasto_habitual'],
+            'pendientes_recurrentes' => $totales['pendientes_recurrentes'],
+        ]) ? 1 : 0;
     }
 
     /**
