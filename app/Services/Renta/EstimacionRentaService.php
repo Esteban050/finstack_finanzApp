@@ -2,7 +2,6 @@
 
 namespace App\Services\Renta;
 
-use App\Models\DeclaracionRenta;
 use App\Models\Usuario;
 
 class EstimacionRentaService
@@ -194,6 +193,7 @@ class EstimacionRentaService
                 'cesantias_cop' => (float) $ingresosData['cesantias_cop'],
                 'capital_inversiones_cop' => (float) $ingresosData['capital_inversiones_cop'],
                 'no_laborales_cop' => (float) $ingresosData['no_laborales_cop'],
+                'dividendos_cop' => (float) ($ingresosData['dividendos_cop'] ?? 0.0),
                 'utilidad_acciones_cop' => (float) $ingresosData['utilidad_acciones_menor_2a_cop'],
                 'retiros_fpv_cop' => (float) $ingresosData['retiros_fpv_sin_requisitos_cop'],
                 'ajuste_manual_cop' => $ajusteIngresos,
@@ -268,4 +268,3 @@ class EstimacionRentaService
         return $resultado;
     }
 }
-

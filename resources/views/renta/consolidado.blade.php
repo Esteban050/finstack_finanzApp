@@ -374,6 +374,12 @@
                             <td class="num">$ {{ $formatValue($consolidado['ingresos_brutos']['no_laborales_cop'] + $consolidado['ingresos_brutos']['utilidad_acciones_menor_2a_cop'], 0, ',', '.') }}</td>
                             <td class="num">{{ $formatValue($consolidado['ingresos_brutos']['no_laborales_uvt'] + $consolidado['ingresos_brutos']['utilidad_acciones_menor_2a_uvt'], 2, ',', '.') }}</td>
                         </tr>
+                        <tr>
+                            <td>Dividendos y participaciones</td>
+                            <td class="mk-meta">Módulo Ingresos (dividendos recibidos en el año)</td>
+                            <td class="num">$ {{ $formatValue($consolidado['ingresos_brutos']['dividendos_cop'], 0, ',', '.') }}</td>
+                            <td class="num">{{ $formatValue($consolidado['ingresos_brutos']['dividendos_uvt'], 2, ',', '.') }}</td>
+                        </tr>
                         @if($declaracion->c2_ajuste_manual_cop != 0)
                             <tr class="is-row-current">
                                 <td><span class="mk-strong">Ajuste manual del usuario</span><br><span class="mk-meta">"{{ $declaracion->justificacion_ajustes['c2'] ?? 'Ajuste de ingresos' }}"</span></td>

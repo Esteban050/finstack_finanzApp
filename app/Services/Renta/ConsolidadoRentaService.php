@@ -82,6 +82,8 @@ class ConsolidadoRentaService
 
         $ingresosTrabajoCop = 0.0;
         $ingresosNoLaboralesCop = 0.0;
+        $dividendosCop = 0.0;
+        $drillDownDividendos = [];
         $retencionesLaboralesCop = 0.0;
         $aportesSaludPensionCop = 0.0;
         $drillDownIngresosTrabajo = [];
@@ -108,6 +110,17 @@ class ConsolidadoRentaService
                 $drillDownIngresosTrabajo[] = [
                     'id' => $ingreso->id,
                     'descripcion' => $ingreso->descripcion ?? 'Ingreso laboral',
+                    'fecha' => $ingreso->fecha_recepcion ? CarbonImmutable::parse($ingreso->fecha_recepcion)->toDateString() : $desde,
+                    'monto_bruto_cop' => $montoBruto,
+                    'retencion_cop' => $retencion,
+                    'aportes_cop' => $aportes,
+                ];
+            } elseif ($ingreso->clasificacion_tributaria === 'DIVIDENDOS') {
+                // H20 (decisión: incluir): los dividendos recibidos en el año suman a los ingresos brutos de C2.
+                $dividendosCop += $montoBruto;
+                $drillDownDividendos[] = [
+                    'id' => $ingreso->id,
+                    'descripcion' => $ingreso->descripcion ?? 'Dividendos y participaciones',
                     'fecha' => $ingreso->fecha_recepcion ? CarbonImmutable::parse($ingreso->fecha_recepcion)->toDateString() : $desde,
                     'monto_bruto_cop' => $montoBruto,
                     'retencion_cop' => $retencion,
@@ -374,6 +387,7 @@ class ConsolidadoRentaService
             $cesantiasConsignadasAnioCop +
             $rendimientosCdtCuentasFicCop +
             $ingresosNoLaboralesCop +
+            $dividendosCop +
             $utilidadVentaAccionesMenor2AniosCop +
             $retirosFpvSinRequisitosCop;
 
@@ -408,6 +422,8 @@ class ConsolidadoRentaService
                 'capital_inversiones_uvt' => self::aUvt($rendimientosCdtCuentasFicCop, $uvt),
                 'no_laborales_cop' => $ingresosNoLaboralesCop,
                 'no_laborales_uvt' => self::aUvt($ingresosNoLaboralesCop, $uvt),
+                'dividendos_cop' => $dividendosCop,
+                'dividendos_uvt' => self::aUvt($dividendosCop, $uvt),
                 'utilidad_acciones_menor_2a_cop' => $utilidadVentaAccionesMenor2AniosCop,
                 'utilidad_acciones_menor_2a_uvt' => self::aUvt($utilidadVentaAccionesMenor2AniosCop, $uvt),
                 'retiros_fpv_sin_requisitos_cop' => $retirosFpvSinRequisitosCop,
@@ -416,6 +432,7 @@ class ConsolidadoRentaService
                 'drill_down' => [
                     'trabajo' => $drillDownIngresosTrabajo,
                     'capital' => $drillDownRentasCapital,
+                    'dividendos' => $drillDownDividendos,
                     'no_laborales' => array_merge($drillDownIngresosNoLaborales, $drillDownVentasAcciones),
                 ],
             ],

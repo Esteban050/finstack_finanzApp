@@ -31,6 +31,7 @@
                         <p class="mk-meta">
                             Rentas de trabajo y cesantías ($ {{ $formatValue($estimacion['paso1']['ingresos_trabajo_cop'] + $estimacion['paso1']['cesantias_cop'], 0, ',', '.') }})
                             + Rendimientos de CDTs, Cuentas Alto Rend. y FICs ($ {{ $formatValue($estimacion['paso1']['capital_inversiones_cop'], 0, ',', '.') }})
+                            + Dividendos y participaciones ($ {{ $formatValue($estimacion['paso1']['dividendos_cop'], 0, ',', '.') }})
                             + Venta de ETFs/Acciones &lt; 2 años ($ {{ $formatValue($estimacion['paso1']['utilidad_acciones_cop'], 0, ',', '.') }})
                             @if($estimacion['paso1']['ajuste_manual_cop'] != 0)
                                 + Ajuste manual ($ {{ $formatValue($estimacion['paso1']['ajuste_manual_cop'], 0, ',', '.') }})
@@ -198,7 +199,6 @@
             <div class="ui-card">
                 <h2>Lo que esta estimación no considera</h2>
                 <ul class="mk-small" style="margin:0;padding-left:1.25rem;display:grid;gap:.375rem">
-                    <li>Cédula de dividendos y participaciones (ETFs/Acciones con dividendos decretados)</li>
                     <li>Ganancias ocasionales (venta de activos con tenencia ≥ 2 años)</li>
                     <li>Rentas de fuente extranjera (brókers internacionales fuera de BVC/MGC)</li>
                     <li>Descuentos tributarios por impuestos pagados en el exterior</li>
