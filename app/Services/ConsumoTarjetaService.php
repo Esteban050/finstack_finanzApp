@@ -6,6 +6,7 @@ use App\Models\Credito;
 use App\Models\Gasto;
 use App\Models\PagoCredito;
 use App\Models\Scopes\DelUsuarioAutenticado;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
@@ -72,6 +73,11 @@ class ConsumoTarjetaService
                 continue;
             }
 
+            // H17: un consumo que supera el cupo disponible se rechaza (no solo se avisa).
+            if (bccomp($cambio, '0', 2) === 1 && $tarjeta->cupo !== null) {
+                self::validarCupoDisponible($tarjeta, $cambio);
+            }
+
             $capital = bcadd((string) $tarjeta->monto, $cambio, 2);
             if (bccomp($capital, '0', 2) <= 0 || bccomp($capital, '999999999999.99', 2) > 0) {
                 throw ValidationException::withMessages(['monto_original' => 'El consumo deja el saldo de la tarjeta fuera del rango permitido.']);
@@ -95,5 +101,27 @@ class ConsumoTarjetaService
         }
 
         return $vinculo;
+    }
+
+    /**
+     * H17: el consumo adicional $aumento no puede superar el cupo disponible (cupo − saldo de capital a hoy).
+     *
+     * @throws ValidationException
+     */
+    public static function validarCupoDisponible(Credito $tarjeta, string $aumento): void
+    {
+        $cupo = CreditoService::alPeso((string) $tarjeta->cupo);
+        $saldo = PagoCreditoService::situacion($tarjeta, CarbonImmutable::today())['saldo_capital'];
+        $disponible = bcsub($cupo, $saldo, 0);
+        $exceso = bcsub(CreditoService::alPeso($aumento), $disponible, 0);
+
+        if (bccomp($exceso, '0', 0) === 1) {
+            $formato = fn (string $v) => number_format((float) $v, 0, ',', '.');
+            $disponibleMostrado = bccomp($disponible, '0', 0) === 1 ? $disponible : '0';
+
+            throw ValidationException::withMessages([
+                'monto_original' => 'El gasto supera el cupo disponible de la tarjeta '.$tarjeta->banco.' ($ '.$formato($disponibleMostrado).') en $ '.$formato($exceso).'.',
+            ]);
+        }
     }
 }

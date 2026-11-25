@@ -585,6 +585,14 @@ class GastoController extends Controller
     private function datosCredito(array $validated, array $atributos): array
     {
         $comercio = trim((string) ($validated['comercio_beneficiario'] ?? ''));
+        // H17: la compra no puede superar el cupo de la tarjeta que se registra con ella.
+        $cupoNuevo = explode('.', (string) $validated['cupo_tarjeta'])[0];
+        if (bccomp((string) $atributos['monto_cop'], $cupoNuevo, 2) === 1) {
+            throw ValidationException::withMessages([
+                'monto_original' => 'La compra supera el cupo de la tarjeta ($ '.number_format((float) $cupoNuevo, 0, ',', '.').').',
+            ]);
+        }
+
         $proposito = Str::limit('Compra con tarjeta de crédito'.($comercio !== '' ? ': '.$comercio : ''), 120, '');
 
         try {

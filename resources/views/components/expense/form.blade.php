@@ -51,7 +51,7 @@
                             </div>
                             <div class="income-two-fields">
                                 <x-ui.field name="tasa_interes_anual" :id="$prefix.'-card-rate'" label="Interés anual (% E.A.)" :required="true" help="Tasa efectiva anual, entre 0 y 100."><input id="{{ $prefix }}-card-rate" type="number" name="tasa_interes_anual" data-value-input data-precision="6" min="0" max="100" step="any" inputmode="decimal" value="{{ old('tasa_interes_anual') }}" disabled></x-ui.field>
-                                <x-ui.field name="cupo_tarjeta" :id="$prefix.'-card-limit'" label="Cupo de la tarjeta (COP)" :required="true" help="Cupo total aprobado, en pesos enteros. Si los consumos lo superan, se avisa."><input id="{{ $prefix }}-card-limit" type="text" name="cupo_tarjeta" data-value-input data-precision="0" min="1" data-positive="true" inputmode="numeric" value="{{ old('cupo_tarjeta') }}" disabled></x-ui.field>
+                                <x-ui.field name="cupo_tarjeta" :id="$prefix.'-card-limit'" label="Cupo de la tarjeta (COP)" :required="true" help="Cupo total aprobado, en pesos enteros. No se pueden registrar consumos que lo superen."><input id="{{ $prefix }}-card-limit" type="text" name="cupo_tarjeta" data-value-input data-precision="0" min="1" data-positive="true" inputmode="numeric" value="{{ old('cupo_tarjeta') }}" disabled></x-ui.field>
                             </div>
                         </fieldset>
                     @endif

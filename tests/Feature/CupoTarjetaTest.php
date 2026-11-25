@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 /**
  * MOD-08 — CP-CRE-013: cupo de la tarjeta de crédito. Es opcional, solo para
- * TARJETA_CREDITO, y si el saldo de capital lo supera se avisa sin bloquear.
+ * TARJETA_CREDITO, el saldo de capital que lo supera se avisa en el crédito y los gastos que lo superan se rechazan (H17).
  */
 class CupoTarjetaTest extends TestCase
 {
@@ -48,8 +48,8 @@ class CupoTarjetaTest extends TestCase
         $this->assertSame('2000000.00', Credito::find($id)->cupo);
     }
 
-    /** El aviso sale en la simulación, en el gasto que supera el cupo y en el detalle. */
-    public function test_cp_cre_013_avisa_cuando_el_saldo_supera_el_cupo(): void
+    /** El aviso sale en la simulación y en el detalle; el gasto que supera el cupo se rechaza (H17). */
+    public function test_cp_cre_013_avisa_en_la_simulacion_y_bloquea_el_gasto_que_supera_el_cupo(): void
     {
         $simulacion = collect($this->postJson('/creditos/calcular', $this->tarjeta(['monto' => '1500000', 'cupo' => '1000000']))
             ->assertOk()->json('data.alertas'))->firstWhere('codigo', 'SUPERA_CUPO');
@@ -58,26 +58,49 @@ class CupoTarjetaTest extends TestCase
         $id = $this->postJson('/creditos', $this->tarjeta(['cupo' => '1200000']))->assertCreated()->json('data.id');
         $this->assertSame([], $this->alertasCupo($id));
 
+        // Disponible 200.000: 300.000 lo supera por 100.000 y no se guarda.
+        $this->postJson('/gastos', $this->gastoTarjeta($id, '300000.00'))
+            ->assertStatus(422)
+            ->assertJsonPath('errors.monto_original.0', 'El gasto supera el cupo disponible de la tarjeta Banco QA ($ 200.000) en $ 100.000.');
+        $this->assertSame('1000000.00', (string) Credito::find($id)->monto);
+
+        // Exactamente el disponible sí entra.
+        $this->postJson('/gastos', $this->gastoTarjeta($id, '200000.00'))->assertCreated();
+        $this->assertSame('1200000.00', (string) Credito::find($id)->monto);
+    }
+
+    public function test_h17_editar_un_gasto_de_tarjeta_por_encima_del_cupo_se_rechaza(): void
+    {
+        $id = $this->postJson('/creditos', $this->tarjeta(['cupo' => '1200000']))->assertCreated()->json('data.id');
+        $gasto = $this->postJson('/gastos', $this->gastoTarjeta($id, '100000.00'))->assertCreated()->json('data.id');
+
+        $this->putJson("/gastos/{$gasto}", $this->gastoTarjeta($id, '300000.00'))
+            ->assertStatus(422)->assertJsonValidationErrors('monto_original');
+        $this->putJson("/gastos/{$gasto}", $this->gastoTarjeta($id, '200000.00'))->assertOk();
+    }
+
+    public function test_h17_compra_nueva_a_cuotas_mayor_que_el_cupo_se_rechaza(): void
+    {
+        $this->postJson('/gastos', $this->gastoTarjeta('NUEVA', '1500000.00', [
+            'banco_tarjeta' => 'Banco QA', 'numero_cuotas' => 6, 'fecha_corte' => '2026-11-25',
+            'fecha_pago' => '2026-12-05', 'tasa_interes_anual' => '28', 'cupo_tarjeta' => '1000000',
+        ]))->assertStatus(422)->assertJsonValidationErrors('monto_original');
+        $this->assertSame(0, Credito::where('usuario_id', $this->usuario->id)->count());
+    }
+
+    private function gastoTarjeta(string $creditoId, string $monto, array $extra = []): array
+    {
         $subcategoria = $this->categoriaPropia($this->categoriaPropia());
-        $gasto = $this->postJson('/gastos', [
+
+        return array_merge([
             'categoria_id' => $subcategoria->categoria_padre_id,
             'subcategoria_id' => $subcategoria->id,
             'fecha' => '2026-11-20',
             'moneda' => 'COP',
-            'monto_original' => '300000.00',
+            'monto_original' => $monto,
             'medio_pago' => 'TARJETA_CREDITO',
-            'credito_id' => $id,
-        ])->assertCreated();
-
-        $gasto->assertJsonPath('advertencias.0.codigo', 'SUPERA_CUPO')
-            ->assertJsonPath('advertencias.0.exceso', '100000');
-        $this->assertSame('Gasto registrado exitosamente. La tarjeta Banco QA supera su cupo en $ 100.000.', $gasto->json('mensaje'));
-
-        $alertas = $this->alertasCupo($id);
-        $this->assertCount(1, $alertas);
-        $this->assertSame('ADVERTENCIA', $alertas[0]['nivel']);
-        $this->assertSame('1300000', $alertas[0]['saldo']);
-        $this->assertSame('Los consumos de la tarjeta ($ 1.300.000) superan su cupo de $ 1.200.000 en $ 100.000.', $alertas[0]['mensaje']);
+            'credito_id' => $creditoId,
+        ], $extra);
     }
 
     /** El cupo no es una condición del plan: se cambia aunque haya pagos. */
