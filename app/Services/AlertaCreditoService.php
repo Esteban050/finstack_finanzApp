@@ -246,7 +246,7 @@ class AlertaCreditoService
      */
     public static function ingresoMensualPromedio(string $usuarioId): string
     {
-        return EndeudamientoService::ingresosNetosPorMes($usuarioId, CarbonImmutable::today())['promedio'];
+        return EndeudamientoService::ingresoPromedio($usuarioId, CarbonImmutable::today());
     }
 
     /**

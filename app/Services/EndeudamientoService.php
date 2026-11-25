@@ -45,6 +45,16 @@ class EndeudamientoService
     }
 
     /**
+     * H09: ÚNICA definición de "ingreso promedio" de la aplicación (Presupuestos, Notificaciones,
+     * Reportes, Créditos): el promedio de baseIngresos (meses cerrados con ingresos, o el mes en
+     * curso si no bastan), al peso.
+     */
+    public static function ingresoPromedio(string $usuarioId, CarbonImmutable $mes): string
+    {
+        return self::baseIngresos($usuarioId, $mes)['promedio'];
+    }
+
+    /**
      * H08 (decisión: usar el mes en curso): denominador del indicador. Si menos de 2 de los
      * últimos 3 meses cerrados tienen ingresos, o su promedio es 0, se usa el ingreso neto del
      * mes en curso (si lo hay). `base` indica cuál se usó: MESES_CERRADOS o MES_EN_CURSO.

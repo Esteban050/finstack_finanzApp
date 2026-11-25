@@ -28,9 +28,11 @@ class PresupuestoService
     public const MESES_HISTORIA = 3;
 
     public const METODO_HISTORICO = 'HISTORICO';
+
     public const METODO_LINEAL = 'LINEAL';
 
     public const ADV_TOTAL_SUPERA_INGRESO = 'TOTAL_SUPERA_INGRESO';
+
     public const ADV_LINEA_BAJO_PROMEDIO = 'LINEA_BAJO_PROMEDIO';
 
     /*
@@ -59,12 +61,12 @@ class PresupuestoService
     }
 
     /**
-     * RN-055.4: ingreso neto promedio de los 3 meses completos anteriores al
-     * mes. Es el mismo cálculo del indicador de endeudamiento (RF-053).
+     * RN-055.4 / H09: ingreso promedio único (EndeudamientoService::ingresoPromedio: 3 meses cerrados con ingresos, o el mes en curso si no bastan);
+     * el mismo del indicador de endeudamiento (RF-053), Notificaciones, Reportes y Créditos.
      */
     public static function ingresoBase(string $usuarioId, CarbonImmutable $mes): string
     {
-        return EndeudamientoService::ingresosNetosPorMes($usuarioId, $mes)['promedio'];
+        return EndeudamientoService::ingresoPromedio($usuarioId, $mes);
     }
 
     /** Monto de una línea en % del ingreso: porcentaje × base / 100, al peso. */
