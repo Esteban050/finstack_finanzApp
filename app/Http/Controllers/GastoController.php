@@ -586,7 +586,7 @@ class GastoController extends Controller
     {
         $comercio = trim((string) ($validated['comercio_beneficiario'] ?? ''));
         // H17: la compra no puede superar el cupo de la tarjeta que se registra con ella.
-        $cupoNuevo = explode('.', (string) $validated['cupo_tarjeta'])[0];
+        $cupoNuevo = self::cupoEntero($validated['cupo_tarjeta'] ?? null);
         if (bccomp((string) $atributos['monto_cop'], $cupoNuevo, 2) === 1) {
             throw ValidationException::withMessages([
                 'monto_original' => 'La compra supera el cupo de la tarjeta ($ '.number_format((float) $cupoNuevo, 0, ',', '.').').',
@@ -608,7 +608,7 @@ class GastoController extends Controller
                 'sistema_amortizacion' => 'FRANCES',
                 'fecha_inicio' => $validated['fecha'],
                 'fecha_primer_pago' => $validated['fecha_pago'],
-                'cupo' => explode('.', (string) $validated['cupo_tarjeta'])[0],
+                'cupo' => $cupoNuevo,
             ]);
         } catch (ValidationException $e) {
             // Los errores del crédito se informan con los nombres del formulario de gasto.
@@ -626,6 +626,25 @@ class GastoController extends Controller
                 ->mapWithKeys(fn ($mensajes, $campo) => [$campos[$campo] ?? $campo => $mensajes])
                 ->all());
         }
+    }
+
+    /**
+     * Parte entera del cupo en pesos. La validación ya exige el formato, pero esto evita
+     * un error de bcmath (ValueError) si llegara un valor ausente o no numérico.
+     *
+     * @throws ValidationException
+     */
+    private static function cupoEntero(mixed $valor): string
+    {
+        if (! is_string($valor) && ! is_int($valor)) {
+            throw ValidationException::withMessages(['cupo_tarjeta' => 'Indique el cupo de la tarjeta de crédito.']);
+        }
+        $texto = (string) $valor;
+        if (! preg_match('/^\d{1,12}(\.\d{1,2})?$/', $texto)) {
+            throw ValidationException::withMessages(['cupo_tarjeta' => 'El cupo va en pesos enteros, con hasta 12 dígitos.']);
+        }
+
+        return explode('.', $texto)[0];
     }
 
     /** Crea el crédito de la compra con el plan de cuotas de MOD-08. */

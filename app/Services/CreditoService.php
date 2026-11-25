@@ -468,9 +468,17 @@ class CreditoService
         foreach ($compras as $compra) {
             $desde = CarbonImmutable::parse($compra['fecha']);
             $desde = $desde->lessThan($inicio) ? $inicio : $desde;
-            $factor = bcsub(self::factorDias($ea, self::dias($desde, $hasta)), '1', $e);
-            $total = bcadd($total, bcmul((string) $compra['monto'], $factor, $e), $e);
-            $fechado = bcadd($fechado, (string) $compra['monto'], 2);
+            // Una compra posterior a la fecha de pago no causa interés en esta cuota (nunca días negativos).
+            $dias = max(0, self::dias($desde, $hasta));
+            // El capital fechado no puede superar el saldo: lo que sobra no existe en el plan.
+            $libre = bcsub($saldo, $fechado, 2);
+            $monto = bccomp((string) $compra['monto'], $libre, 2) === 1 ? $libre : (string) $compra['monto'];
+            if (bccomp($monto, '0', 2) <= 0) {
+                continue;
+            }
+            $factor = bcsub(self::factorDias($ea, $dias), '1', $e);
+            $total = bcadd($total, bcmul($monto, $factor, $e), $e);
+            $fechado = bcadd($fechado, $monto, 2);
         }
 
         $resto = bcsub($saldo, $fechado, 2);

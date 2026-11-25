@@ -846,7 +846,7 @@ class PagoCreditoService
         // H11: la compra con tarjeta ya se registró como gasto; pagar la cuota solo amortiza deuda.
         // Es gasto lo que no es capital: intereses, mora, seguros y cargos.
         if ($credito->tipo_credito === 'TARJETA_CREDITO') {
-            $capital = bcadd($resumen['CAPITAL'], $resumen['ABONO_EXTRAORDINARIO'], 0);
+            $capital = bcadd($resumen['CAPITAL'] ?? '0', $resumen['ABONO_EXTRAORDINARIO'] ?? '0', 0);
             $costos = bcsub($valor, $capital, 0);
 
             return [self::esCero($costos) ? null : $crear($costos, 'NO_DEDUCIBLE', null, ' (intereses y cargos)'), null];

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Categoria;
 use App\Models\Credito;
+use App\Models\Gasto;
 use App\Models\Usuario;
 use Illuminate\Support\Str;
 use Tests\Concerns\UsaBaseLocal;
@@ -63,10 +64,29 @@ class CupoTarjetaTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('errors.monto_original.0', 'El gasto supera el cupo disponible de la tarjeta Banco QA ($ 200.000) en $ 100.000.');
         $this->assertSame('1000000.00', (string) Credito::find($id)->monto);
+        $this->assertSame(0, Gasto::where('usuario_id', $this->usuario->id)->count(), 'el gasto rechazado no deja fila');
 
         // Exactamente el disponible sí entra.
         $this->postJson('/gastos', $this->gastoTarjeta($id, '200000.00'))->assertCreated();
         $this->assertSame('1200000.00', (string) Credito::find($id)->monto);
+        $this->assertSame(1, Gasto::where('usuario_id', $this->usuario->id)->count());
+    }
+
+    /** El aviso del detalle sigue existiendo cuando el saldo supera el cupo (p. ej. al bajar el cupo). */
+    public function test_el_detalle_avisa_cuando_el_saldo_supera_el_cupo(): void
+    {
+        $id = $this->postJson('/creditos', $this->tarjeta(['cupo' => '1500000']))->assertCreated()->json('data.id');
+        $this->assertSame([], $this->alertasCupo($id));
+
+        $this->putJson("/creditos/{$id}", $this->tarjeta(['cupo' => '900000']))->assertOk();
+
+        $alertas = $this->alertasCupo($id);
+        $this->assertCount(1, $alertas);
+        $this->assertSame('ADVERTENCIA', $alertas[0]['nivel']);
+        $this->assertSame('1000000', $alertas[0]['saldo']);
+        $this->assertSame('900000', $alertas[0]['cupo']);
+        $this->assertSame('100000', $alertas[0]['exceso']);
+        $this->assertSame('Los consumos de la tarjeta ($ 1.000.000) superan su cupo de $ 900.000 en $ 100.000.', $alertas[0]['mensaje']);
     }
 
     public function test_h17_editar_un_gasto_de_tarjeta_por_encima_del_cupo_se_rechaza(): void

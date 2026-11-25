@@ -29,6 +29,7 @@ Group 1 — data reaching other modules wrong (route: delegated writer, writer t
 
 Group 2 — credit card
 - [x] T6 — H07: first-installment interest computed per purchase and real days.
+- [x] T6b — hardening of T5b..T17 review findings (interest per purchase, card limit input, SUPERA_CUPO alert test, card payment guards, edit/delete recompute).
 - [ ] T7 — H06: notifications at the configured card-usage threshold and when the limit is exceeded.
 
 Group 3 — cross-module consistency
@@ -74,3 +75,4 @@ Each finding's "Criterio de aceptación" in the findings document; `php artisan 
 - T17 (H11, commit 9d6535b) done: RED 94560 vs 20000 -> GREEN (PagoTarjetaGastoSoloInteresesTest). PagoCreditoService::crearGastos: for TARJETA_CREDITO the expense is valor - capital - abono extraordinario (interest, mora, seguro, cargos); gasto_id null if zero. Other types unchanged. Full suite 345/345 green.
 - T7 (H06) BLOCKED, needs decision: the preference 'Consumos con tarjeta de crédito' (default 80%) is TOPE_DIAN_TARJETA = annual card consumption vs the DIAN 1.400 UVT cap (AlertaFinancieraService::topeDian), not card-limit usage. It works as designed. A card-limit-usage notification would need a new alert type/preference (or re-purposing).
 - T18 (H16) BLOCKED, needs decision: disbursement date of the libre-inversion credit is not in the scenario (first cuota 24/12 monthly implies fecha_inicio 24/11 = payment day -> 0 days of interest). Also ANTICIPO semantics (cuota stays partial vs plan regeneration) undefined.
+- T6b done: RED 1 failed (capital fechado 3393 pesos over; others were characterization of already-correct behavior: factorDias already clamps days<=0, cupo_tarjeta already validated by regex) -> GREEN 12 passed (TarjetaEndurecimientoTest + CupoTarjetaTest). Fixes: CreditoService::interesComprasPorDias caps dated capital at saldo and clamps days explicitly; GastoController::cupoEntero guards cupo (no ValueError); PagoCreditoService::crearGastos null-safe CAPITAL/ABONO_EXTRAORDINARIO keys. Tests added: zero-interest payment (gasto_id null), payment with abono extraordinario (gasto = interest only), edit/delete recompute cuota-1 interest, SUPERA_CUPO detail alert, no Gasto row after rejection.
