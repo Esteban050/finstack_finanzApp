@@ -147,11 +147,11 @@ class ConsolidadoRentaService
         $inversiones = Inversion::withoutGlobalScopes()
             ->select('inversiones.*')
             ->addSelect([
-                'saldo_cuenta_al_corte' => ValoracionInversion::withoutGlobalScopes()
+                'saldo_al_corte' => ValoracionInversion::withoutGlobalScopes()
                     ->select('valor')
                     ->whereColumn('inversion_id', 'inversiones.id')
                     ->whereColumn('usuario_id', 'inversiones.usuario_id')
-                    ->where('inversiones.tipo', 'CUENTA_ALTO_RENDIMIENTO')
+                    ->whereIn('inversiones.tipo', ['CUENTA_ALTO_RENDIMIENTO', 'FIC'])
                     ->where('fecha', '<=', $hasta)
                     ->orderByDesc('fecha')
                     ->orderByDesc('creado_en')
@@ -345,13 +345,14 @@ class ConsolidadoRentaService
                         break;
 
                     case 'CUENTA_ALTO_RENDIMIENTO':
-                        $saldoPatrimonial = (float) ($inv->saldo_cuenta_al_corte ?? $inv->monto_inicial);
+                        $saldoPatrimonial = (float) ($inv->saldo_al_corte ?? $inv->monto_inicial);
                         $tratamiento = 'Rentas de capital · Retención 7% · Componente inflacionario';
                         break;
 
                     case 'FIC':
-                        $detalleFic = $inv->detalleFic;
-                        $saldoPatrimonial = (float) ($detalleFic ? $detalleFic->saldo_actual : $inv->monto_inicial);
+                        // RF-043 RN-043.1 num. 5: valor del fondo al 31/12 = última valoración a esa fecha
+                        // (valor total de las participaciones). detalle_fic no tiene saldo propio.
+                        $saldoPatrimonial = (float) ($inv->saldo_al_corte ?? $inv->monto_inicial);
                         $tratamiento = 'Rentas de capital · Retención según fondo · Componente inflacionario';
                         break;
 
