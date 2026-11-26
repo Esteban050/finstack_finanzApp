@@ -89,6 +89,8 @@ class ConsolidadoRentaService
         $aportesSaludPensionCop = 0.0;
         $drillDownIngresosTrabajo = [];
         $drillDownIngresosNoLaborales = [];
+        $ingresosCapitalManualCop = 0.0;
+        $drillDownCapitalManual = [];
 
         // Los ingresos generados por movimientos de inversión ya guardan su retención (H03), pero esa
         // misma retención se suma desde MovimientoInversion más abajo: se excluye aquí para contarla una vez.
@@ -132,6 +134,18 @@ class ConsolidadoRentaService
                 $drillDownIngresosNoLaborales[] = [
                     'id' => $ingreso->id,
                     'descripcion' => $ingreso->descripcion ?? 'Ingreso no laboral',
+                    'fecha' => $ingreso->fecha_recepcion ? CarbonImmutable::parse($ingreso->fecha_recepcion)->toDateString() : $desde,
+                    'monto_bruto_cop' => $montoBruto,
+                    'retencion_cop' => $retencion,
+                    'aportes_cop' => $aportes,
+                ];
+            } elseif ($ingreso->clasificacion_tributaria === 'RENTAS_CAPITAL' && ! $ingresosDeInversion->has($ingreso->id)) {
+                // RF-043: ingresos de capital registrados a mano (arriendos, intereses, regalías).
+                // Los que nacen de un movimiento de inversión ya se suman desde MovimientoInversion.
+                $ingresosCapitalManualCop += $montoBruto;
+                $drillDownCapitalManual[] = [
+                    'id' => $ingreso->id,
+                    'descripcion' => $ingreso->descripcion ?? 'Ingreso de capital',
                     'fecha' => $ingreso->fecha_recepcion ? CarbonImmutable::parse($ingreso->fecha_recepcion)->toDateString() : $desde,
                     'monto_bruto_cop' => $montoBruto,
                     'retencion_cop' => $retencion,
@@ -396,9 +410,13 @@ class ConsolidadoRentaService
 
         // 4. CONSOLIDACIÓN DE CONCEPTOS TRIBUTARIOS
         // 4.1 Ingresos Brutos Totales Cédula General
+        // Rentas de capital = rendimientos de inversiones + ingresos de capital registrados a mano.
+        // El componente inflacionario (4.2) se calcula solo sobre los rendimientos financieros (Art. 40-1 E.T.).
+        $rentasCapitalCop = $rendimientosCdtCuentasFicCop + $ingresosCapitalManualCop;
+
         $ingresosBrutosTotalCop = $ingresosTrabajoCop +
             $cesantiasConsignadasAnioCop +
-            $rendimientosCdtCuentasFicCop +
+            $rentasCapitalCop +
             $ingresosNoLaboralesCop +
             $dividendosCop +
             $utilidadVentaAccionesMenor2AniosCop +
@@ -431,8 +449,8 @@ class ConsolidadoRentaService
                 'trabajo_uvt' => self::aUvt($ingresosTrabajoCop, $uvt),
                 'cesantias_cop' => $cesantiasConsignadasAnioCop,
                 'cesantias_uvt' => self::aUvt($cesantiasConsignadasAnioCop, $uvt),
-                'capital_inversiones_cop' => $rendimientosCdtCuentasFicCop,
-                'capital_inversiones_uvt' => self::aUvt($rendimientosCdtCuentasFicCop, $uvt),
+                'capital_inversiones_cop' => $rentasCapitalCop,
+                'capital_inversiones_uvt' => self::aUvt($rentasCapitalCop, $uvt),
                 'no_laborales_cop' => $ingresosNoLaboralesCop,
                 'no_laborales_uvt' => self::aUvt($ingresosNoLaboralesCop, $uvt),
                 'dividendos_cop' => $dividendosCop,
@@ -444,7 +462,7 @@ class ConsolidadoRentaService
                 'total_uvt' => self::aUvt($ingresosBrutosTotalCop, $uvt),
                 'drill_down' => [
                     'trabajo' => $drillDownIngresosTrabajo,
-                    'capital' => $drillDownRentasCapital,
+                    'capital' => array_merge($drillDownRentasCapital, $drillDownCapitalManual),
                     'dividendos' => $drillDownDividendos,
                     'no_laborales' => array_merge($drillDownIngresosNoLaborales, $drillDownVentasAcciones),
                 ],
