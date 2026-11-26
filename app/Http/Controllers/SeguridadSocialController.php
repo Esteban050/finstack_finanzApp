@@ -152,7 +152,11 @@ class SeguridadSocialController extends Controller
             ]);
         }
 
+        // Cuentas de débito/ahorro de las que puede salir el pago PILA.
+        $cuentas = \App\Models\CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get();
+
         return view('seguridad-social.index', compact(
+            'cuentas',
             'usuario',
             'perfil',
             'digitos',

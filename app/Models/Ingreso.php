@@ -40,6 +40,7 @@ class Ingreso extends Model
     protected $fillable = [
         'usuario_id',
         'fuente_id',
+        'cuenta_id',
         'plantilla_recurrencia_id',
         'fecha_recepcion',
         'clasificacion_tributaria',

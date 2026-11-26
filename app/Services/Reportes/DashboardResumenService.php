@@ -3,6 +3,8 @@
 namespace App\Services\Reportes;
 
 use App\Models\Categoria;
+use App\Models\Credito;
+use App\Models\CuentaBancaria;
 use App\Models\CuotaCredito;
 use App\Models\Gasto;
 use App\Models\Ingreso;
@@ -11,8 +13,10 @@ use App\Models\Presupuesto;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\Usuario;
 use App\Services\EndeudamientoService;
+use App\Services\PagoCreditoService;
 use App\Services\PresupuestoService;
 use App\Services\RentabilidadService;
+use App\Services\SaldoCuentaService;
 use Carbon\CarbonImmutable;
 
 /**
@@ -429,6 +433,7 @@ class DashboardResumenService
         $graficos = $this->obtenerGraficosResumen($usuario, $p['desde'], $p['hasta'], $hoy);
 
         return [
+            'cuentas' => $this->obtenerCuentas($usuario, $hoy),
             'periodo' => $p,
             'totales' => $totales,
             'totales_anterior' => $totalesAnt,
@@ -450,6 +455,46 @@ class DashboardResumenService
                 'sin_movimientos' => ($totales['conteo_ingresos'] === 0 && $totales['conteo_gastos'] === 0),
             ],
         ];
+    }
+
+    /**
+     * Cuentas de débito/ahorro con su saldo disponible y tarjetas de crédito con
+     * cupo, usado (saldo de capital a hoy) y disponible. Va primero en el Dashboard.
+     *
+     * @return array{debito: array<int, array<string, mixed>>, tarjetas: array<int, array<string, mixed>>}
+     */
+    public function obtenerCuentas(Usuario $usuario, CarbonImmutable $hoy): array
+    {
+        $cuentas = CuentaBancaria::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuario->id)->with('entidad:id,nombre')->orderBy('creado_en')->get();
+        $saldos = SaldoCuentaService::saldos($cuentas->pluck('id')->all());
+
+        $debito = $cuentas->map(fn (CuentaBancaria $c) => [
+            'id' => $c->id,
+            'nombre' => trim($c->nombre_banco.($c->alias ? ' · '.$c->alias : '')),
+            'saldo_disponible' => $saldos[$c->id] ?? '0.00',
+            'exenta_gmf' => $c->es_exenta_gmf,
+        ])->all();
+
+        $tarjetas = Credito::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('usuario_id', $usuario->id)->where('tipo_credito', 'TARJETA_CREDITO')
+            ->whereNotNull('cupo')->orderBy('banco')->get()
+            ->map(function (Credito $t) use ($hoy) {
+                $cupo = bcadd((string) $t->cupo, '0', 2);
+                $usado = (string) PagoCreditoService::situacion($t, $hoy)['saldo_capital'];
+                $disponible = bcsub($cupo, $usado, 2);
+
+                return [
+                    'id' => $t->id,
+                    'nombre' => $t->banco,
+                    'cupo' => $cupo,
+                    'usado' => bcadd($usado, '0', 2),
+                    'disponible' => bccomp($disponible, '0', 2) === 1 ? $disponible : '0.00',
+                    'enlace' => route('creditos.show', $t->id),
+                ];
+            })->all();
+
+        return ['debito' => $debito, 'tarjetas' => $tarjetas];
     }
 
     /**

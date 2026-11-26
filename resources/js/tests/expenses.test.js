@@ -63,7 +63,8 @@ test('RN-029: totales autoritativos y ausencia de campos ajenos al alcance', () 
     for (const total of ['monto','tarjeta_credito','potencialmente_deducible']) assert.ok(table.includes(`$totals->${total}`));
     assert.doesNotMatch(table,/number_format|\.reduce\(/);
     const form = fs.readFileSync('resources/views/components/expense/form.blade.php','utf8');
-    assert.doesNotMatch(form,/cuenta|saldo|presupuesto|adjunto|factura|sincroniz/i);
+    // La cuenta de débito (cuenta_id) es un campo propio del gasto desde el módulo de cuentas.
+    assert.doesNotMatch(form,/saldo|presupuesto|adjunto|factura|sincroniz/i);
     assert.match(table,/No hay gastos para los filtros seleccionados/);
 });
 test('Blade real: fila pendiente, totales independientes y plantilla editable sin guardar modelos', {skip: !fs.existsSync('vendor/autoload.php')}, () => {

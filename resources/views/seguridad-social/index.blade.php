@@ -13,6 +13,14 @@
         </div>
     </header>
 
+    {{-- El modal de pago se cierra al recargar: el rechazo por saldo insuficiente se muestra aquí. --}}
+    @if($errors->has('cuenta_id'))
+        <div class="ui-notice" role="alert" data-pago-cuenta-error style="border-left: 4px solid var(--ui-danger, #b91c1c);">
+            <strong>No se registró el pago.</strong>
+            <p class="ui-help" style="margin-top: 0.25rem;">{{ $errors->first('cuenta_id') }}</p>
+        </div>
+    @endif
+
     @if(session('status'))
         <div class="ui-notice ui-notice-action" role="alert" style="border-left: 4px solid var(--accent);">
             <div>
@@ -480,6 +488,17 @@
                                 @endforeach
                             </select>
                         </x-ui.field>
+
+                        @if(isset($cuentas) && count($cuentas) > 0)
+                            <x-ui.field name="cuenta_id" label="Cuenta de la que sale el pago (opcional)" :required="false" help="Descuenta el pago del saldo de la cuenta; si no es exenta, también se registra el GMF (4x1000).">
+                                <select name="cuenta_id" data-pago-cuenta>
+                                    <option value="">Sin cuenta</option>
+                                    @foreach($cuentas as $cuenta)
+                                        <option value="{{ $cuenta->id }}">{{ $cuenta->nombre_banco }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>
+                                    @endforeach
+                                </select>
+                            </x-ui.field>
+                        @endif
 
                         <x-ui.field name="numero_planilla" label="Número de planilla PILA (opcional)" :required="false" help="Identificador del comprobante o planilla emitida por el operador.">
                             <input type="text" name="numero_planilla" placeholder="Ej. 8839201948">
