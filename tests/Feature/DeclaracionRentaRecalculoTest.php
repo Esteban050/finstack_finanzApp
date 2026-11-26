@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\ParametroNormativo;
 use App\Models\Usuario;
+use App\Models\ValoracionInversion;
 use App\Services\Renta\CalendarioVencimientoService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -77,6 +79,48 @@ class DeclaracionRentaRecalculoTest extends TestCase
             'tipo' => 'CDT', 'entidad' => 'Banco de prueba', 'moneda' => 'COP',
             'fecha_apertura' => '2025-03-01', 'monto_inicial' => $monto,
         ]);
+    }
+
+    public function test_patrimonio_de_cuenta_de_ahorro_usa_el_saldo_al_cierre_del_anio(): void
+    {
+        $cuenta = (string) Str::uuid();
+        DB::table('inversiones')->insert([
+            'id' => $cuenta, 'usuario_id' => $this->usuario->id, 'nombre' => 'Ahorro de prueba',
+            'tipo' => 'CUENTA_ALTO_RENDIMIENTO', 'moneda' => 'COP',
+            'fecha_apertura' => '2025-11-01', 'monto_inicial' => '3200000.00',
+        ]);
+        DB::table('detalle_cuenta')->insert([
+            'id' => (string) Str::uuid(), 'inversion_id' => $cuenta,
+            'saldo_inicial' => '1222746.38', 'tasa_ea' => '9.00',
+        ]);
+
+        foreach (['2025-12-31' => '2822746.38', '2026-01-05' => '1222746.38'] as $fecha => $saldo) {
+            ValoracionInversion::create([
+                'usuario_id' => $this->usuario->id, 'inversion_id' => $cuenta,
+                'fecha' => $fecha, 'valor' => $saldo, 'origen' => 'MANUAL',
+            ]);
+        }
+
+        $declaracion = $this->get(route('renta.complementaria', ['anio' => 2025]))
+            ->assertOk()->viewData('declaracion');
+
+        $this->assertSame('2822746.38', $declaracion->c1_patrimonio_bruto_cop);
+    }
+
+    public function test_migracion_corrige_solo_el_valor_anterior_de_la_uvt_de_2026(): void
+    {
+        $normativo2025 = ParametroNormativo::where('anio_vigencia', 2025)->where('es_activa', true)->firstOrFail();
+        $normativo2026 = ParametroNormativo::where('anio_vigencia', 2026)->where('es_activa', true)->firstOrFail();
+        $uvt2025 = $normativo2025->valor_uvt;
+        $normativo2026->update(['valor_uvt' => '52289.00']);
+
+        $migracion = require database_path('migrations/2026_11_25_000003_actualizar_uvt_2026_desde_valor_anterior.php');
+        $migracion->up();
+        $this->assertSame('52374.00', $normativo2026->fresh()->valor_uvt);
+        $this->assertSame($uvt2025, $normativo2025->fresh()->valor_uvt);
+
+        $migracion->up();
+        $this->assertSame('52374.00', $normativo2026->fresh()->valor_uvt);
     }
 
     /** CP-REN-015: ingresos registrados después de abrir la declaración deben verse en C2. */

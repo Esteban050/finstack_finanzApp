@@ -9,6 +9,7 @@ use App\Models\MovimientoInversion;
 use App\Models\ParametroNormativo;
 use App\Models\ParametroTributario;
 use App\Models\Usuario;
+use App\Models\ValoracionInversion;
 use App\Services\CalculoImpuestoInversionService;
 use App\Services\SeguridadSocialService;
 use Carbon\CarbonImmutable;
@@ -144,7 +145,19 @@ class ConsolidadoRentaService
 
         // 2. MÓDULO DE INVERSIONES
         $inversiones = Inversion::withoutGlobalScopes()
-            ->with(['detalleCdt', 'detalleCuenta', 'detalleRentaVariable', 'detalleFic', 'detalleFpv', 'detalleCesantias'])
+            ->select('inversiones.*')
+            ->addSelect([
+                'saldo_cuenta_al_corte' => ValoracionInversion::withoutGlobalScopes()
+                    ->select('valor')
+                    ->whereColumn('inversion_id', 'inversiones.id')
+                    ->whereColumn('usuario_id', 'inversiones.usuario_id')
+                    ->where('inversiones.tipo', 'CUENTA_ALTO_RENDIMIENTO')
+                    ->where('fecha', '<=', $hasta)
+                    ->orderByDesc('fecha')
+                    ->orderByDesc('creado_en')
+                    ->limit(1),
+            ])
+            ->with(['detalleCdt', 'detalleRentaVariable', 'detalleFic', 'detalleFpv', 'detalleCesantias'])
             ->where('usuario_id', $usuario->id)
             ->whereNull('eliminado_en')
             ->get();
@@ -332,8 +345,7 @@ class ConsolidadoRentaService
                         break;
 
                     case 'CUENTA_ALTO_RENDIMIENTO':
-                        $detalleCuenta = $inv->detalleCuenta;
-                        $saldoPatrimonial = (float) ($detalleCuenta ? $detalleCuenta->saldo_disponible : $inv->monto_inicial);
+                        $saldoPatrimonial = (float) ($inv->saldo_cuenta_al_corte ?? $inv->monto_inicial);
                         $tratamiento = 'Rentas de capital · Retención 7% · Componente inflacionario';
                         break;
 
