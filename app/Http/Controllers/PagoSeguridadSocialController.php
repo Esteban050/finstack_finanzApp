@@ -11,6 +11,7 @@ use App\Models\SoportePagoSeguridadSocial;
 use App\Services\BitacoraService;
 use App\Services\GastoService;
 use App\Services\GmfCuentaService;
+use App\Services\SaldoCuentaService;
 use App\Services\SeguridadSocialService;
 use App\Services\SoporteArchivoService;
 use Carbon\CarbonImmutable;
@@ -189,6 +190,7 @@ class PagoSeguridadSocialController extends Controller
 
         try {
             $pago = DB::transaction(function () use ($validated, $archivo, $tipoSoporte, $cuentaId) {
+                SaldoCuentaService::bloquear($cuentaId);
                 $pago = new PagoSeguridadSocial(array_merge($this->atributosPago($validated), [
                     'usuario_id' => Auth::id(),
                 ]));
@@ -198,6 +200,7 @@ class PagoSeguridadSocialController extends Controller
                     ['usuario_id' => Auth::id(), 'origen' => 'MANUAL', 'estado' => 'CONFIRMADO', 'cuenta_id' => $cuentaId]
                 ));
                 GmfCuentaService::sincronizar($gasto);
+                SaldoCuentaService::validarSalida($gasto);
 
                 $pago->gasto_id = $gasto->id;
                 $pago->save();
@@ -278,9 +281,13 @@ class PagoSeguridadSocialController extends Controller
         try {
             $pago = DB::transaction(function () use ($pago, $validated, $cuenta) {
                 $anterior = $pago->toArray();
-                $pago->update($this->atributosPago($validated));
-
                 $gasto = $pago->gasto_id === null ? null : Gasto::find($pago->gasto_id);
+                // Lo que ya sale de la cuenta se excluye al validar: editar el pago no lo bloquea a sí mismo.
+                $cuentaAnterior = $gasto?->cuenta_id;
+                $requeridoAnterior = $gasto === null ? '0.00' : SaldoCuentaService::requeridoPorSalida($gasto);
+                SaldoCuentaService::bloquear($cuentaAnterior);
+                SaldoCuentaService::bloquear($cuenta['cuenta_id'] ?? null);
+                $pago->update($this->atributosPago($validated));
                 $medioPago = $validated['medio_pago'] ?? $gasto?->medio_pago ?? SeguridadSocialService::MEDIO_PAGO_PILA;
                 $atributos = SeguridadSocialService::atributosGastoPila($pago, $medioPago);
 
@@ -301,6 +308,7 @@ class PagoSeguridadSocialController extends Controller
                     $accionGasto = 'EDITAR_GASTO';
                 }
                 GmfCuentaService::sincronizar($gasto->fresh(), $fechaGastoAnterior);
+                SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
                 BitacoraService::registrar(
                     accion: $accionGasto,

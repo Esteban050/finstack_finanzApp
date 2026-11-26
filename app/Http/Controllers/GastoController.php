@@ -14,6 +14,7 @@ use App\Services\CategoriaGastoService;
 use App\Services\ConsumoTarjetaService;
 use App\Services\GastoService;
 use App\Services\GmfCuentaService;
+use App\Services\SaldoCuentaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -151,6 +152,7 @@ class GastoController extends Controller
         $datosCredito = $this->esCompraNueva($validated) ? $this->datosCredito($validated, $atributos) : null;
 
         $gasto = DB::transaction(function () use ($atributos, $validated, $datosCredito) {
+            SaldoCuentaService::bloquear($atributos['cuenta_id']);
             if ($datosCredito !== null) {
                 // El monto del crédito ya es la compra: no se suma de nuevo a su capital.
                 $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
@@ -169,6 +171,7 @@ class GastoController extends Controller
             ]));
             // GMF (4x1000) de la salida de la cuenta de débito.
             GmfCuentaService::sincronizar($gasto);
+            SaldoCuentaService::validarSalida($gasto);
 
             return $gasto;
         });
@@ -250,6 +253,11 @@ class GastoController extends Controller
             if ($conservaCuenta) {
                 $atributos['cuenta_id'] = $gasto->cuenta_id;
             }
+            // Lo que ya sale de la cuenta se excluye al validar: editar un gasto no lo bloquea a sí mismo.
+            $cuentaAnterior = $gasto->cuenta_id;
+            $requeridoAnterior = SaldoCuentaService::requeridoPorSalida($gasto);
+            SaldoCuentaService::bloquear($cuentaAnterior);
+            SaldoCuentaService::bloquear($atributos['cuenta_id']);
 
             if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
                 $atributos['credito_id'] = $gasto->credito_id;
@@ -269,6 +277,7 @@ class GastoController extends Controller
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
             GmfCuentaService::sincronizar($gasto->fresh(), $fechaAnterior);
+            SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
             return [$gasto, $anterior];
         });
@@ -404,9 +413,11 @@ class GastoController extends Controller
 
         $anterior = $gasto->toArray();
         DB::transaction(function () use ($gasto, $cambios) {
+            SaldoCuentaService::bloquear($gasto->cuenta_id);
             $gasto->update($cambios);
-            // Al confirmarse, la salida de una cuenta de débito genera su GMF.
+            // Al confirmarse, la salida de una cuenta de débito genera su GMF y debe caber en el saldo.
             GmfCuentaService::sincronizar($gasto->fresh());
+            SaldoCuentaService::validarSalida($gasto);
         });
 
         BitacoraService::registrar(

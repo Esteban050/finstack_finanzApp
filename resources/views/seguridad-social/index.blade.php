@@ -13,6 +13,14 @@
         </div>
     </header>
 
+    {{-- El modal de pago se cierra al recargar: el rechazo por saldo insuficiente se muestra aquí. --}}
+    @if($errors->has('cuenta_id'))
+        <div class="ui-notice" role="alert" data-pago-cuenta-error style="border-left: 4px solid var(--ui-danger, #b91c1c);">
+            <strong>No se registró el pago.</strong>
+            <p class="ui-help" style="margin-top: 0.25rem;">{{ $errors->first('cuenta_id') }}</p>
+        </div>
+    @endif
+
     @if(session('status'))
         <div class="ui-notice ui-notice-action" role="alert" style="border-left: 4px solid var(--accent);">
             <div>
