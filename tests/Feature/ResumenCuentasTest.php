@@ -51,6 +51,8 @@ class ResumenCuentasTest extends TestCase
         $this->assertSame('750000.00', $cuentas['debito'][0]['saldo_disponible']);
         $this->assertTrue($cuentas['debito'][0]['exenta_gmf']);
         $this->assertCount(1, $cuentas['tarjetas']);
+        $this->assertSame('DEBITO', $cuentas['debito'][0]['tipo']);
+        $this->assertSame('CREDITO', $cuentas['tarjetas'][0]['tipo']);
         $this->assertSame('3000000.00', $cuentas['tarjetas'][0]['cupo']);
         $this->assertSame('0.00', $cuentas['tarjetas'][0]['usado']);
         $this->assertSame('3000000.00', $cuentas['tarjetas'][0]['disponible']);

@@ -474,6 +474,7 @@ class DashboardResumenService
             'nombre' => trim($c->nombre_banco.($c->alias ? ' · '.$c->alias : '')),
             'saldo_disponible' => $saldos[$c->id] ?? '0.00',
             'exenta_gmf' => $c->es_exenta_gmf,
+            'tipo' => 'DEBITO',
         ])->all();
 
         $tarjetas = Credito::withoutGlobalScope(DelUsuarioAutenticado::class)
@@ -491,6 +492,7 @@ class DashboardResumenService
                     'usado' => bcadd($usado, '0', 2),
                     'disponible' => bccomp($disponible, '0', 2) === 1 ? $disponible : '0.00',
                     'enlace' => route('creditos.show', $t->id),
+                    'tipo' => 'CREDITO',
                 ];
             })->all();
 
