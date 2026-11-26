@@ -285,8 +285,11 @@ class PagoSeguridadSocialController extends Controller
                 // Lo que ya sale de la cuenta se excluye al validar: editar el pago no lo bloquea a sí mismo.
                 $cuentaAnterior = $gasto?->cuenta_id;
                 $requeridoAnterior = $gasto === null ? '0.00' : SaldoCuentaService::requeridoPorSalida($gasto);
-                SaldoCuentaService::bloquear($cuentaAnterior);
-                SaldoCuentaService::bloquear($cuenta['cuenta_id'] ?? null);
+                // Sin `cuenta_id` en la petición, una cuenta eliminada (o ajena) se desvincula en vez de conservarse.
+                if (! array_key_exists('cuenta_id', $cuenta) && SaldoCuentaService::cuentaVigente($cuentaAnterior) === null) {
+                    $cuenta = ['cuenta_id' => null];
+                }
+                SaldoCuentaService::bloquearVarias([$cuentaAnterior, $cuenta['cuenta_id'] ?? null]);
                 $pago->update($this->atributosPago($validated));
                 $medioPago = $validated['medio_pago'] ?? $gasto?->medio_pago ?? SeguridadSocialService::MEDIO_PAGO_PILA;
                 $atributos = SeguridadSocialService::atributosGastoPila($pago, $medioPago);
@@ -307,7 +310,7 @@ class PagoSeguridadSocialController extends Controller
                     $gasto->update(array_merge($atributos, $cuenta));
                     $accionGasto = 'EDITAR_GASTO';
                 }
-                GmfCuentaService::sincronizar($gasto->fresh(), $fechaGastoAnterior);
+                GmfCuentaService::sincronizar($gasto->fresh(), $fechaGastoAnterior, $cuentaAnterior);
                 SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
                 BitacoraService::registrar(

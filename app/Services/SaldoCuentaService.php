@@ -58,9 +58,31 @@ class SaldoCuentaService
      */
     public static function bloquear(?string $cuentaId): void
     {
-        if ($cuentaId !== null) {
-            CuentaBancaria::withoutGlobalScope(DelUsuarioAutenticado::class)->whereKey($cuentaId)->lockForUpdate()->first();
+        self::bloquearVarias([$cuentaId]);
+    }
+
+    /** Id de la cuenta si sigue vigente (propia y no eliminada); null si no existe, está eliminada o es ajena. */
+    public static function cuentaVigente(?string $cuentaId): ?string
+    {
+        return $cuentaId !== null && CuentaBancaria::whereKey($cuentaId)->exists() ? $cuentaId : null;
+    }
+
+    /**
+     * Bloquea varias cuentas en un orden determinista (ids ordenados, sin duplicados ni
+     * nulos), así dos transacciones que mueven dinero en sentidos opuestos entre las
+     * mismas cuentas no se bloquean en cruz (deadlock).
+     *
+     * @param  array<int, string|null>  $cuentaIds
+     */
+    public static function bloquearVarias(array $cuentaIds): void
+    {
+        $ids = array_values(array_unique(array_filter($cuentaIds, fn ($id) => $id !== null)));
+        if ($ids === []) {
+            return;
         }
+        sort($ids);
+
+        CuentaBancaria::withoutGlobalScope(DelUsuarioAutenticado::class)->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
     }
 
     /**
@@ -76,7 +98,7 @@ class SaldoCuentaService
 
         $gmf = DB::table('gastos')->where('gasto_origen_gmf_id', $gasto->id)->whereNull('eliminado_en')->sum('monto_cop');
 
-        return bcadd(bcadd((string) $actual->monto_cop, (string) $gmf, 2), '0', 2);
+        return bcadd((string) $actual->monto_cop, (string) $gmf, 2);
     }
 
     /**

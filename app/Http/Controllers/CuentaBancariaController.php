@@ -131,7 +131,8 @@ class CuentaBancariaController extends Controller
 
     /**
      * "Otro banco": el select envía OTRO en lugar de un id. Exactamente uno de los dos
-     * identifica el banco: con un banco de la lista se descarta el texto libre.
+     * identifica el banco (la base lo exige con el CHECK cuentas_bancarias_banco_xor): con un
+     * banco de la lista se descarta el texto libre.
      */
     private function normalizarBanco(Request $request): void
     {

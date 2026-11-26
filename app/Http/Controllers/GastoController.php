@@ -251,13 +251,13 @@ class GastoController extends Controller
             $anterior = $gasto->toArray();
             $fechaAnterior = $gasto->fecha->toDateString();
             if ($conservaCuenta) {
-                $atributos['cuenta_id'] = $gasto->cuenta_id;
+                // Una cuenta eliminada (o ajena) no se conserva: el gasto queda sin cuenta ni GMF.
+                $atributos['cuenta_id'] = SaldoCuentaService::cuentaVigente($gasto->cuenta_id);
             }
             // Lo que ya sale de la cuenta se excluye al validar: editar un gasto no lo bloquea a sí mismo.
             $cuentaAnterior = $gasto->cuenta_id;
             $requeridoAnterior = SaldoCuentaService::requeridoPorSalida($gasto);
-            SaldoCuentaService::bloquear($cuentaAnterior);
-            SaldoCuentaService::bloquear($atributos['cuenta_id']);
+            SaldoCuentaService::bloquearVarias([$cuentaAnterior, $atributos['cuenta_id']]);
 
             if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
                 $atributos['credito_id'] = $gasto->credito_id;
@@ -276,7 +276,7 @@ class GastoController extends Controller
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
-            GmfCuentaService::sincronizar($gasto->fresh(), $fechaAnterior);
+            GmfCuentaService::sincronizar($gasto->fresh(), $fechaAnterior, $cuentaAnterior);
             SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
             return [$gasto, $anterior];
@@ -966,12 +966,6 @@ class GastoController extends Controller
         abort(404);
     }
 
-    /**
-     * RN-035.3: el gasto que creó un pago PILA se edita o elimina desde su pago
-     * (/seguridad-social/pagos), para que los dos no queden con montos distintos.
-     *
-     * @throws ValidationException
-     */
     /** Cuentas de débito/ahorro del usuario para el selector "Cuenta de la que sale el dinero". */
     private function cuentas()
     {
@@ -982,6 +976,13 @@ class GastoController extends Controller
     {
         return ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito']);
     }
+
+    /**
+     * RN-035.3: el gasto que creó un pago PILA se edita o elimina desde su pago
+     * (/seguridad-social/pagos), para que los dos no queden con montos distintos.
+     *
+     * @throws ValidationException
+     */
 
     private function rechazarSiEsAutomatico(Gasto $gasto): void
     {

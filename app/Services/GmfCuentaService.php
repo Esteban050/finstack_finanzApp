@@ -27,10 +27,19 @@ class GmfCuentaService
 {
     /**
      * @param  string|null  $fechaAnterior  Fecha del gasto antes de editarlo, para recalcular también ese mes.
+     * @param  string|null  $cuentaAnterior  Cuenta del gasto antes de editarlo: si era exenta también hay que recalcular.
      */
-    public static function sincronizar(Gasto $origen, ?string $fechaAnterior = null): void
+    public static function sincronizar(Gasto $origen, ?string $fechaAnterior = null, ?string $cuentaAnterior = null): void
     {
         self::sincronizarUno($origen);
+
+        // Solo las salidas de cuentas exentas dependen unas de otras (tope mensual): sin una cuenta
+        // exenta antes ni después no hay nada que recalcular.
+        $exenta = CuentaBancaria::withoutGlobalScope(DelUsuarioAutenticado::class)->withTrashed()
+            ->whereIn('id', array_filter([$origen->cuenta_id, $cuentaAnterior]))->where('es_exenta_gmf', true)->exists();
+        if (! $exenta) {
+            return;
+        }
 
         $meses = [CarbonImmutable::parse($origen->fecha)->format('Y-m')];
         if ($fechaAnterior !== null) {
