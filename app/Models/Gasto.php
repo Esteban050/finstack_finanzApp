@@ -88,6 +88,8 @@ class Gasto extends Model
         'cuenta_id',
         'gasto_origen_gmf_id',
         'genera_credito',
+        'numero_cuotas',
+        'sin_intereses',
         'fecha',
         'moneda',
         'monto_original',
@@ -113,6 +115,8 @@ class Gasto extends Model
             'tasa_cambio_usada' => 'decimal:4',
             'monto_cop' => 'decimal:2',
             'genera_credito' => 'boolean',
+            'numero_cuotas' => 'integer',
+            'sin_intereses' => 'boolean',
             // La columna es varchar(30)[] de Postgres, no jsonb (RN-026.1, etiquetas).
             'etiquetas' => PgsqlArrayCast::class,
             'creado_en' => 'datetime',

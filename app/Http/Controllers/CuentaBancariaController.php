@@ -95,6 +95,8 @@ class CuentaBancariaController extends Controller
             'banco_otro' => ['required_without:entidad_financiera_id', 'nullable', 'string', 'max:80'],
             'cupo' => ['required', 'regex:/^\d{1,12}$/', 'not_regex:/^0+$/'],
             'tasa_interes_anual' => ['nullable', 'numeric', 'min:0', 'regex:/^\d{1,4}(\.\d{1,6})?$/'],
+            'dia_corte' => ['required', 'integer', 'between:1,31'],
+            'dia_pago' => ['required', 'integer', 'between:1,31'],
         ], [
             'entidad_financiera_id.required_without' => 'Elige el banco de la tarjeta o escribe el nombre en "Otro banco".',
             'banco_otro.required_without' => 'Escribe el nombre del banco.',
@@ -105,6 +107,12 @@ class CuentaBancariaController extends Controller
             'cupo.not_regex' => 'El cupo debe ser mayor que $ 0.',
             'tasa_interes_anual.numeric' => 'La tasa E.A. debe ser un número.',
             'tasa_interes_anual.regex' => 'La tasa E.A. admite hasta 4 enteros y 6 decimales.',
+            'dia_corte.required' => 'Indica el día de corte de la tarjeta.',
+            'dia_corte.integer' => 'El día de corte debe ser un número entero.',
+            'dia_corte.between' => 'El día de corte va de 1 a 31.',
+            'dia_pago.required' => 'Indica el día de pago de la tarjeta.',
+            'dia_pago.integer' => 'El día de pago debe ser un número entero.',
+            'dia_pago.between' => 'El día de pago va de 1 a 31.',
         ]);
 
         $banco = isset($validated['entidad_financiera_id'])
@@ -124,7 +132,7 @@ class CuentaBancariaController extends Controller
         ], true, false);
         $datos['monto'] = '0';
 
-        $creditos->registrar($datos, Auth::id(), [], 'Tarjeta de crédito registrada desde Mi perfil.');
+        $creditos->registrar($datos, Auth::id(), ['dia_corte' => (int) $validated['dia_corte'], 'dia_pago' => (int) $validated['dia_pago']], 'Tarjeta de crédito registrada desde Mi perfil.');
 
         return redirect()->route('profile.show')->with('status', 'Tarjeta registrada.');
     }
@@ -150,7 +158,7 @@ class CuentaBancariaController extends Controller
     {
         $cuentas = CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get();
         $saldos = SaldoCuentaService::saldos($cuentas->pluck('id')->all());
-        $tarjetas = ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito', 'cupo']);
+        $tarjetas = ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito', 'cupo', 'dia_corte', 'dia_pago']);
 
         return [
             'cuentas' => $cuentas->map(fn (CuentaBancaria $c) => [

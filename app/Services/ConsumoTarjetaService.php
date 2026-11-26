@@ -69,7 +69,23 @@ class ConsumoTarjetaService
             $antes = $tarjeta->id === $vinculoAnterior ? (string) $anterior->monto_cop : '0';
             $despues = $tarjeta->id === $vinculo ? (string) $nuevo['monto_cop'] : '0';
             $cambio = bcsub($despues, $antes, 2);
-            if (bccomp($cambio, '0', 2) === 0) {
+            $cuotasNuevas = max(1, (int) ($nuevo['numero_cuotas'] ?? 1));
+            $sinInteresesNuevo = (bool) ($nuevo['sin_intereses'] ?? false);
+
+            // Las cuotas y "sin intereses" son del plan por compra, que exige el ciclo (corte y pago) de la tarjeta.
+            if ($tarjeta->id === $vinculo && ($cuotasNuevas > 1 || $sinInteresesNuevo) && ! CicloTarjetaService::tieneCiclo($tarjeta)) {
+                throw ValidationException::withMessages([
+                    'numero_cuotas' => 'Esta tarjeta no tiene día de corte ni de pago. Registra la tarjeta en Mi perfil con esos datos para comprar a cuotas o sin intereses.',
+                ]);
+            }
+
+            // Mismo capital pero otras condiciones de la compra (cuotas, intereses, fecha): el plan por compra cambia.
+            $condicionesCambian = $tarjeta->id === $vinculo && $tarjeta->id === $vinculoAnterior
+                && CicloTarjetaService::tieneCiclo($tarjeta)
+                && ((int) $anterior->numero_cuotas !== $cuotasNuevas
+                    || (bool) $anterior->sin_intereses !== $sinInteresesNuevo
+                    || $anterior->fecha->toDateString() !== ($fechaNueva ?? $anterior->fecha->toDateString()));
+            if (bccomp($cambio, '0', 2) === 0 && ! $condicionesCambian) {
                 continue;
             }
 
@@ -84,18 +100,28 @@ class ConsumoTarjetaService
             }
 
             $tarjeta->update(['monto' => $capital]);
+            // El gasto aún no está guardado: las compras del plan se arman con lo que queda y lo nuevo.
+            $compras = Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+                ->where('credito_id', $tarjeta->id)
+                ->when($anterior !== null, fn (Builder $q) => $q->where('id', '!=', $anterior->id))
+                ->get(['fecha', 'monto_cop', 'numero_cuotas', 'sin_intereses'])
+                ->map(fn (Gasto $g) => [
+                    'monto' => (string) $g->monto_cop,
+                    'fecha' => $g->fecha->toDateString(),
+                    'numero_cuotas' => (int) $g->numero_cuotas,
+                    'sin_intereses' => (bool) $g->sin_intereses,
+                ]);
+            if (bccomp($despues, '0', 2) === 1) {
+                $compras->push([
+                    'monto' => $despues,
+                    'fecha' => $fechaNueva ?? $anterior?->fecha?->toDateString() ?? now()->toDateString(),
+                    'numero_cuotas' => $cuotasNuevas,
+                    'sin_intereses' => $sinInteresesNuevo,
+                ]);
+            }
             if (PagoCredito::where('credito_id', $tarjeta->id)->vigentes()->exists()) {
-                PagoCreditoService::ajustarPlanTarjeta($tarjeta);
+                PagoCreditoService::ajustarPlanTarjeta($tarjeta, $condicionesCambian, $compras->all());
             } else {
-                // El gasto aún no está guardado: las compras del plan se arman con lo que queda y lo nuevo.
-                $compras = Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
-                    ->where('credito_id', $tarjeta->id)
-                    ->when($anterior !== null, fn (Builder $q) => $q->where('id', '!=', $anterior->id))
-                    ->get(['fecha', 'monto_cop'])
-                    ->map(fn (Gasto $g) => ['monto' => (string) $g->monto_cop, 'fecha' => $g->fecha->toDateString()]);
-                if (bccomp($despues, '0', 2) === 1) {
-                    $compras->push(['monto' => $despues, 'fecha' => $fechaNueva ?? $anterior?->fecha?->toDateString() ?? now()->toDateString()]);
-                }
                 PagoCreditoService::reemplazarPlan($tarjeta, $compras->all());
             }
         }

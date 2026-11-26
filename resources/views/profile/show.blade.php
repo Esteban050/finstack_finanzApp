@@ -283,6 +283,17 @@
                             <x-text-input id="tarjeta_tasa" type="number" step="0.01" min="0" data-value-input data-precision="2" name="tasa_interes_anual" :value="old('tasa_interes_anual')" class="w-full mt-1" />
                             <p class="text-xs text-gray-500 mt-1">Si la dejas vacía se usa 0 %; puedes corregirla en Créditos.</p>
                         </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <x-input-label for="tarjeta_dia_corte" value="Día de corte (1 a 31) *" />
+                                <x-text-input id="tarjeta_dia_corte" type="number" data-value-input data-precision="0" step="1" min="1" max="31" name="dia_corte" required :value="old('dia_corte')" class="w-full mt-1" />
+                            </div>
+                            <div>
+                                <x-input-label for="tarjeta_dia_pago" value="Día de pago (1 a 31) *" />
+                                <x-text-input id="tarjeta_dia_pago" type="number" data-value-input data-precision="0" step="1" min="1" max="31" name="dia_pago" required :value="old('dia_pago')" class="w-full mt-1" />
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 -mt-2">Las compras hasta el día de corte entran en ese extracto; las posteriores, en el siguiente. Se pagan el día de pago que sigue al corte.</p>
                         <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow">Guardar tarjeta</button>
                     </form>
                 </div>
@@ -316,6 +327,9 @@
                         <li class="py-2 text-sm">
                             <strong>{{ $tarjeta->banco }}</strong>
                             <span class="text-gray-500">· cupo {{ $tarjeta->cupo !== null ? $pesos($tarjeta->cupo) : 'sin definir' }}</span>
+                            @if($tarjeta->dia_corte !== null && $tarjeta->dia_pago !== null)
+                                <span class="text-gray-500">· corte día {{ $tarjeta->dia_corte }}, pago día {{ $tarjeta->dia_pago }}</span>
+                            @endif
                             <a href="{{ route('creditos.show', $tarjeta->id) }}" class="text-xs text-indigo-600 font-semibold hover:underline ml-2">Ver en Créditos</a>
                         </li>
                     @empty

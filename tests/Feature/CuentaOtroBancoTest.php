@@ -71,14 +71,14 @@ class CuentaOtroBancoTest extends TestCase
 
     public function test_tarjeta_con_otro_banco_usa_el_nombre_escrito(): void
     {
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => 'OTRO', 'banco_otro' => 'Neobanco X', 'cupo' => '2000000'])
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => 'OTRO', 'banco_otro' => 'Neobanco X', 'cupo' => '2000000', 'dia_corte' => '15', 'dia_pago' => '5'])
             ->assertSessionHasNoErrors();
 
         $tarjeta = Credito::where('tipo_credito', 'TARJETA_CREDITO')->firstOrFail();
         $this->assertSame('Neobanco X', $tarjeta->banco);
         $this->get(route('profile.show'))->assertSee('Neobanco X');
 
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => 'OTRO', 'cupo' => '1000'])
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => 'OTRO', 'cupo' => '1000', 'dia_corte' => '15', 'dia_pago' => '5'])
             ->assertSessionHasErrorsIn('tarjeta', ['banco_otro']);
     }
 

@@ -42,7 +42,7 @@ class ResumenCuentasTest extends TestCase
             'naturaleza' => 'VARIABLE', 'necesidad' => 'ESENCIAL', 'medio_pago' => 'TARJETA_DEBITO', 'relevancia_tributaria' => 'NO_DEDUCIBLE',
             'origen' => 'MANUAL', 'estado' => 'CONFIRMADO',
         ]);
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '3000000'])->assertSessionHasNoErrors();
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '3000000', 'dia_corte' => '15', 'dia_pago' => '5'])->assertSessionHasNoErrors();
         $this->assertSame(1, Credito::where('tipo_credito', 'TARJETA_CREDITO')->count());
 
         $cuentas = app(DashboardResumenService::class)->obtenerDashboard($u, 'mes-actual', null, null, CarbonImmutable::parse('2026-11-22'))['cuentas'];
@@ -51,6 +51,8 @@ class ResumenCuentasTest extends TestCase
         $this->assertSame('750000.00', $cuentas['debito'][0]['saldo_disponible']);
         $this->assertTrue($cuentas['debito'][0]['exenta_gmf']);
         $this->assertCount(1, $cuentas['tarjetas']);
+        $this->assertSame('DEBITO', $cuentas['debito'][0]['tipo']);
+        $this->assertSame('CREDITO', $cuentas['tarjetas'][0]['tipo']);
         $this->assertSame('3000000.00', $cuentas['tarjetas'][0]['cupo']);
         $this->assertSame('0.00', $cuentas['tarjetas'][0]['usado']);
         $this->assertSame('3000000.00', $cuentas['tarjetas'][0]['disponible']);

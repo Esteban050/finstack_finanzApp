@@ -26,7 +26,7 @@ class TarjetaDePerfilEnGastoTest extends TestCase
         $this->usuario = $this->crearUsuario();
         $this->entrarComo($this->usuario);
         $banco = EntidadFinanciera::firstOrCreate(['nombre' => 'Banco QA', 'tipo' => 'BANCO']);
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '2000000'])->assertSessionHasNoErrors();
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '2000000', 'dia_corte' => '15', 'dia_pago' => '5'])->assertSessionHasNoErrors();
         $this->tarjeta = Credito::where('tipo_credito', 'TARJETA_CREDITO')->firstOrFail();
     }
 

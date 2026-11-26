@@ -47,6 +47,8 @@ export function validateExpense(values, categories, { recurrent = false, limit =
     }
     // Compra a cuotas nueva: los campos del crédito solo viajan (habilitados) con esa opción.
     if (values.medio_pago === 'TARJETA_CREDITO' && values.credito_id === 'NUEVA') Object.assign(errors, validateCreditCard(values));
+    // Tarjeta registrada: cuotas opcionales de la compra (vacío = 1).
+    if (values.medio_pago === 'TARJETA_CREDITO' && values.credito_id && values.credito_id !== 'NUEVA' && (values.numero_cuotas ?? '') !== '' && (!/^\d+$/.test(String(values.numero_cuotas)) || Number(values.numero_cuotas) < 1 || Number(values.numero_cuotas) > 72)) errors.numero_cuotas = ['Indica un número de cuotas entero entre 1 y 72, o déjalo vacío para 1 cuota.'];
     if (!has(['FIJO', 'VARIABLE'], values.naturaleza)) errors.naturaleza = ['Selecciona la naturaleza: Fijo o Variable.'];
     if (!has(['ESENCIAL', 'DISCRECIONAL'], values.necesidad)) errors.necesidad = ['Selecciona la necesidad: Esencial o Discrecional.'];
     if (!has(['NO_DEDUCIBLE', 'POTENCIALMENTE_DEDUCIBLE'], values.relevancia_tributaria)) errors.relevancia_tributaria = ['Selecciona la relevancia tributaria.'];
