@@ -12,9 +12,23 @@ function showClientErrors(form, errors) {
     }
 }
 export function mountAuth() {
-    for (const select of document.querySelectorAll('[data-theme-choice]')) {
-        select.value = document.documentElement.dataset.theme || 'dark';
-        select.addEventListener('change', () => { document.documentElement.dataset.theme = select.value; setCookie('finanzapp_theme', select.value, 31536000); for (const other of document.querySelectorAll('[data-theme-choice]')) other.value = select.value; });
+    const themeButtons = document.querySelectorAll('[data-theme-choice]');
+    const syncTheme = () => {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        for (const button of themeButtons) {
+            button.setAttribute('aria-pressed', String(dark));
+            button.title = dark ? 'Activar modo claro' : 'Activar modo oscuro';
+            button.hidden = false;
+        }
+    };
+    syncTheme();
+    for (const button of themeButtons) {
+        button.addEventListener('click', () => {
+            const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = theme;
+            setCookie('finanzapp_theme', theme, 31536000);
+            syncTheme();
+        });
     }
     document.querySelectorAll('[data-password-toggle]').forEach((button) => button.addEventListener('click', () => {
         const input = document.getElementById(button.getAttribute('aria-controls')), show = input.type === 'password';

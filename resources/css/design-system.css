@@ -86,7 +86,7 @@
 dialog::backdrop { background: var(--ui-overlay); }
 html:has(dialog[open]) { overflow: hidden; }
 .ui-skip { position: fixed; left: 1rem; top: -100px; z-index: 100; padding: 1rem; background: var(--ui-bg); border: 2px solid var(--accent); }
-.ui-skip:focus { top: 1rem; }
+.ui-skip:focus-visible { top: 1rem; }
 .ui-policy { padding: 1.75rem 1.5rem; text-align: center; font-size: var(--ui-text-meta); }
 .ui-policy a { color: var(--ui-muted); }
 .ui-history-frame { display: block; width: 100%; min-height: 240px; border: 0; margin-top: 1.5rem; background: var(--ui-bg); }
@@ -128,6 +128,16 @@ html:has(dialog[open]) { overflow: hidden; }
 .ui-error { margin: 0; color: var(--ui-danger); font-size: var(--ui-text-small); line-height: 1.6; }
 .ui-field [aria-invalid=true] { border: 2px solid var(--ui-danger) !important; }
 .ui-inline { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.ui-filter-row { display: flex; align-items: start; flex-wrap: wrap; gap: 1rem; }
+.ui-filter-row > .ui-field { margin: 0; }
+.ui-filter-row > .ui-field > label,
+.ui-filter-grid > .ui-field > label { min-block-size: 1.5rem; line-height: 1.5rem; }
+.ui-filter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; align-self: start; margin-block-start: 2.125rem; }
+.ui-filter-actions .ui-button,
+.ui-filter-row > .ui-field > input,
+.ui-filter-grid > .ui-field > select,
+.ui-filter-grid .ui-money input[type=text] { min-block-size: 3.25rem; }
+.scfp-theme .ui-filter-grid .ui-money input[type=text] { padding-block: .625rem; line-height: 1.25; }
 .ui-money { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .75rem; }
 .ui-money-unit { font-size: var(--ui-text-small); font-weight: 600; color: var(--ui-muted); }
 .scfp-theme .ui-money input[type=text] { font-size: 1.5rem; line-height: 1.4; font-weight: 550; letter-spacing: -.025em; padding-block: .875rem; text-align: right; }
@@ -166,7 +176,10 @@ html:has(dialog[open]) { overflow: hidden; }
 .ui-table th, .ui-table td { padding: 1.125rem 1rem; border-bottom: 1px solid var(--ui-border); overflow-wrap: normal; word-break: normal; hyphens: none; vertical-align: middle; }
 .ui-table th { color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 600; background: var(--ui-raised); }
 .ui-table tbody tr:hover { background: var(--ui-raised); }
-.ui-table td:has([data-money]), .ui-table th[data-align=right] { text-align: right; }
+.ui-table th, .ui-table td { text-align: start; }
+.ui-table :is(.ui-status-badge, td[data-label="Estado"] .ui-badge) { inline-size: 9rem; max-inline-size: 100%; justify-self: start; justify-content: center; white-space: normal; text-align: center; }
+.ui-table .ui-amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-table .ui-currency-code { display: block; }
 .ui-table [data-money] { font-size: 1rem; font-weight: 550; letter-spacing: -.02em; }
 .ui-table tfoot { border-top: 2px solid var(--ui-border-strong); }
 .ui-table tfoot th, .ui-table tfoot td { padding-top: 1.5rem; background: transparent; font-weight: 650; color: var(--ui-text); }
@@ -204,8 +217,6 @@ html:has(dialog[open]) { overflow: hidden; }
     .ui-topbar { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; gap: .5rem; padding: .75rem 1rem; min-height: 72px; }
     .ui-topbar-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ui-topbar .ui-theme-switch { margin-left: 0; min-width: 0; }
-    .ui-topbar .ui-theme-switch > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-    .ui-topbar .ui-theme-switch select { min-width: 0; width: 6rem; min-height: 44px; }
     .ui-topbar .ui-notification-link { min-width: 44px; justify-content: center; gap: .25rem; }
     .ui-content { padding: 1.5rem 1rem; }
     .ui-content .flex { flex-wrap: wrap; }
@@ -253,7 +264,6 @@ html:has(dialog[open]) { overflow: hidden; }
 .ui-deduction-mode [aria-pressed=true] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
 @media (max-width: 767px) {
     .ui-table td { grid-template-columns: minmax(0, 1fr); gap: .375rem; }
-    .ui-table td:has([data-money]) { text-align: right; }
     .ui-table .ui-inline { flex-wrap: wrap; }
 }
 
@@ -272,11 +282,8 @@ summary { min-height: 44px; align-content: center; }
    Antes se alineaba con el margen (28 px más abajo) o con el centro de etiqueta + control. */
 :root { --ui-field-label-h: calc(var(--ui-text-small) * 1.65); }
 .ui-field > label { line-height: 1.65; }
-:is(.ui-inline, .income-filters):has(> .ui-field) { align-items: flex-start; }
-:is(.ui-inline, .income-filters):has(> .ui-field) > :not(.ui-field) { margin-top: calc(var(--ui-field-label-h) + .625rem); align-self: flex-start; }
-/* Moneda al lado del monto en tablas ("$ 125.000.000 COP"), no en una línea aparte. */
-.ui-currency { display: inline; margin-left: .35rem; white-space: nowrap; }
-.ui-number:has(> .ui-currency) { white-space: nowrap; }
+:is(.ui-inline, .income-filters):not(.ui-filter-grid):has(> .ui-field) { align-items: flex-start; }
+:is(.ui-inline, .income-filters):not(.ui-filter-grid):has(> .ui-field) > :not(.ui-field) { margin-top: calc(var(--ui-field-label-h) + .625rem); align-self: flex-start; }
 /* Alias de colores que usan algunas vistas (inversiones) y no existían: sin ellos se
    veían los respaldos fijos (#f9fafb, #ccc), blancos en tema oscuro. */
 :root { --color-primary: var(--accent); --color-border: var(--ui-border); --color-surface-subtle: var(--ui-raised); }

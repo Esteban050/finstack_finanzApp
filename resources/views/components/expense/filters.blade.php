@@ -4,9 +4,7 @@
     <div class="expense-filter-grid">
         <x-ui.field name="fecha_desde" label="Desde"><input id="fecha_desde" type="date" name="fecha_desde" value="{{ request('fecha_desde') }}" aria-describedby="fecha_desde-error"></x-ui.field>
         <x-ui.field name="fecha_hasta" label="Hasta"><input id="fecha_hasta" type="date" name="fecha_hasta" value="{{ request('fecha_hasta') }}" aria-describedby="fecha_hasta-error"></x-ui.field>
-    </div>
-    <x-expense.category-fields :categories="$categories" prefix="filter" :record="request()->all()" :required="false" :active-only="false" />
-    <div class="expense-filter-grid">
+        <x-expense.category-fields :categories="$categories" prefix="filter" :record="request()->all()" :required="false" :active-only="false" />
         <x-expense.select name="naturaleza" label="Naturaleza" prefix="filter" :options="['FIJO', 'VARIABLE']" :value="request('naturaleza')" placeholder="Todas" />
         <x-expense.select name="necesidad" label="Necesidad" prefix="filter" :options="['ESENCIAL', 'DISCRECIONAL']" :value="request('necesidad')" placeholder="Todas" />
         <x-expense.select name="medio_pago" label="Medio de pago" prefix="filter" :options="['EFECTIVO', 'TARJETA_DEBITO', 'TARJETA_CREDITO', 'TRANSFERENCIA', 'BILLETERA_DIGITAL', 'OTRO']" :value="request('medio_pago')" placeholder="Todos" />

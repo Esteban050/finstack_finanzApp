@@ -37,11 +37,11 @@
             </div>
         </div>
 
-        <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-inline" style="margin: 0;">
+        <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-filter-row">
             <x-ui.field name="anio" label="Otro año">
-                <input type="number" name="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
+                <input type="number" name="anio" id="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
             </x-ui.field>
-            <x-ui.button type="submit" variant="secondary">Ir</x-ui.button>
+            <div class="ui-filter-actions"><x-ui.button type="submit" variant="secondary">Ir</x-ui.button></div>
         </form>
     </div>
 </x-ui.card>
@@ -95,7 +95,7 @@
             <thead>
                 <tr>
                     <th>Entidad Emisora</th>
-                    <th data-align="center">Transacciones</th>
+                    <th>Transacciones</th>
                     <th data-align="right">Total Rendimientos / Bruto</th>
                     <th data-align="right">Retención Practicada</th>
                     <th data-align="right">GMF Descontado</th>
@@ -106,7 +106,7 @@
                 @foreach($resumenPorEntidad as $ent)
                     <tr>
                         <td><strong>{{ $ent['entidad'] }}</strong></td>
-                        <td style="text-align: center;">{{ $ent['transacciones_count'] }}</td>
+                        <td>{{ $ent['transacciones_count'] }}</td>
                         <td class="ui-number">$ {{ $formatValue((string) $ent['total_bruto'], 2) }}</td>
                         <td class="ui-number" style="color: #dc2626; font-weight: 600;">-$ {{ $formatValue((string) $ent['total_retencion'], 2) }}</td>
                         <td class="ui-number" style="color: #d97706;">-$ {{ $formatValue((string) $ent['total_gmf'], 2) }}</td>

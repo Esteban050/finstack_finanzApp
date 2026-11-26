@@ -21,9 +21,9 @@
 </header>
 
 <x-ui.card>
-    <form method="GET" action="{{ route('inversiones.portafolio') }}" class="ui-inline">
+    <form method="GET" action="{{ route('inversiones.portafolio') }}" class="ui-filter-row">
         <x-ui.date-input name="fecha_corte" label="Fecha de corte" :value="$fechaCorte" />
-        <x-ui.button type="submit">Consultar</x-ui.button>
+        <div class="ui-filter-actions"><x-ui.button type="submit">Consultar</x-ui.button></div>
     </form>
 </x-ui.card>
 
@@ -31,7 +31,7 @@
     <p class="ui-notice" role="status">El portafolio contiene registros históricos fuera de la moneda admitida (COP y USD). Falta confirmar su tratamiento antes de mostrar los totales.</p>
 @else
     <x-ui.card title="Resumen del portafolio">
-        <dl class="finance-stats">
+        <dl class="finance-stats portfolio-summary">
             <x-ui.finance-stat label="Valor total" :value="$portafolio['valor_total']" />
             <x-ui.finance-stat label="Capital aportado neto" :value="$portafolio['capital_aportado_neto']" />
             <x-ui.finance-stat label="Ganancia o pérdida" :value="$portafolio['ganancia']" format="sign-money" />

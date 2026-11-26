@@ -597,7 +597,7 @@
                             <td>{{ $p['periodo'] }}</td>
                             <td><time data-date="{{ $p['fecha_limite'] }}">{{ $p['fecha_limite'] }}</time></td>
                             <td>
-                                <x-ui.badge :tone="($p['estado'] === 'VENCIDO') ? 'danger' : (($p['estado'] === 'POR_VENCER') ? 'warning' : 'neutral')">
+                                <x-ui.badge class="ui-status-badge" :tone="($p['estado'] === 'VENCIDO') ? 'danger' : (($p['estado'] === 'POR_VENCER') ? 'warning' : 'neutral')">
                                     {{ ucfirst(strtolower(str_replace('_', ' ', $p['estado']))) }}
                                 </x-ui.badge>
                             </td>
