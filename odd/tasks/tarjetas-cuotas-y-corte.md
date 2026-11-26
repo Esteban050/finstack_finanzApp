@@ -29,7 +29,7 @@ Branch `feat/tarjetas-cuotas-y-corte`, one work-unit commit per task (Convention
 ## Tasks
 - [x] T1 — Dashboard type label (`DashboardResumenService::obtenerCuentas` adds `tipo`, `resources/js/reports/index.js` renders "nombre · Débito/Crédito"). Route: delegated (single writer for the feature).
 - [x] T2 — Card purchase breakdown in Credits detail (endpoint/payload + `resources/js/credits/index.js`): fecha, descripción, monto, cuotas, sin intereses. Route: delegated.
-- [ ] T3 — Profile card form: `dia_corte`, `dia_pago` (required for new cards), store on creditos, show next statement/payment date in card detail. Route: delegated.
+- [x] T3 — Profile card form: `dia_corte`, `dia_pago` (required for new cards), store on creditos, show next statement/payment date in card detail. Route: delegated.
 - [ ] T4 — Expense with existing card: optional `numero_cuotas` (default 1) + `sin_intereses` checkbox; card plan computed per purchase using corte/pago days. Route: delegated.
 
 ## Acceptance criteria
@@ -44,7 +44,9 @@ Branch `feat/tarjetas-cuotas-y-corte`, one work-unit commit per task (Convention
 
 - T1 done. Files: DashboardResumenService::obtenerCuentas (tipo DEBITO|CREDITO), resources/js/reports/index.js (nombre · Débito/Crédito), ResumenCuentasTest. Checks: ResumenCuentasTest|CuentaOtroBancoTest|TarjetaDePerfilEnGastoTest 9/9. Commit: 02e744f.
 
-- T2 done. Files: CreditoController::show adds `compras` (gastos vigentes de la tarjeta; numero_cuotas/sin_intereses default 1/false until T4 columns), resources/js/credits/index.js (card "Compras" table), TarjetaComprasDetalleTest. Checks: TarjetaComprasDetalleTest 2/2; Credito*/CupoTarjeta 35/35; npm test 109/109. Commit: T2HASH.
+- T2 done. Files: CreditoController::show adds `compras` (gastos vigentes de la tarjeta; numero_cuotas/sin_intereses default 1/false until T4 columns), resources/js/credits/index.js (card "Compras" table), TarjetaComprasDetalleTest. Checks: TarjetaComprasDetalleTest 2/2; Credito*/CupoTarjeta 35/35; npm test 109/109. Commit: 3a999c4.
+
+- T3 done. Migration 2026_11_26_000003 (creditos.dia_corte/dia_pago smallint nullable + CHECK 1..31, applied locally), new CicloTarjetaService (corteDeCompra, pagoDeCorte, proximaFecha, day clamped to month end), Credito fillable/casts, CuentaBancariaController::storeTarjeta (required 1..31) + profile form/list, CreditoController::show `ciclo` (proximo_corte/proximo_pago) + credits JS stats. Decision: NUEVA-from-expense cards and /creditos form left without days (legacy behaviour). Test edits: 4 existing tests that POST perfil.tarjetas.store now send dia_corte/dia_pago (required field consequence). New: CicloTarjetaServiceTest, PerfilCuentasTarjetasTest case. Checks: 55 related PHP tests pass; npm test 109/109. Commit: T3HASH.
 
 ## Next step
 T1.

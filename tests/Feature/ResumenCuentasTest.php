@@ -42,7 +42,7 @@ class ResumenCuentasTest extends TestCase
             'naturaleza' => 'VARIABLE', 'necesidad' => 'ESENCIAL', 'medio_pago' => 'TARJETA_DEBITO', 'relevancia_tributaria' => 'NO_DEDUCIBLE',
             'origen' => 'MANUAL', 'estado' => 'CONFIRMADO',
         ]);
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '3000000'])->assertSessionHasNoErrors();
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $banco->id, 'cupo' => '3000000', 'dia_corte' => '15', 'dia_pago' => '5'])->assertSessionHasNoErrors();
         $this->assertSame(1, Credito::where('tipo_credito', 'TARJETA_CREDITO')->count());
 
         $cuentas = app(DashboardResumenService::class)->obtenerDashboard($u, 'mes-actual', null, null, CarbonImmutable::parse('2026-11-22'))['cuentas'];

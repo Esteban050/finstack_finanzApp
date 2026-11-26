@@ -50,6 +50,9 @@ class Credito extends Model
         'fecha_inicio',
         'fecha_primer_pago',
         'fecha_corte',
+        // Ciclo de la tarjeta de crédito: días de corte y de pago (1..31).
+        'dia_corte',
+        'dia_pago',
         // CP-CRE-013: cupo de la tarjeta de crédito.
         'cupo',
         'seguro_porc_mensual',
@@ -72,6 +75,8 @@ class Credito extends Model
             'fecha_inicio' => 'date:Y-m-d',
             'fecha_primer_pago' => 'date:Y-m-d',
             'fecha_corte' => 'date:Y-m-d',
+            'dia_corte' => 'integer',
+            'dia_pago' => 'integer',
             'cupo' => 'decimal:2',
             'seguro_porc_mensual' => 'decimal:6',
             'cargo_fijo' => 'decimal:2',

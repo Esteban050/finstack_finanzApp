@@ -76,7 +76,7 @@ class PerfilCuentasTarjetasTest extends TestCase
 
     public function test_registra_una_tarjeta_como_credito_con_su_cupo(): void
     {
-        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => '5000000'])
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => '5000000', 'dia_corte' => '15', 'dia_pago' => '5'])
             ->assertRedirect(route('profile.show'))->assertSessionHasNoErrors();
 
         $tarjeta = Credito::where('usuario_id', $this->usuario->id)->where('tipo_credito', 'TARJETA_CREDITO')->firstOrFail();
@@ -89,9 +89,31 @@ class PerfilCuentasTarjetasTest extends TestCase
     public function test_valida_el_cupo_de_la_tarjeta(): void
     {
         foreach (['0', '1500.5', ''] as $cupo) {
-            $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => $cupo])
+            $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => $cupo, 'dia_corte' => '15', 'dia_pago' => '5'])
                 ->assertSessionHasErrorsIn('tarjeta', ['cupo']);
         }
         $this->assertSame(0, Credito::where('tipo_credito', 'TARJETA_CREDITO')->count());
+    }
+
+    public function test_la_tarjeta_exige_dia_de_corte_y_de_pago_y_los_guarda(): void
+    {
+        foreach ([['dia_corte' => '', 'dia_pago' => '5'], ['dia_corte' => '15', 'dia_pago' => ''], ['dia_corte' => '0', 'dia_pago' => '5'], ['dia_corte' => '15', 'dia_pago' => '32'], ['dia_corte' => '1.5', 'dia_pago' => '5']] as $dias) {
+            $campo = array_key_first(array_filter($dias, fn ($v, $k) => in_array($v, ['', '0', '32', '1.5'], true), ARRAY_FILTER_USE_BOTH));
+            $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => '5000000', ...$dias])
+                ->assertSessionHasErrorsIn('tarjeta', [$campo]);
+        }
+        $this->assertSame(0, Credito::where('tipo_credito', 'TARJETA_CREDITO')->count());
+
+        $this->post(route('perfil.tarjetas.store'), ['entidad_financiera_id' => $this->banco->id, 'cupo' => '5000000', 'dia_corte' => '28', 'dia_pago' => '12'])
+            ->assertSessionHasNoErrors();
+        $tarjeta = Credito::where('tipo_credito', 'TARJETA_CREDITO')->firstOrFail();
+        $this->assertSame(28, $tarjeta->dia_corte);
+        $this->assertSame(12, $tarjeta->dia_pago);
+        $this->get(route('profile.show'))->assertSee('corte día 28, pago día 12');
+
+        $ciclo = $this->getJson("/creditos/{$tarjeta->id}")->assertOk()->json('data.ciclo');
+        $this->assertSame(['dia_corte' => 28, 'dia_pago' => 12], ['dia_corte' => $ciclo['dia_corte'], 'dia_pago' => $ciclo['dia_pago']]);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-28$/', $ciclo['proximo_corte']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-12$/', $ciclo['proximo_pago']);
     }
 }

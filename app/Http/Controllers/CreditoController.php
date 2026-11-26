@@ -9,6 +9,7 @@ use App\Models\PagoCredito;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Services\AlertaCreditoService;
 use App\Services\BitacoraService;
+use App\Services\CicloTarjetaService;
 use App\Services\CreditoService;
 use App\Services\EndeudamientoService;
 use App\Services\PagoCreditoService;
@@ -281,6 +282,7 @@ class CreditoController extends Controller
                 ...$this->presentar($credito, situacion: $situacion),
                 'estado_cuenta' => PagoCreditoService::estadoCuenta($credito, $situacion),
                 'compras' => $this->comprasDeTarjeta($credito),
+                'ciclo' => $credito->tipo_credito === 'TARJETA_CREDITO' ? CicloTarjetaService::proximas($credito, CarbonImmutable::today()) : null,
             ],
         ]);
     }
