@@ -126,3 +126,15 @@ test('H23: los montos en dólares muestran el código de la moneda, no el signo 
     assert.equal(formatCurrencyAmount('500.00', 'COP'), formatMoney('500.00'));
     assert.equal(formatCurrencyAmount('500.00'), formatMoney('500.00'));
 });
+
+import { formatForDisplay } from '../ui/value-input.js';
+test('Campos con muchos decimales (unidades, precios, tasas) no muestran ceros sobrantes', () => {
+    assert.equal(formatForDisplay('5000000.00000000', '8'), '5.000.000');
+    assert.equal(formatForDisplay('25.00000000', '8'), '25');
+    assert.equal(formatForDisplay('0.01250000', '8'), '0,0125');
+    assert.equal(formatForDisplay('10.50000000', '8'), '10,5');
+    assert.equal(formatForDisplay('4200.0000', '4'), '4.200');
+    assert.equal(formatForDisplay('100', '8'), '100');
+    // Los montos de 2 decimales se siguen mostrando completos.
+    assert.equal(formatForDisplay('1234567.80', '2'), '1.234.567,80');
+});

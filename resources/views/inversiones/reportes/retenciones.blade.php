@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-inline" style="align-items: flex-end; margin: 0;">
+        <form method="GET" action="{{ route('inversiones.reportes.retenciones') }}" class="ui-inline" style="margin: 0;">
             <x-ui.field name="anio" label="Otro año">
                 <input type="number" name="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
             </x-ui.field>

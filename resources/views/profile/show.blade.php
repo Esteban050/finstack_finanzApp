@@ -148,7 +148,7 @@
                     </x-ui.field>
 
                     <!-- Opciones para Asalariado y Contratistas -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-indigo-50/50 rounded-lg border border-indigo-100">
                         <x-ui.field name="es_salario_integral" label="¿Tiene Salario Integral? (Asalariado)">
                             <select id="es_salario_integral" name="es_salario_integral" class="w-full mt-1 border-gray-300 rounded-md text-sm">
                                 <option value="0" @selected(!in_array(old('es_salario_integral', $perfilActivo?->es_salario_integral), [1, '1', true], true))>No</option>
@@ -157,7 +157,7 @@
                         </x-ui.field>
                         <x-ui.field name="clase_riesgo_arl" label="Clase de Riesgo ARL (Indep./Contratista)">
                             <select id="clase_riesgo_arl" name="clase_riesgo_arl" class="w-full mt-1 border-gray-300 rounded-md text-sm">
-                                <option value="">-- No aplica / Sin ARL --</option>
+                                <option value="">No aplica (sin ARL)</option>
                                 @foreach ([1 => 'Clase I (0,522 %)', 2 => 'Clase II (1,044 %)', 3 => 'Clase III (2,436 %)', 4 => 'Clase IV (4,350 %)', 5 => 'Clase V (6,960 %)'] as $k => $v)
                                     <option value="{{ $k }}" {{ old('clase_riesgo_arl', $perfilActivo?->clase_riesgo_arl) == $k ? 'selected' : '' }}>{{ $v }}</option>
                                 @endforeach

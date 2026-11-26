@@ -69,12 +69,8 @@
                     <input id="entidad" name="entidad" maxlength="80" value="{{ old('entidad') }}" placeholder="Ej: Fiduciaria de Prueba, Skandia, Porvenir">
                 </x-ui.field>
 
-                <x-ui.field name="monto_inicial" label="Monto inicial" :required="true" help="Capital inicial a invertir o depositar">
-                    <input id="monto_inicial" name="monto_inicial" type="number" data-value-input data-precision="2" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Ej: 10000000" oninput="actualizarCalculosGenerales(); resolverDosDeTres('monto'); calcularProyeccionCdt(); actualizarWizardProyeccion();">
-                </x-ui.field>
-
-                <x-ui.date-input name="fecha_apertura" label="Fecha de apertura" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
-
+                {{-- Fila 1: moneda y, con USD, la TRM al lado. Fila 2: monto y fecha. Con COP la TRM
+                     solo se oculta (conserva su espacio) para que monto y fecha no cambien de lugar. --}}
                 <x-ui.field name="moneda" label="Moneda" :required="true">
                     <div class="ui-inline" role="group" aria-label="Moneda" style="margin-top: 0.25rem;">
                         <label class="ui-check"><input type="radio" name="moneda" value="COP" @checked(old('moneda', 'COP') === 'COP') onchange="toggleMoneda(this.value)"> COP ($)</label>
@@ -82,11 +78,17 @@
                     </div>
                 </x-ui.field>
 
-                <div id="tasa-cambio-wrapper" @if(old('moneda', 'COP') !== 'USD') style="display:none;" @endif>
+                <div id="tasa-cambio-wrapper" @if(old('moneda', 'COP') !== 'USD') style="visibility:hidden;" aria-hidden="true" @endif>
                     <x-ui.field name="tasa_cambio_usada" label="Tasa de cambio (TRM)" help="Si se deja vacía, se tomará la TRM oficial de la fecha de apertura.">
                         <input id="tasa_cambio_usada" name="tasa_cambio_usada" type="number" data-value-input data-precision="4" step="0.0001" placeholder="Ej: 4150.00" value="{{ old('tasa_cambio_usada') }}">
                     </x-ui.field>
                 </div>
+
+                <x-ui.field name="monto_inicial" label="Monto inicial" :required="true" help="Capital inicial a invertir o depositar">
+                    <input id="monto_inicial" name="monto_inicial" type="number" data-value-input data-precision="2" step="0.01" min="0.01" value="{{ old('monto_inicial') }}" required placeholder="Ej: 10000000" oninput="actualizarCalculosGenerales(); resolverDosDeTres('monto'); calcularProyeccionCdt(); actualizarWizardProyeccion();">
+                </x-ui.field>
+
+                <x-ui.date-input name="fecha_apertura" label="Fecha de apertura" :value="old('fecha_apertura', now('America/Bogota')->format('Y-m-d'))" />
 
                 <!-- Input oculto para sincronizar nivel_riesgo con el backend -->
                 <input type="hidden" id="nivel_riesgo" name="nivel_riesgo" value="{{ old('nivel_riesgo', 'MEDIO') }}">
@@ -139,7 +141,7 @@
                     </div>
 
                     <!-- Panel de Composición de Activos Subyacentes Dinámico -->
-                    <div id="portafolio-activos-preview" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem;">
+                    <div class="inv-box" id="portafolio-activos-preview" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
                             <strong id="portafolio-preview-titulo" style="color: #0f172a; font-size: 0.95rem;">Portafolio Conservador / Liquidez</strong>
                             <span id="portafolio-preview-rango" style="background: #e2e8f0; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">Rango: 4% – 7% E.A.</span>
@@ -205,7 +207,7 @@
                     </div>
 
                     <!-- Gráfica de Proyección en Tiempo Real -->
-                    <div style="position: relative; height: 260px; width: 100%; margin-top: 1rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.5rem;">
+                    <div class="inv-box" style="position: relative; height: 260px; width: 100%; margin-top: 1rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.5rem;">
                         <canvas id="wizardProjectionCanvas" role="img" aria-label="Curva de proyección esperada de la inversión"></canvas>
                     </div>
                 </div>
@@ -261,7 +263,7 @@
                     </x-ui.field>
 
                     <x-ui.field name="base_dias" label="Base de cálculo anual" help="Estándar bancario colombiano para CDT (año civil de 365 días)">
-                        <input type="text" value="365 días (Estándar bancario)" readonly class="ui-input" style="background-color: var(--color-surface-subtle, #f9fafb); cursor: default;" aria-readonly="true">
+                        <input type="text" value="365 días (Estándar bancario)" readonly class="ui-input" style="cursor: default;" aria-readonly="true">
                         <input type="hidden" name="base_dias" id="base_dias" value="365">
                     </x-ui.field>
 
@@ -269,7 +271,7 @@
                         <label class="ui-check"><input type="checkbox" name="es_cdat" value="1" @checked(old('es_cdat'))> Es CDAT (Certificado de Ahorro a Término)</label>
                     </div>
                 </div>
-                <div id="cdt-proyeccion-box" class="ui-notice" style="margin-top: 0.75rem; background: #f0fdf4; border-color: #86efac;">
+                <div id="cdt-proyeccion-box" class="inv-box ui-notice" style="margin-top: 0.75rem; background: #f0fdf4; border-color: #86efac;">
                     <p><strong>Simulación al vencimiento:</strong> Rendimiento bruto estimado: <strong id="cdt-prev-bruto">$ 0</strong> · Retención 4% (Decreto 572/2025): <strong id="cdt-prev-ret">$ 0</strong> · Neto a recibir: <strong id="cdt-prev-neto">$ 0</strong></p>
                 </div>
             </fieldset>
@@ -289,7 +291,7 @@
                         </select>
                     </x-ui.field>
 
-                    <div style="grid-column: 1 / -1; background: #eff6ff; padding: 0.75rem; border-radius: 6px;">
+                    <div class="inv-box" style="grid-column: 1 / -1; background: #eff6ff; padding: 0.75rem; border-radius: 6px;">
                         <label class="ui-check" style="font-weight: 600;">
                             <input type="checkbox" name="es_cuenta_gmf_exenta" value="1" @checked(old('es_cuenta_gmf_exenta', true))>
                             Marcar como Cuenta Exenta del 4x1000 (GMF)
@@ -356,7 +358,7 @@
                         </x-ui.field>
                     </div>
 
-                    <div id="bvc-dividendo-info" style="{{ (old('mercado', 'BVC') === 'BVC' && old('subtipo_renta_variable', 'ACCION') === 'ACCION') ? '' : 'display: none;' }} grid-column: 1 / -1; background: #f0fdf4; border: 1px solid #86efac; padding: 0.75rem; border-radius: 6px;">
+                    <div class="inv-box" id="bvc-dividendo-info" style="{{ (old('mercado', 'BVC') === 'BVC' && old('subtipo_renta_variable', 'ACCION') === 'ACCION') ? '' : 'display: none;' }} grid-column: 1 / -1; background: #f0fdf4; border: 1px solid #86efac; padding: 0.75rem; border-radius: 6px;">
                         <p style="margin: 0; color: #166534; font-size: 0.875rem;">
                             <strong>Tratamiento tributario BVC (Art. 242 E.T. / Ley 2277):</strong> En acciones colombianas de la BVC no aplica Distributivo/Acumulativo. Los dividendos decretados están <strong>exentos de retención en la fuente (tarifa 0%) hasta 1.090 UVT ($ 57.087.660 en 2026)</strong>. Solo los dividendos anuales que superen 1.090 UVT pagan el 15% sobre el exceso.
                         </p>
@@ -388,7 +390,7 @@
                         <input name="ingreso_anual_estimado" type="number" data-value-input data-precision="2" step="0.01" min="0" value="{{ old('ingreso_anual_estimado', $perfilTributario?->ingreso_anual_estimado ?? '') }}" placeholder="Ej: 120000000">
                     </x-ui.field>
                 </div>
-                <div class="ui-notice" style="margin-top: 0.5rem; background: #fefce8; border-color: #fde047;">
+                <div class="inv-box ui-notice" style="margin-top: 0.5rem; background: #fefce8; border-color: #fde047;">
                     <p><strong>Validación normativa de topes (Art. 126-1 ET / 9.8.2):</strong> El aporte es renta exenta deducible hasta el menor valor entre el 30% del ingreso anual y 3.800 UVT ($ 199.021.200 en 2026). Si retiras anticipadamente sin cumplir 10 años ni destino de vivienda, se aplica retención contingente del 7% y se revierte el deducible.</p>
                 </div>
             </fieldset>
@@ -412,7 +414,7 @@
                         <input id="plazo_dias_cesantias" name="plazo_dias" type="number" min="1" value="{{ old('plazo_dias', 365) }}">
                     </x-ui.field>
                 </div>
-                <div class="ui-notice" style="margin-top: 0.5rem; background: #eff6ff; border-color: #bfdbfe;">
+                <div class="inv-box ui-notice" style="margin-top: 0.5rem; background: #eff6ff; border-color: #bfdbfe;">
                     <p><strong>Beneficio fiscal (Art. 206 #4 ET):</strong> Retención en la fuente 0%. Si el ingreso promedio ≤ 350 UVT ($ 18.330.900), la exención es del 100%. Por encima de 350 UVT aplica tabla gradual.</p>
                 </div>
             </fieldset>
@@ -444,7 +446,7 @@
             </select>
         </x-ui.field>
 
-        <div class="ui-inline" style="align-self: flex-end;">
+        <div class="ui-inline">
             <x-ui.button type="submit" variant="secondary">Filtrar</x-ui.button>
             <a href="{{ route('inversiones.index') }}" class="ui-button" style="text-decoration: none; padding: 0.5rem 1rem;">Limpiar</a>
         </div>
@@ -481,11 +483,11 @@
                         <td>{{ $inv['entidad_relacion']['nombre'] ?? $inv['entidad'] ?? '—' }}</td>
                         <td class="ui-number">
                             <span data-money="{{ $inv['monto_inicial'] }}">{{ $inv['monto_inicial'] }}</span>
-                            <span class="ui-help">{{ $inv['moneda'] }}</span>
+                            <span class="ui-help ui-currency">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
                             <strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}</strong>
-                            <span class="ui-help">{{ $inv['moneda'] }}</span>
+                            <span class="ui-help ui-currency">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
                             @if(!empty($inv['valoracion_no_realizada']))
@@ -771,7 +773,11 @@ function renderWizardChart(labels, dataValores) {
 
 function toggleMoneda(val) {
     const wrap = document.getElementById('tasa-cambio-wrapper');
-    if (wrap) wrap.style.display = (val === 'USD') ? 'block' : 'none';
+    if (!wrap) return;
+    // Se oculta sin quitar su espacio: monto y fecha conservan su lugar al cambiar de moneda.
+    const usd = val === 'USD';
+    wrap.style.visibility = usd ? 'visible' : 'hidden';
+    wrap.toggleAttribute('aria-hidden', !usd);
 }
 
 // RF-INV-06: Auto-cálculo reactivo de 2 de 3 valores en productos por unidades

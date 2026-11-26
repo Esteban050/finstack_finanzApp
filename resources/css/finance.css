@@ -16,6 +16,8 @@
 .finance-chart { position: relative; height: 280px; margin-block: 1.5rem; min-width: 0; }
 .finance-alternative { border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: 1.5rem; margin: 1rem 0; }
 .finance-alternative legend { padding-inline: .5rem; font-weight: 600; }
+/* "Quitar alternativa" a la derecha y separado de los campos (antes quedaba pegado a la etiqueta del primero). */
+.finance-alternative > [data-remove-alternative] { display: flex; width: fit-content; margin: -.5rem 0 1.5rem auto; }
 .finance-distribution { display: grid; gap: 1rem; }
 .finance-distribution li { list-style: none; }
 .finance-distribution meter { display: block; width: 100%; height: 1rem; accent-color: var(--accent); }
@@ -128,6 +130,8 @@
 .investment-page .income-two-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1.5rem; }
 .investment-page .income-two-fields > * { min-width: 0; }
 .investment-page .ui-field label { min-height: 2.75rem; display: flex; align-items: end; }
+/* Los botones junto a campos se bajan lo que mide esta etiqueta (design-system.css). */
+.investment-page { --ui-field-label-h: 2.75rem; }
 .investment-page .ui-field :is(input,select) { width: 100%; max-width: 100%; min-width: 0; }
 .investment-page .ui-field .ui-inline input[type="radio"] {
     width: 18px;
@@ -139,19 +143,23 @@
 }
 .investment-page .income-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
-    align-items: end;
+    align-items: start;
 }
 .investment-page .income-filters > .ui-inline {
-    align-self: end;
     margin-bottom: 0;
     white-space: nowrap;
 }
 .investment-page .investment-dividend-row { grid-column: 1 / -1; }
 .social-page .finance-grid > *, .social-page .ui-card { min-width: 0; }
 .social-page .ui-field { margin-bottom: 1.5rem; }
+@media(max-width:1023px) {
+    .investment-page .income-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .investment-page .income-filters > .ui-inline { grid-column: 1 / -1; margin-top: 0; }
+}
 @media(max-width:767px) {
     .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); }
     .investment-page .ui-field label { min-height: 0; }
+    .investment-page { --ui-field-label-h: calc(var(--ui-text-small) * 1.65); }
     .investment-page .income-filters { grid-template-columns:minmax(0,1fr); }
     .investment-page .income-filters > .ui-inline { justify-self: start; }
 }
