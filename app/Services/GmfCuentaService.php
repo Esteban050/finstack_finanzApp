@@ -18,12 +18,46 @@ use Carbon\CarbonImmutable;
  *
  * Cuenta exenta: el GMF solo se cobra sobre lo que supera el tope mensual de 350 UVT,
  * acumulado entre las salidas (sin GMF) de las cuentas exentas del usuario en ese mes,
- * en orden de fecha y creación. Limitación: editar una salida anterior no recalcula el
- * GMF de las posteriores del mismo mes.
+ * en orden de fecha y creación. Como cada salida depende de las anteriores, al crear,
+ * editar o eliminar una salida se recalcula el GMF de todas las salidas de las cuentas
+ * exentas del usuario en el mes afectado (y en el mes anterior si la fecha cambió).
+ * Debe llamarse dentro de la transacción de quien modifica el gasto.
  */
 class GmfCuentaService
 {
-    public static function sincronizar(Gasto $origen): void
+    /**
+     * @param  string|null  $fechaAnterior  Fecha del gasto antes de editarlo, para recalcular también ese mes.
+     */
+    public static function sincronizar(Gasto $origen, ?string $fechaAnterior = null): void
+    {
+        self::sincronizarUno($origen);
+
+        $meses = [CarbonImmutable::parse($origen->fecha)->format('Y-m')];
+        if ($fechaAnterior !== null) {
+            $meses[] = CarbonImmutable::parse($fechaAnterior)->format('Y-m');
+        }
+
+        foreach (array_unique($meses) as $mes) {
+            $inicio = CarbonImmutable::createFromFormat('Y-m-d', $mes.'-01')->startOfDay();
+
+            $salidas = Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+                ->where('usuario_id', $origen->usuario_id)
+                ->whereIn('cuenta_id', CuentaBancaria::withoutGlobalScope(DelUsuarioAutenticado::class)
+                    ->where('usuario_id', $origen->usuario_id)->where('es_exenta_gmf', true)->select('id'))
+                ->whereNull('gasto_origen_gmf_id')
+                ->where('estado', 'CONFIRMADO')
+                ->where('id', '!=', $origen->id)
+                ->whereBetween('fecha', [$inicio->toDateString(), $inicio->endOfMonth()->toDateString()])
+                ->orderBy('fecha')->orderBy('creado_en')->orderBy('id')
+                ->get();
+
+            foreach ($salidas as $salida) {
+                self::sincronizarUno($salida);
+            }
+        }
+    }
+
+    private static function sincronizarUno(Gasto $origen): void
     {
         // El propio GMF nunca genera otro GMF.
         if ($origen->gasto_origen_gmf_id !== null) {

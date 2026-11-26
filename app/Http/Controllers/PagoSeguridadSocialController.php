@@ -293,12 +293,14 @@ class PagoSeguridadSocialController extends Controller
                     $pago->update(['gasto_id' => $gasto->id]);
                     $accionGasto = 'CREAR_GASTO';
                     $gastoAnterior = null;
+                    $fechaGastoAnterior = null;
                 } else {
                     $gastoAnterior = $gasto->toArray();
+                    $fechaGastoAnterior = $gasto->fecha->toDateString();
                     $gasto->update(array_merge($atributos, $cuenta));
                     $accionGasto = 'EDITAR_GASTO';
                 }
-                GmfCuentaService::sincronizar($gasto->fresh());
+                GmfCuentaService::sincronizar($gasto->fresh(), $fechaGastoAnterior);
 
                 BitacoraService::registrar(
                     accion: $accionGasto,

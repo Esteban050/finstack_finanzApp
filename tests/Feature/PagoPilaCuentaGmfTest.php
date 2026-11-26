@@ -7,6 +7,8 @@ use App\Models\EntidadFinanciera;
 use App\Models\Gasto;
 use App\Models\Usuario;
 use App\Services\GmfCuentaService;
+use App\Services\IngresoService;
+use App\Services\ParametroTributarioService;
 use App\Services\SaldoCuentaService;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\UsaBaseLocal;
@@ -80,27 +82,113 @@ class PagoPilaCuentaGmfTest extends TestCase
         $this->assertSame('9500900.00', SaldoCuentaService::saldoDisponible($cuenta));
     }
 
-    public function test_la_cuenta_exenta_paga_gmf_solo_sobre_lo_que_supera_el_tope_mensual(): void
+    private function salida(CuentaBancaria $cuenta, string $monto, string $fecha, ?string $creadoEn = null): Gasto
     {
-        $cuenta = $this->cuenta(exenta: true);
         $sub = DB::table('categorias')->where('tipo', 'GASTO')->where('activa', true)->whereNotNull('categoria_padre_id')->first();
-        $crear = fn (string $monto) => Gasto::create([
+        $gasto = Gasto::create([
             'usuario_id' => $this->usuario->id, 'categoria_id' => $sub->categoria_padre_id, 'subcategoria_id' => $sub->id,
-            'cuenta_id' => $cuenta->id, 'fecha' => '2026-11-10', 'moneda' => 'COP', 'monto_original' => $monto,
+            'cuenta_id' => $cuenta->id, 'fecha' => $fecha, 'moneda' => 'COP', 'monto_original' => $monto,
             'tasa_cambio_usada' => '1.0000', 'monto_cop' => $monto, 'naturaleza' => 'VARIABLE', 'necesidad' => 'ESENCIAL',
             'medio_pago' => 'TRANSFERENCIA', 'relevancia_tributaria' => 'NO_DEDUCIBLE', 'origen' => 'MANUAL', 'estado' => 'CONFIRMADO',
         ]);
+        if ($creadoEn !== null) {
+            DB::table('gastos')->where('id', $gasto->id)->update(['creado_en' => $creadoEn]);
+        }
+        GmfCuentaService::sincronizar($gasto->fresh());
 
-        $primero = $crear('15000000');
-        GmfCuentaService::sincronizar($primero);
+        return $gasto->fresh();
+    }
+
+    /** GMF esperado de un retiro de cuenta exenta: tope 350 UVT y tarifa desde parametros_normativos, con bcmath. */
+    private function gmfExentoEsperado(string $previos, string $monto, string $fecha): string
+    {
+        $tope = IngresoService::redondear(bcmul(
+            ParametroTributarioService::obtenerValor('GMF_TOPE_EXENTO_UVT', $fecha),
+            ParametroTributarioService::obtenerUvt($fecha),
+            4
+        ));
+        $total = bcadd($previos, $monto, 2);
+        if (bccomp($total, $tope, 2) <= 0) {
+            return '0.00';
+        }
+        $base = bccomp($previos, $tope, 2) >= 0 ? $monto : bcsub($total, $tope, 2);
+        $tarifa = ParametroTributarioService::obtenerValor('GMF_TARIFA', $fecha);
+
+        return IngresoService::redondear(bcmul($base, bcdiv($tarifa, '100', 6), 4));
+    }
+
+    private function montoGmf(Gasto $gasto): ?string
+    {
+        $gmf = $this->gmfDe($gasto->id);
+
+        return $gmf === null ? null : (string) $gmf->monto_cop;
+    }
+
+    public function test_la_cuenta_exenta_paga_gmf_solo_sobre_lo_que_supera_el_tope_mensual(): void
+    {
+        $cuenta = $this->cuenta(exenta: true);
+
+        $primero = $this->salida($cuenta, '15000000', '2026-11-05');
         $this->assertNull($this->gmfDe($primero->id));
 
-        $segundo = $crear('9000000');
-        GmfCuentaService::sincronizar($segundo);
-        $gmf = $this->gmfDe($segundo->id);
-        $this->assertNotNull($gmf);
-        $this->assertTrue(bccomp((string) $gmf->monto_cop, '0', 2) === 1);
-        $this->assertTrue(bccomp((string) $gmf->monto_cop, bcmul('9000000', '0.004', 2), 2) === -1);
+        $segundo = $this->salida($cuenta, '9000000', '2026-11-10');
+        $esperado = $this->gmfExentoEsperado('15000000.00', '9000000', '2026-11-10');
+        $this->assertTrue(bccomp($esperado, '0', 2) === 1);
+        $this->assertSame($esperado, $this->montoGmf($segundo));
+    }
+
+    public function test_eliminar_una_salida_anterior_recalcula_el_gmf_de_las_posteriores_del_mes(): void
+    {
+        $cuenta = $this->cuenta(exenta: true);
+        $primero = $this->salida($cuenta, '15000000', '2026-11-05');
+        $segundo = $this->salida($cuenta, '9000000', '2026-11-10');
+        $this->assertSame($this->gmfExentoEsperado('15000000.00', '9000000', '2026-11-10'), $this->montoGmf($segundo));
+
+        $primero->delete();
+        GmfCuentaService::sincronizar($primero);
+
+        // Solo queda 9.000.000 en el mes: dentro del tope, el GMF del segundo desaparece.
+        $this->assertNull($this->gmfDe($segundo->id));
+    }
+
+    public function test_editar_el_monto_de_una_salida_anterior_recalcula_el_gmf_de_las_posteriores(): void
+    {
+        $cuenta = $this->cuenta(exenta: true);
+        $primero = $this->salida($cuenta, '5000000', '2026-11-05');
+        $segundo = $this->salida($cuenta, '9000000', '2026-11-10');
+        $this->assertNull($this->gmfDe($segundo->id));
+
+        $primero->update(['monto_original' => '20000000', 'monto_cop' => '20000000']);
+        GmfCuentaService::sincronizar($primero->fresh());
+
+        $this->assertSame($this->gmfExentoEsperado('0.00', '20000000', '2026-11-05'), $this->montoGmf($primero));
+        // El acumulado previo del segundo ya supera el tope: se grava todo su monto.
+        $this->assertSame($this->gmfExentoEsperado('20000000.00', '9000000', '2026-11-10'), $this->montoGmf($segundo));
+        $this->assertSame(bcmul('9000000', '0.004', 2), $this->montoGmf($segundo));
+    }
+
+    public function test_mover_una_salida_a_otro_mes_recalcula_el_mes_de_origen(): void
+    {
+        $cuenta = $this->cuenta(exenta: true);
+        $primero = $this->salida($cuenta, '15000000', '2026-11-05');
+        $segundo = $this->salida($cuenta, '9000000', '2026-11-10');
+        $this->assertNotNull($this->gmfDe($segundo->id));
+
+        $primero->update(['fecha' => '2026-10-20']);
+        GmfCuentaService::sincronizar($primero->fresh(), '2026-11-05');
+
+        $this->assertNull($this->gmfDe($segundo->id));
+        $this->assertNull($this->gmfDe($primero->id));
+    }
+
+    public function test_salidas_del_mismo_dia_se_ordenan_por_creacion(): void
+    {
+        $cuenta = $this->cuenta(exenta: true);
+        $a = $this->salida($cuenta, '15000000', '2026-11-10', '2026-11-10 08:00:00');
+        $b = $this->salida($cuenta, '9000000', '2026-11-10', '2026-11-10 09:00:00');
+
+        $this->assertNull($this->gmfDe($a->id));
+        $this->assertSame($this->gmfExentoEsperado('15000000.00', '9000000', '2026-11-10'), $this->montoGmf($b));
     }
 
     public function test_editar_y_eliminar_el_pago_sincroniza_el_gmf(): void
