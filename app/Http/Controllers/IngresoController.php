@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Categoria;
+use App\Models\CuentaBancaria;
 use App\Models\FuenteIngreso;
 use App\Models\Ingreso;
 use App\Models\MovimientoInversion;
@@ -105,6 +106,7 @@ class IngresoController extends Controller
         return view('ingresos.create', [
             // RN-020.3: una fuente inactiva no aparece al registrar ingresos nuevos.
             'fuentes' => FuenteIngreso::activas()->with('tipoFuente')->orderBy('nombre')->get(),
+            'cuentas' => CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get(),
             'clasificaciones' => FuenteIngreso::CLASIFICACIONES,
         ]);
     }
@@ -124,6 +126,7 @@ class IngresoController extends Controller
         $ingreso = Ingreso::create(array_merge($montos, [
             'usuario_id' => Auth::id(),
             'fuente_id' => $fuente->id,
+            'cuenta_id' => $this->cuentaPropiaOpcional($validated['cuenta_id'] ?? null),
             'fecha_recepcion' => $validated['fecha_recepcion'],
             'origen' => 'MANUAL',
             'estado' => 'CONFIRMADO',
@@ -173,6 +176,7 @@ class IngresoController extends Controller
         return view('ingresos.edit', [
             'ingreso' => $ingreso,
             'fuentes' => FuenteIngreso::activas()->with('tipoFuente')->orderBy('nombre')->get(),
+            'cuentas' => CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get(),
             'clasificaciones' => FuenteIngreso::CLASIFICACIONES,
         ]);
     }
@@ -194,7 +198,12 @@ class IngresoController extends Controller
 
         $anterior = $ingreso->toArray();
 
-        $ingreso->update(array_merge($montos, [
+        // Sin `cuenta_id` en la petición se conserva la cuenta actual; vacío la quita.
+        $cuenta = $request->has('cuenta_id')
+            ? ['cuenta_id' => $this->cuentaPropiaOpcional($validated['cuenta_id'] ?? null)]
+            : [];
+
+        $ingreso->update(array_merge($montos, $cuenta, [
             'fuente_id' => $fuente->id,
             'fecha_recepcion' => $validated['fecha_recepcion'],
             'descripcion' => $validated['descripcion'] ?? null,
@@ -356,6 +365,8 @@ class IngresoController extends Controller
     {
         return [
             'fuente_id' => ['required', 'uuid'],
+            // Cuenta de débito que recibe el dinero: opcional y propia.
+            'cuenta_id' => ['nullable', 'uuid'],
             // CA-021.3: la fecha de recepción no puede ser posterior a la actual.
             'fecha_recepcion' => ['required', 'date', 'before_or_equal:today'],
             // RNG-09: mayor que 0 y menor o igual a 999.999.999.999,99.
@@ -380,6 +391,7 @@ class IngresoController extends Controller
         return [
             'fuente_id.required' => 'Seleccione la fuente de ingreso.',
             'fuente_id.uuid' => 'La fuente de ingreso seleccionada no es válida.',
+            'cuenta_id.uuid' => 'La cuenta seleccionada no es válida.',
             'fecha_recepcion.required' => 'Indique la fecha en que recibió el ingreso.',
             'fecha_recepcion.date' => 'La fecha de recepción no tiene un formato válido.',
             // CA-021.3: se rechaza con la sugerencia de crear un ingreso recurrente.
@@ -421,6 +433,25 @@ class IngresoController extends Controller
         }
 
         return $fuente;
+    }
+
+    /**
+     * La cuenta de débito que recibe el ingreso es opcional; si se indica debe ser
+     * una cuenta propia y no eliminada (el ámbito del modelo ya filtra ambas cosas).
+     */
+    private function cuentaPropiaOpcional(?string $cuentaId): ?string
+    {
+        if ($cuentaId === null || $cuentaId === '') {
+            return null;
+        }
+
+        if (CuentaBancaria::find($cuentaId) === null) {
+            throw ValidationException::withMessages([
+                'cuenta_id' => 'La cuenta seleccionada no existe.',
+            ]);
+        }
+
+        return $cuentaId;
     }
 
     private function catalogoTiposFuente()
