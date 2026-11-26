@@ -280,8 +280,35 @@ class CreditoController extends Controller
             'data' => [
                 ...$this->presentar($credito, situacion: $situacion),
                 'estado_cuenta' => PagoCreditoService::estadoCuenta($credito, $situacion),
+                'compras' => $this->comprasDeTarjeta($credito),
             ],
         ]);
+    }
+
+    /**
+     * Compras (gastos vigentes) vinculadas a una tarjeta de crédito, de la más reciente a la más antigua.
+     * Las demás clases de crédito no tienen compras.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function comprasDeTarjeta(Credito $credito): array
+    {
+        if ($credito->tipo_credito !== 'TARJETA_CREDITO') {
+            return [];
+        }
+
+        return Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
+            ->where('credito_id', $credito->id)
+            ->orderByDesc('fecha')->orderByDesc('creado_en')
+            ->get()
+            ->map(fn (Gasto $g) => [
+                'id' => $g->id,
+                'fecha' => $g->fecha->toDateString(),
+                'descripcion' => $g->descripcion ?? $g->comercio_beneficiario,
+                'monto_cop' => (string) $g->monto_cop,
+                'numero_cuotas' => (int) ($g->numero_cuotas ?? 1),
+                'sin_intereses' => (bool) ($g->sin_intereses ?? false),
+            ])->all();
     }
 
     /**

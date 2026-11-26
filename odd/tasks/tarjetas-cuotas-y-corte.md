@@ -28,7 +28,7 @@ Branch `feat/tarjetas-cuotas-y-corte`, one work-unit commit per task (Convention
 
 ## Tasks
 - [x] T1 — Dashboard type label (`DashboardResumenService::obtenerCuentas` adds `tipo`, `resources/js/reports/index.js` renders "nombre · Débito/Crédito"). Route: delegated (single writer for the feature).
-- [ ] T2 — Card purchase breakdown in Credits detail (endpoint/payload + `resources/js/credits/index.js`): fecha, descripción, monto, cuotas, sin intereses. Route: delegated.
+- [x] T2 — Card purchase breakdown in Credits detail (endpoint/payload + `resources/js/credits/index.js`): fecha, descripción, monto, cuotas, sin intereses. Route: delegated.
 - [ ] T3 — Profile card form: `dia_corte`, `dia_pago` (required for new cards), store on creditos, show next statement/payment date in card detail. Route: delegated.
 - [ ] T4 — Expense with existing card: optional `numero_cuotas` (default 1) + `sin_intereses` checkbox; card plan computed per purchase using corte/pago days. Route: delegated.
 
@@ -42,7 +42,9 @@ Branch `feat/tarjetas-cuotas-y-corte`, one work-unit commit per task (Convention
 ## Progress
 - Created 2026-11-26 after exploration (mapper: dashboard reports/index.js:23, ConsumoTarjetaService::aplicar, PagoCreditoService::comprasTarjeta:969, GastoController::reglas 806-840, profile/show.blade.php 257-286).
 
-- T1 done. Files: DashboardResumenService::obtenerCuentas (tipo DEBITO|CREDITO), resources/js/reports/index.js (nombre · Débito/Crédito), ResumenCuentasTest. Checks: ResumenCuentasTest|CuentaOtroBancoTest|TarjetaDePerfilEnGastoTest 9/9. Commit: T1HASH.
+- T1 done. Files: DashboardResumenService::obtenerCuentas (tipo DEBITO|CREDITO), resources/js/reports/index.js (nombre · Débito/Crédito), ResumenCuentasTest. Checks: ResumenCuentasTest|CuentaOtroBancoTest|TarjetaDePerfilEnGastoTest 9/9. Commit: 02e744f.
+
+- T2 done. Files: CreditoController::show adds `compras` (gastos vigentes de la tarjeta; numero_cuotas/sin_intereses default 1/false until T4 columns), resources/js/credits/index.js (card "Compras" table), TarjetaComprasDetalleTest. Checks: TarjetaComprasDetalleTest 2/2; Credito*/CupoTarjeta 35/35; npm test 109/109. Commit: T2HASH.
 
 ## Next step
 T1.
