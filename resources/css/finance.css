@@ -168,3 +168,13 @@
 /* CP-DIS-003: si el fondo en línea se reemplaza por la superficie, el texto blanco en línea tampoco puede quedarse. */
 .investment-page [style*="background: #"][style*="color: white"], .investment-page [style*="background:#"][style*="color:white"] { color:var(--ui-text) !important; }
 .investment-page .ui-help[style] { color:var(--ui-muted) !important; }
+
+/* Portafolio de inversiones: moneda al lado del monto, valorización con tokens de estado y acción compacta. */
+.investment-portfolio .investment-portfolio__amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.investment-portfolio .ui-currency-code { display: inline; margin-left: .25rem; color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 500; }
+.investment-portfolio .investment-portfolio__sub { display: block; margin-top: .125rem; font-size: var(--ui-text-meta); }
+.investment-portfolio .investment-portfolio__gain { color: var(--ui-success); font-weight: 600; }
+.investment-portfolio .investment-portfolio__loss { color: var(--ui-danger); font-weight: 600; }
+.investment-portfolio .investment-portfolio__action { min-height: 44px; padding: .5rem .875rem; white-space: nowrap; }
+.investment-portfolio tbody td:first-child { min-inline-size: 8.5rem; }
+.ui-table.investment-portfolio td .ui-badge.ui-badge { inline-size: auto; min-inline-size: 6.5rem; }

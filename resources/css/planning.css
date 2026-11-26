@@ -224,3 +224,13 @@
 .planning-page .planning-heading-actions .planning-month-filter .ui-field { flex:0 1 13rem; min-width:11rem; }
 .planning-page [hidden] { display:none !important; }
 @media(max-width:767px){.planning-page .planning-filters .ui-field{flex-basis:100%;min-width:0;}}
+
+/* Tarjeta resumen del presupuesto: la barra va en su propio bloque, separado de los indicadores,
+   con el porcentaje y el estado arriba y el día del mes a la derecha. */
+.budget-overview .finance-stat--danger dd:not(.stat-meta) { color: var(--ui-danger); }
+.budget-overview-execution { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--ui-border); display: grid; gap: .75rem; }
+.budget-overview-execution__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.budget-overview-execution__title { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0; font-size: var(--ui-text-small); color: var(--ui-muted); }
+.budget-overview-execution__title strong { color: var(--ui-text); font-size: 1.125rem; font-variant-numeric: tabular-nums; }
+.budget-overview-execution .budget-execution { min-width: 0; }
+.budget-overview-execution > .ui-help { margin: 0; }

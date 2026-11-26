@@ -447,21 +447,23 @@
     </form>
 </x-ui.card>
 
-<x-ui.card title="Portafolio de Inversiones Activas y Cerradas">
+<x-ui.card title="Portafolio de inversiones activas y cerradas">
     @if($inversiones->isEmpty())
         <x-ui.empty-state title="No hay inversiones registradas para los filtros seleccionados" />
     @else
-        <table class="ui-table">
+        {{-- La moneda va junto al monto, en la misma línea; la valorización usa los tokens de estado
+             (con signo, para no depender solo del color) y un cero no se muestra como "$ 0". --}}
+        <table class="ui-table investment-portfolio">
             <thead>
                 <tr>
                     <th>Nombre</th>
                     <th>Producto</th>
                     <th>Entidad</th>
-                    <th data-align="right">Aporte Inicial</th>
-                    <th data-align="right">Valor Actual</th>
-                    <th data-align="right">Valorización No Realizada</th>
+                    <th data-align="right">Aporte inicial</th>
+                    <th data-align="right">Valor actual</th>
+                    <th data-align="right">Valorización no realizada</th>
                     <th>Estado</th>
-                    <th>Acción</th>
+                    <th><span class="sr-only">Acción</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -470,29 +472,26 @@
                         <td>
                             <strong>{{ $inv['nombre'] }}</strong>
                             @if(!empty($inv['simbolo']))
-                                <span class="ui-help" style="display: block;">Ticker: {{ $inv['simbolo'] }}</span>
+                                <span class="ui-help investment-portfolio__sub">Ticker: {{ $inv['simbolo'] }}</span>
                             @endif
                         </td>
                         <td>{{ $labels[$inv['tipo']] ?? $inv['tipo'] }}</td>
                         <td>{{ $inv['entidad_relacion']['nombre'] ?? $inv['entidad'] ?? '—' }}</td>
                         <td class="ui-number">
-                            <span data-money="{{ $inv['monto_inicial'] }}">{{ $inv['monto_inicial'] }}</span>
-                            <span class="ui-help ui-currency-code">{{ $inv['moneda'] }}</span>
+                            <span class="investment-portfolio__amount"><span data-money="{{ $inv['monto_inicial'] }}">{{ $inv['monto_inicial'] }}</span> <span class="ui-currency-code">{{ $inv['moneda'] }}</span></span>
                         </td>
                         <td class="ui-number">
-                            <strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}</strong>
-                            <span class="ui-help ui-currency-code">{{ $inv['moneda'] }}</span>
+                            <span class="investment-portfolio__amount"><strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}</strong> <span class="ui-currency-code">{{ $inv['moneda'] }}</span></span>
                         </td>
                         <td class="ui-number">
                             @if(!empty($inv['valoracion_no_realizada']))
                                 @php($vnr = $inv['valoracion_no_realizada'])
-                                <span style="color: {{ bccomp((string)$vnr['valor'], '0', 2) >= 0 ? '#16a34a' : '#dc2626' }}; font-weight: 600;">
-                                    {{ bccomp((string)$vnr['valor'], '0', 2) >= 0 ? '+' : '' }}<span data-money="{{ $vnr['valor'] }}">{{ $vnr['valor'] }}</span> ({{ $vnr['porcentaje'] }}%)
-                                </span>
-                            @elseif(!empty($inv['rendimiento_estimado']))
-                                <span class="ui-help" title="Proyección al vencimiento">
-                                    Est: <span data-money="{{ $inv['rendimiento_estimado'] }}">{{ $inv['rendimiento_estimado'] }}</span>
-                                </span>
+                                @php($signo = bccomp((string) $vnr['valor'], '0', 2))
+                                <span class="investment-portfolio__amount {{ $signo > 0 ? 'investment-portfolio__gain' : ($signo < 0 ? 'investment-portfolio__loss' : '') }}">{{ $signo > 0 ? '+' : '' }}<span data-money="{{ $vnr['valor'] }}">{{ $vnr['valor'] }}</span></span>
+                                <span class="ui-help investment-portfolio__sub">{{ $vnr['porcentaje'] }}%</span>
+                            @elseif(!empty($inv['rendimiento_estimado']) && bccomp((string) $inv['rendimiento_estimado'], '0', 2) !== 0)
+                                <span class="investment-portfolio__amount" title="Proyección al vencimiento"><span data-money="{{ $inv['rendimiento_estimado'] }}">{{ $inv['rendimiento_estimado'] }}</span></span>
+                                <span class="ui-help investment-portfolio__sub">Estimado al vencimiento</span>
                             @else
                                 <span class="ui-help">—</span>
                             @endif
@@ -503,9 +502,7 @@
                             </x-ui.badge>
                         </td>
                         <td>
-                            <a href="{{ route('inversiones.show', $inv['id']) }}" class="ui-button" style="text-decoration: none; padding: 0.35rem 0.75rem; font-size: 0.85rem;">
-                                Ver Detalle / Operar
-                            </a>
+                            <x-ui.button variant="secondary" href="{{ route('inversiones.show', $inv['id']) }}" class="investment-portfolio__action" aria-label="Ver detalle y operar {{ $inv['nombre'] }}">Ver detalle</x-ui.button>
                         </td>
                     </tr>
                 @endforeach

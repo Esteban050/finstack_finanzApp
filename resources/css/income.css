@@ -20,6 +20,15 @@
 .income-source-list { display: grid; gap: 1.5rem; margin-top: 2rem; }
 .income-source-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
 .income-source-head p { color: var(--ui-muted); font-size: var(--ui-text-small); }
+/* Tarjetas de plantillas recurrentes: la insignia de estado no se estira con el texto, las acciones
+   quedan separadas de los metadatos y "Eliminar" es una acción contornada para no competir con la principal. */
+.income-source-head { align-items: flex-start; }
+.income-source-head > .ui-badge { flex: none; }
+.income-source-head h2, .income-source-head h3 { margin-bottom: .375rem; }
+.income-source-head p + p { margin-top: .25rem; }
+.income-source-actions { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--ui-border); gap: .75rem; }
+.scfp-theme .income-source-actions .ui-button--danger { background: transparent; color: var(--ui-danger); border-color: currentColor; }
+.scfp-theme .income-source-actions .ui-button--danger:enabled:hover { background: color-mix(in srgb, var(--ui-danger) 12%, transparent); color: var(--ui-danger); border-color: currentColor; }
 .income-source-list details { margin-top: 1.5rem; }
 .income-source-list summary { color: var(--accent); padding: .75rem 0; font-size: var(--ui-text-small); }
 .income-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; margin: 0; padding-top: 2rem; border-top: 2px solid var(--ui-border-strong); }
