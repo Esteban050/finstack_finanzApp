@@ -166,7 +166,8 @@
 .mk-table-wrap { width: 100%; overflow-x: auto; }
 .mk-table-wrap .ui-table th, .mk-table-wrap .ui-table td { padding: .875rem .75rem; }
 .mk-table-wrap .ui-table td { font-variant-numeric: tabular-nums; }
-.ui-table td.num, .ui-table th.num { text-align: right; white-space: nowrap; }
+.ui-table td.num, .ui-table th.num { white-space: nowrap; }
+.ui-table .mk-right { text-align: start; }
 .ui-table tr.is-row-current td { background: color-mix(in srgb, var(--accent-secondary) 55%, var(--ui-surface)); }
 .ui-table tr.is-row-alert td { background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface)); }
 .ui-table tr.is-open td { background: var(--ui-raised); }

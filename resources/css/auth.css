@@ -31,9 +31,15 @@
 .auth-resend-details { border-top: 1px solid var(--ui-border); padding-top: 1.5rem; margin-top: 1.75rem; font-size: var(--ui-text-small); }
 .auth-resend-details summary { cursor: pointer; min-height: 44px; color: var(--accent); }
 .auth-code { font-variant-numeric: tabular-nums; text-align: center; letter-spacing: .35em; font-size: 1.5rem; }
-.ui-theme-switch { display: flex; gap: .5rem; align-items: center; font-size: var(--ui-text-small); }
-.ui-theme-switch select { min-width: 6rem; }
+.ui-theme-switch { display: inline-grid; place-items: center; inline-size: 44px; block-size: 44px; flex: none; border: 1px solid var(--ui-border-strong); border-radius: .5rem; background: transparent; color: var(--ui-text); }
+.ui-theme-switch:hover { background: var(--ui-bg); }
+.ui-theme-icon { inline-size: 18px; block-size: 18px; border: 2px solid currentColor; border-radius: 50%; overflow: hidden; }
+.ui-theme-icon::after { content: ''; display: block; inline-size: 50%; block-size: 100%; background: currentColor; }
+.ui-theme-switch[aria-pressed=true] .ui-theme-icon { transform: rotate(180deg); }
 .ui-topbar .ui-theme-switch { margin-left: auto; }
+.profile-mfa-setup { display: grid; gap: 1rem; }
+.profile-mfa-setup > p { margin: 0; }
+.profile-mfa-setup > .ui-filter-row { padding-block-start: 1rem; border-top: 1px solid var(--ui-border); }
 .auth-layout--entry { grid-template-columns: 1fr; }
 .auth-layout--entry .auth-column { width: min(100%, 720px); margin-inline: auto; min-height: 100dvh; }
 .auth-policy-history { margin-top: 2rem; }

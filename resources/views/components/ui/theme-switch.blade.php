@@ -1,2 +1,4 @@
 @props(['id' => 'theme-choice'])
-<div class="ui-theme-switch"><label for="{{ $id }}">Tema</label><select id="{{ $id }}" data-theme-choice aria-label="Tema de la interfaz"><option value="light">Claro</option><option value="dark">Oscuro</option></select></div>
+<button type="button" id="{{ $id }}" class="ui-theme-switch" data-theme-choice aria-label="Modo oscuro" aria-pressed="false" title="Cambiar tema" hidden>
+    <span class="ui-theme-icon" aria-hidden="true"></span>
+</button>

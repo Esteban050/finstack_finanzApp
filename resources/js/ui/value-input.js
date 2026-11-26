@@ -44,7 +44,12 @@ export function mountValueInputs(root = document) {
         const sync = () => {
             if (editing) return;
             const raw = descriptor.get.call(canonical);
-            try { visible.value = raw === '' ? '' : formatCanonicalValue(raw); }
+            try {
+                const presented = canonical.hasAttribute('data-trim-fraction') && raw.includes('.')
+                    ? raw.replace(/0+$/, '').replace(/\.$/, '')
+                    : raw;
+                visible.value = presented === '' ? '' : formatCanonicalValue(presented);
+            }
             catch { visible.value = raw; }
             if (initialized) validate(false);
         };

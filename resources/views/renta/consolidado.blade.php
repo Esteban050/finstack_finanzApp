@@ -214,7 +214,7 @@
                                 @endif
                             </td>
                             <td class="mk-right">
-                                <button type="button" class="ui-button ui-button--sm ui-button--ghost" onclick="toggleDetail('detail-{{ $crit['id'] }}')">Ver detalle</button>
+                                <button type="button" class="ui-button ui-button--sm ui-button--ghost" aria-controls="detail-{{ $crit['id'] }}" aria-expanded="false" onclick="toggleDetail(this.getAttribute('aria-controls'))">Ver detalle</button>
                             </td>
                         </tr>
                     @endforeach
@@ -234,7 +234,7 @@
                         </td>
                         <td colspan="3" class="mk-meta">Crédito fiscal directo contra el impuesto de renta</td>
                         <td class="mk-right">
-                            <button type="button" class="ui-button ui-button--sm ui-button--ghost" onclick="toggleDetail('detail-retenciones')">Ver detalle</button>
+                            <button type="button" class="ui-button ui-button--sm ui-button--ghost" aria-controls="detail-retenciones" aria-expanded="false" onclick="toggleDetail('detail-retenciones')">Ver detalle</button>
                         </td>
                     </tr>
                     <tr>
@@ -248,7 +248,7 @@
                         </td>
                         <td colspan="3" class="mk-meta">Ingreso no constitutivo de renta ni ganancia ocasional</td>
                         <td class="mk-right">
-                            <button type="button" class="ui-button ui-button--sm ui-button--ghost" onclick="toggleDetail('detail-salud')">Ver detalle</button>
+                            <button type="button" class="ui-button ui-button--sm ui-button--ghost" aria-controls="detail-salud" aria-expanded="false" onclick="toggleDetail('detail-salud')">Ver detalle</button>
                         </td>
                     </tr>
                     <tr>
@@ -444,6 +444,15 @@
             </div>
         </div>
 
+        <div id="detail-c6" class="mk-drawer" style="display:none">
+            <div class="mk-row between">
+                <h3>Detalle del criterio C6: Responsabilidad de IVA</h3>
+                <button type="button" class="ui-button ui-button--sm ui-button--ghost" onclick="toggleDetail('detail-c6')">Cerrar ✕</button>
+            </div>
+            <p>Responsable de IVA según el perfil tributario: <strong>{{ $usuario->es_responsable_iva ? 'Sí' : 'No' }}</strong>.</p>
+            <a href="{{ route('profile.show') }}">Ver perfil tributario</a>
+        </div>
+
         {{-- Detalle Retenciones --}}
         <div id="detail-retenciones" class="mk-drawer" style="display:none">
             <div class="mk-row between">
@@ -537,14 +546,23 @@
 
 <script>
 function toggleDetail(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const isHidden = (el.style.display === 'none' || el.style.display === '');
-    // Ocultar todos los otros drawers primero
-    document.querySelectorAll('.mk-drawer').forEach(d => d.style.display = 'none');
-    if (isHidden) {
-        el.style.display = 'block';
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const panel = document.getElementById(id);
+    const triggers = [...document.querySelectorAll('button[aria-controls^="detail-"][aria-expanded]')];
+    const trigger = triggers.find(button => button.getAttribute('aria-controls') === id);
+    if (!panel || !trigger) return;
+    const opening = trigger.getAttribute('aria-expanded') === 'false';
+    document.querySelectorAll('#drawer-container > .mk-drawer').forEach(detail => {
+        detail.style.display = opening && detail === panel ? 'block' : 'none';
+    });
+    for (const button of triggers) {
+        button.setAttribute('aria-expanded', String(opening && button === trigger));
+    }
+    if (opening) {
+        const title = panel.querySelector('h3');
+        title.setAttribute('tabindex', '-1');
+        title.focus();
+    } else {
+        trigger.focus();
     }
 }
 </script>

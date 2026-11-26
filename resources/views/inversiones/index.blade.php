@@ -11,12 +11,6 @@
         <h1>Módulo de Inversiones</h1>
         <p>Gestión integral, tributaria y financiera para personas naturales residentes en Colombia.</p>
     </div>
-    <div class="ui-inline" style="gap: 0.5rem; flex-wrap: wrap;">
-        <x-ui.button :href="route('inversiones.portafolio')" variant="secondary">Portafolio Consolidado</x-ui.button>
-        <x-ui.button :href="route('inversiones.reportes.retenciones')" variant="secondary">Reporte Retenciones</x-ui.button>
-        <x-ui.button :href="route('inversiones.reportes.utilidades')" variant="secondary">Reporte Utilidades</x-ui.button>
-        <x-ui.button :href="route('inversiones.simulaciones.index')" variant="secondary">Simulador</x-ui.button>
-    </div>
 </header>
 
 @if(session('status'))
@@ -224,7 +218,7 @@
 
                     <div id="wrapper-valor-unidad" style="{{ ($selectedTipo === 'ACCION_ETF') ? '' : 'display: none;' }}">
                         <x-ui.field name="valor_unidad" label="Valor / Precio de compra por unidad">
-                            <input id="valor_unidad" name="valor_unidad" type="number" data-value-input data-precision="8" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled($selectedTipo !== 'ACCION_ETF')>
+                            <input id="valor_unidad" name="valor_unidad" type="number" data-value-input data-trim-fraction data-precision="8" step="0.00000001" min="0.00000001" value="{{ old('valor_unidad') }}" placeholder="Ej: 50000.00" oninput="resolverDosDeTres('precio')" @disabled($selectedTipo !== 'ACCION_ETF')>
                         </x-ui.field>
                     </div>
                 </div>
@@ -260,8 +254,8 @@
                         </select>
                     </x-ui.field>
 
-                    <x-ui.field name="base_dias" label="Base de cálculo anual" help="Estándar bancario colombiano para CDT (año civil de 365 días)">
-                        <input type="text" value="365 días (Estándar bancario)" readonly class="ui-input" style="background-color: var(--color-surface-subtle, #f9fafb); cursor: default;" aria-readonly="true">
+                    <x-ui.field name="base_dias" id="base-dias-display" label="Base de cálculo anual" help="Estándar bancario colombiano para CDT (año civil de 365 días)">
+                        <input id="base-dias-display" type="text" value="365 días (Estándar bancario)" readonly class="ui-input investment-readonly" aria-describedby="base-dias-display-help">
                         <input type="hidden" name="base_dias" id="base_dias" value="365">
                     </x-ui.field>
 
@@ -356,8 +350,8 @@
                         </x-ui.field>
                     </div>
 
-                    <div id="bvc-dividendo-info" style="{{ (old('mercado', 'BVC') === 'BVC' && old('subtipo_renta_variable', 'ACCION') === 'ACCION') ? '' : 'display: none;' }} grid-column: 1 / -1; background: #f0fdf4; border: 1px solid #86efac; padding: 0.75rem; border-radius: 6px;">
-                        <p style="margin: 0; color: #166534; font-size: 0.875rem;">
+                    <div id="bvc-dividendo-info" class="investment-tax-notice" @if(old('mercado', 'BVC') !== 'BVC' || old('subtipo_renta_variable', 'ACCION') !== 'ACCION') style="display: none;" @endif>
+                        <p>
                             <strong>Tratamiento tributario BVC (Art. 242 E.T. / Ley 2277):</strong> En acciones colombianas de la BVC no aplica Distributivo/Acumulativo. Los dividendos decretados están <strong>exentos de retención en la fuente (tarifa 0%) hasta 1.090 UVT ($ 57.087.660 en 2026)</strong>. Solo los dividendos anuales que superen 1.090 UVT pagan el 15% sobre el exceso.
                         </p>
                     </div>
@@ -425,7 +419,7 @@
 </x-ui.card>
 
 <x-ui.card>
-    <form method="GET" action="{{ route('inversiones.index') }}" class="income-filters">
+    <form method="GET" action="{{ route('inversiones.index') }}" class="income-filters ui-filter-grid">
         <x-ui.field name="estado" id="filter-state" label="Estado">
             <select id="filter-state" name="estado">
                 <option value="">Todos los estados</option>
@@ -444,9 +438,9 @@
             </select>
         </x-ui.field>
 
-        <div class="ui-inline" style="align-self: flex-end;">
-            <x-ui.button type="submit" variant="secondary">Filtrar</x-ui.button>
-            <a href="{{ route('inversiones.index') }}" class="ui-button" style="text-decoration: none; padding: 0.5rem 1rem;">Limpiar</a>
+        <div class="ui-filter-actions">
+            <x-ui.button type="submit">Filtrar</x-ui.button>
+            <x-ui.button :href="route('inversiones.index')" variant="secondary">Limpiar</x-ui.button>
         </div>
     </form>
 </x-ui.card>
@@ -481,11 +475,11 @@
                         <td>{{ $inv['entidad_relacion']['nombre'] ?? $inv['entidad'] ?? '—' }}</td>
                         <td class="ui-number">
                             <span data-money="{{ $inv['monto_inicial'] }}">{{ $inv['monto_inicial'] }}</span>
-                            <span class="ui-help">{{ $inv['moneda'] }}</span>
+                            <span class="ui-help ui-currency-code">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
                             <strong data-money="{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}">{{ $inv['valor_actual'] ?? $inv['monto_inicial'] }}</strong>
-                            <span class="ui-help">{{ $inv['moneda'] }}</span>
+                            <span class="ui-help ui-currency-code">{{ $inv['moneda'] }}</span>
                         </td>
                         <td class="ui-number">
                             @if(!empty($inv['valoracion_no_realizada']))

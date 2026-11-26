@@ -310,10 +310,16 @@ export function mountFinance() {
         host.append(panel); reindexAlternatives(host); updateAlternativeButtons(host);host.lastElementChild.querySelector('input:not([type=hidden])')?.focus();
     }));
     document.querySelector('[data-alternatives]')?.addEventListener('click',event=>{
-        if(!event.target.closest('[data-remove-alternative]'))return;
-        const host=event.target.closest('[data-alternatives]');
-        if(host.querySelectorAll('[data-alternative]').length<=1)return;
-        event.target.closest('[data-alternative]').remove();reindexAlternatives(host);updateAlternativeButtons(host);host.querySelector('[data-remove-alternative]')?.focus();
+        const button = event.target.closest('[data-remove-alternative]');
+        if (!button) return;
+        const host = button.closest('[data-alternatives]');
+        if (host.querySelectorAll('[data-alternative]').length <= 1) return;
+        const panel = button.closest('[data-alternative]');
+        const nextPanel = panel.nextElementSibling ?? panel.previousElementSibling;
+        panel.remove();
+        reindexAlternatives(host);
+        updateAlternativeButtons(host);
+        nextPanel?.querySelector('input:not([type=hidden])')?.focus();
     });
     const alternatives=document.querySelector('[data-alternatives]');if(alternatives)updateAlternativeButtons(alternatives);
 }

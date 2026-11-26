@@ -7,6 +7,7 @@
 .finance-grid .ui-card > p, .finance-card-description { margin-bottom: 1.75rem; }
 .finance-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 2rem; margin: 1rem 0; }
 .finance-stat dt { font-size: var(--ui-text-small); color: var(--ui-muted); }
+.portfolio-summary .finance-stat dt { display: flex; align-items: center; min-height: 44px; }
 .finance-stat dd { margin: .75rem 0 0; font-size: clamp(1.125rem, 2.5vw, 2rem); font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
 .finance-stat dd { max-width: 100%; overflow-x: auto; white-space: nowrap; }
 .finance-breakdown { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem 1rem; margin: 1.5rem 0; font-size: var(--ui-text-small); }
@@ -16,6 +17,11 @@
 .finance-chart { position: relative; height: 280px; margin-block: 1.5rem; min-width: 0; }
 .finance-alternative { border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: 1.5rem; margin: 1rem 0; }
 .finance-alternative legend { padding-inline: .5rem; font-weight: 600; }
+.finance-alternative-actions { display: flex; justify-content: flex-end; padding-block-start: .75rem; border-top: 1px solid var(--ui-border); }
+.investment-tax-notice { grid-column: 1 / -1; padding: .75rem; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-bg); color: var(--ui-text); }
+.investment-tax-notice p { margin: 0; font-size: var(--ui-text-small); }
+.investment-retention-note { overflow-wrap: break-word; }
+.scfp-theme .investment-page input[readonly].investment-readonly { background: var(--ui-surface); color: var(--ui-text); }
 .finance-distribution { display: grid; gap: 1rem; }
 .finance-distribution li { list-style: none; }
 .finance-distribution meter { display: block; width: 100%; height: 1rem; accent-color: var(--accent); }
@@ -139,13 +145,8 @@
 }
 .investment-page .income-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
-    align-items: end;
 }
-.investment-page .income-filters > .ui-inline {
-    align-self: end;
-    margin-bottom: 0;
-    white-space: nowrap;
-}
+.investment-page .ui-filter-grid > .ui-field > label { display: block; min-height: 1.5rem; }
 .investment-page .investment-dividend-row { grid-column: 1 / -1; }
 .social-page .finance-grid > *, .social-page .ui-card { min-width: 0; }
 .social-page .ui-field { margin-bottom: 1.5rem; }
@@ -153,7 +154,7 @@
     .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); }
     .investment-page .ui-field label { min-height: 0; }
     .investment-page .income-filters { grid-template-columns:minmax(0,1fr); }
-    .investment-page .income-filters > .ui-inline { justify-self: start; }
+    .ui-filter-grid > .ui-filter-actions { margin-block-start: 0; }
 }
 
 .investment-page [style*="background: #"], .investment-page [style*="background:#"] { background:var(--ui-surface) !important; border-color:var(--ui-border-strong) !important; }

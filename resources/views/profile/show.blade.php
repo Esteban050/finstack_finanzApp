@@ -206,21 +206,19 @@
                 </div>
 
                 @if (!$usuario->mfa_activo)
-                    <div class="space-y-4">
-                        <p class="text-sm text-gray-600">Para activar 2FA, solicita un código a tu correo e ingrésalo a continuación:</p>
-                        <form method="POST" action="{{ route('profile.mfa.code') }}" class="inline">
+                    <div class="profile-mfa-setup">
+                        <p class="ui-help">Para activar 2FA, solicita un código a tu correo e ingrésalo a continuación:</p>
+                        <form method="POST" action="{{ route('profile.mfa.code') }}">
                             @csrf
-                            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold">
+                            <x-ui.button type="submit" variant="secondary">
                                 Enviar Código de Confirmación a mi Correo
-                            </button>
+                            </x-ui.button>
                         </form>
 
-                        <form method="POST" action="{{ route('profile.mfa.toggle') }}" class="mt-4 flex space-x-3 items-center">
+                        <form method="POST" action="{{ route('profile.mfa.toggle') }}" class="ui-filter-row">
                             @csrf
                             <x-ui.field name="codigo" id="mfa-enable-code" label="Código de verificación" :required="true"><input id="mfa-enable-code" type="text" name="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required aria-describedby="mfa-enable-code-error" /></x-ui.field>
-                            <x-primary-button>
-                                Activar 2FA
-                            </x-primary-button>
+                            <div class="ui-filter-actions"><x-ui.button type="submit">Activar 2FA</x-ui.button></div>
                         </form>
                     </div>
                 @else

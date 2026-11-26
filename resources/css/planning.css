@@ -16,7 +16,8 @@
 .planning-page .ui-card { display: grid; align-content: start; gap: 1rem; container-type: inline-size; }
 .planning-page .ui-card h2 { margin: 0; }
 .planning-page .ui-badge { justify-self: start; }
-.planning-page .ui-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.planning-page .ui-number { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.budget-config-table .ui-table input { text-align: start; }
 .planning-page details { border-top: 1px solid var(--ui-border); padding-top: 1rem; }
 .planning-page summary { cursor: pointer; padding: .75rem 0; color: var(--accent); font-weight: 600; }
 .planning-page progress { width: 100%; height: .75rem; accent-color: var(--accent); }
@@ -48,7 +49,7 @@
 .report-indicators-grid .report-value-unavailable { margin-block: .25rem; font-size: 1.125rem; font-weight: 500; white-space: normal; color: var(--ui-muted); }
 .ui-notification-link { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; color: var(--ui-text); text-decoration: none; font-size: var(--ui-text-meta); }
 .ui-notification-count:empty { display: none; }
-.ui-notification-count { padding: .25rem .5rem; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
+.ui-notification-count { display: inline-grid; place-items: center; min-inline-size: 1.5rem; block-size: 1.5rem; padding-inline: .375rem; border-radius: .375rem; background: color-mix(in srgb, var(--ui-text) 9%, var(--ui-surface)); color: var(--ui-text); font-variant-numeric: tabular-nums; font-weight: 650; line-height: 1; }
 .ui-topbar { flex-wrap: wrap; }
 .ui-topbar-title { min-width: 0; }
 .ui-topbar .ui-theme-switch { margin-left: auto; }

@@ -103,4 +103,23 @@ async function notifications(c){const filter=el('form',null,'planning-filters'),
  for(const n of d.notificaciones){const details=n.datos||{},row=el('li',null,'notification-item'+(n.estado==='NO_LEIDA'?' notification-item--unread':'')),dot=el('span',null,'notification-dot notification-dot--'+String(n.prioridad).toLowerCase()),body=el('div',null,'notification-body'),priority=({INFORMATIVA:'Informativa',ADVERTENCIA:'Advertencia',CRITICA:'Crítica'}[n.prioridad]||pretty(n.prioridad));const status = {NO_LEIDA:'No leída',LEIDA:'Leída',ARCHIVADA:'Archivada'}[n.estado];if(status)body.append(el('p',status,'ui-help'));dot.setAttribute('aria-hidden','true');body.append(el('strong',priority+' · '+(ALERT_LABELS[n.tipo]||pretty(n.tipo))+(details.nombre?' · '+details.nombre:'')));
  const values=[];for(const [key,label]of Object.entries({asignado:'Asignado',gastado:'Gastado',disponible:'Disponible',proyeccion:'Proyección',ingresos:'Ingresos',ingresos_recibidos:'Ingresos recibidos',ingresos_pendientes:'Ingresos pendientes',ingreso_promedio:'Ingreso promedio',gastos:'Gastos',monto:'Monto',diferencia:'Diferencia',total:'Total',tope:'Tope',promedio:'Promedio habitual',monto_max:'Máximo por gasto pequeño',cupo:'Cupo',saldo:'Saldo usado',pendiente:'Pendiente',monto_estimado:'Monto estimado',deficit:'Déficit'}))if(details[key]!=null&&/^-?\d+(?:\.\d+)?$/.test(String(details[key])))values.push(label+': '+money(details[key]));if(details.ejecucion_porc!==undefined)values.push('Ejecución: '+percent(details.ejecucion_porc));if(details.umbral!==undefined)values.push('Umbral: '+percent(details.umbral));if(n.tipo==='PARAMETROS_ACTUALIZADOS'&&Number.isInteger(details.anio))values.push('Los parámetros de '+details.anio+' fueron actualizados.');if(details.fecha)values.push('Fecha: '+formatDate(details.fecha));if(details.mes)values.push('Periodo: '+formatMonth(details.mes));if(values.length)body.append(el('p',values.join(' · '),'ui-help'));
  const when=el('time',formatDate(n.creado_en)+' '+new Intl.DateTimeFormat('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit'}).format(new Date(n.creado_en)),'notification-time');when.dateTime=n.creado_en;const controls=el('div',null,'ui-inline notification-actions');const target=notificationTarget(n,c.routes.budgets);if(target)controls.append(link('Ver detalle',target,'planning-detail-link'));if(isUuid(n.id))for(const [action,label]of [[n.estado==='NO_LEIDA'?'leida':'no-leida',n.estado==='NO_LEIDA'?'Marcar como leída':'Marcar como no leída'],...(n.estado==='ARCHIVADA'?[]:[['archivar','Archivar']])])controls.append(button(label,async()=>{try{await request(c.routes.notifications+'/'+n.id+'/'+action,{method:'PATCH'});document.dispatchEvent(new Event('notifications-changed'));await c.reload();}catch(e){c.fail(e);}},'ghost'));body.append(controls);row.append(dot,body,when);list.append(row);}if(d.notificaciones.length)c.host.append(card(null,list));const nav=el('nav',null,'ui-pagination');nav.setAttribute('aria-label','Páginas de notificaciones');const prev=button('Anterior',()=>c.navigate({page:d.meta.pagina_actual-1})),next=button('Siguiente',()=>c.navigate({page:d.meta.pagina_actual+1}));prev.disabled=d.meta.pagina_actual<=1;next.disabled=d.meta.pagina_actual>=d.meta.ultima_pagina;nav.append(prev,el('p','Página '+d.meta.pagina_actual+' de '+d.meta.ultima_pagina+' · '+d.meta.total+' notificaciones'),next);c.host.append(nav);}
-export function mountNotificationCount(){document.querySelectorAll('[data-notification-counter]').forEach(host=>{const update=async()=>{try{const response=await getData(host.dataset.notificationCounter);host.textContent=response.data.no_leidas>99?'99+':String(response.data.no_leidas);host.setAttribute('aria-label',response.data.no_leidas+' notificaciones sin leer');}catch{host.textContent='';}};update();window.addEventListener('focus',update);document.addEventListener('notifications-changed',update);});}
+export function mountNotificationCount() {
+    document.querySelectorAll('[data-notification-counter]').forEach(host => {
+        const link = host.closest('a');
+        const update = async () => {
+            try {
+                const response = await getData(host.dataset.notificationCounter);
+                const count = response.data.no_leidas;
+                host.textContent = count > 99 ? '99+' : String(count);
+                const unread = count === 1 ? '1 notificación sin leer' : `${count} notificaciones sin leer`;
+                link?.setAttribute('aria-label', `Abrir notificaciones (${unread})`);
+            } catch {
+                host.textContent = '';
+                link?.setAttribute('aria-label', 'Abrir notificaciones');
+            }
+        };
+        update();
+        window.addEventListener('focus', update);
+        document.addEventListener('notifications-changed', update);
+    });
+}

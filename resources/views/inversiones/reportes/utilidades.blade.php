@@ -37,11 +37,11 @@
             </div>
         </div>
 
-        <form method="GET" action="{{ route('inversiones.reportes.utilidades') }}" class="ui-inline" style="align-items: flex-end; margin: 0;">
+        <form method="GET" action="{{ route('inversiones.reportes.utilidades') }}" class="ui-filter-row">
             <x-ui.field name="anio" label="Otro año">
-                <input type="number" name="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
+                <input type="number" name="anio" id="anio" min="2000" max="2100" value="{{ $anio }}" style="width: 100px;">
             </x-ui.field>
-            <x-ui.button type="submit" variant="secondary">Ir</x-ui.button>
+            <div class="ui-filter-actions"><x-ui.button type="submit" variant="secondary">Ir</x-ui.button></div>
         </form>
     </div>
 </x-ui.card>

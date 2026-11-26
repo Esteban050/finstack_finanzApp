@@ -151,7 +151,7 @@
             </div>
             <div>
                 <span class="ui-help">Retención sobre Abonos:</span>
-                <p style="margin: 0.25rem 0; font-weight: 600;">7% Rendimientos Financieros (Art. 395 ET)</p>
+                <p class="investment-retention-note" style="margin: 0.25rem 0; font-weight: 600;">7% Rendimientos Financieros (Art. 395 ET)</p>
             </div>
             <div>
                 <span class="ui-help">Tratamiento GMF (4x1000):</span>
@@ -682,8 +682,8 @@
                     $unidadesActuales = (string) ($presentacion['unidades_actuales'] ?? $det['unidades_total'] ?? $det['unidades'] ?? 0);
                     $costoBaseUnit = (string) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
                 @endphp
-                <x-ui.field name="precio_unitario" label="Nuevo precio por unidad ({{ $inversion->moneda }}) *" :required="true" help="Cotización en mercado de UNA sola acción (Tu costo de compra base fue $ {{ $formatValue($costoBaseUnit, 2) }} {{ $inversion->moneda }}).">
-                    <input id="val_precio_unitario" data-localized-value data-precision="8" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? $formatValue($precioActual, 8, ',', '.') : '' }}" required placeholder="Ej: {{ $formatValue($costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy('1.05') : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
+                <x-ui.field name="precio_unitario" id="val_precio_unitario" label="Nuevo precio por unidad ({{ $inversion->moneda }})" :required="true" help="Cotización en mercado de UNA sola acción (Tu costo de compra base fue $ {{ $formatValue($costoBaseUnit, 2) }} {{ $inversion->moneda }}).">
+                    <input id="val_precio_unitario" data-localized-value data-precision="8" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? $formatValue($precioActual, 8, trimFraction: true) : '' }}" required placeholder="Ej: {{ $formatValue($costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy('1.05') : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
                 </x-ui.field>
 
                 <div id="val-feedback" style="grid-column: 1 / -1; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;">
@@ -766,7 +766,7 @@
 
             <div id="trx-field-valor-unidad" style="{{ $inversion->tieneUnidades() ? '' : 'display: none;' }}">
                 <x-ui.field name="valor_unidad" label="Valor / Precio de la unidad">
-                    <input id="trx_valor_unidad" data-localized-value data-precision="8" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? $formatValue((string)$det['valor_actual_unidad'], 8, ',', '.') : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
+                    <input id="trx_valor_unidad" data-localized-value data-precision="8" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? $formatValue((string)$det['valor_actual_unidad'], 8, trimFraction: true) : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
                     <div id="trx_precio_preview" class="ui-help" style="margin-top: 0.35rem; font-weight: 600; color: var(--color-primary); font-size: 0.85rem; display: none;"></div>
                 </x-ui.field>
             </div>
@@ -848,13 +848,13 @@
                             <x-ui.badge tone="primary">{{ $labels[$mov->tipo] ?? $mov->tipo }}</x-ui.badge>
                         </td>
                         <td class="ui-number">
-                            <div>$ {{ $formatValue((string) ($mov->monto_bruto ?? $mov->monto), 2) }}</div>
+                            <div class="ui-amount">$ {{ $formatValue((string) ($mov->monto_bruto ?? $mov->monto), 2) }}</div>
                             @if($esRetiroFpv && ((string)$mov->retencion_aplicada > 0 || $ingresoTrx || $deducibleTrx))
                                 @php
                                     $rendBruto = $ingresoTrx ? (string)$ingresoTrx->valor_bruto : 0.0;
                                     $capBruto = (string) \Brick\Math\BigDecimal::max('0', \Brick\Math\BigDecimal::of((string)($mov->monto_bruto ?? $mov->monto))->minus((string)$rendBruto));
                                 @endphp
-                                <div style="font-size: 0.8125rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
+                                <div class="ui-help" style="margin-top: 0.25rem;">
                                     <div>Capital: ${{ $formatValue($capBruto, 2) }}</div>
                                     <div>Rendimientos: ${{ $formatValue($rendBruto, 2) }}</div>
                                 </div>
@@ -867,7 +867,7 @@
                                     $retRend = $ingresoTrx ? (string)$ingresoTrx->retencion : 0.0;
                                     $retAportes = (string) \Brick\Math\BigDecimal::of((string)$mov->retencion_aplicada)->minus((string)$retRend);
                                 @endphp
-                                <div style="font-size: 0.8125rem; color: #64748b; line-height: 1.25; margin-top: 0.25rem; font-weight: normal; text-align: right;">
+                                <div class="ui-help" style="margin-top: 0.25rem;">
                                     <div>Aportes (7%): <span style="color: #b91c1c;">-${{ $formatValue($retAportes, 2) }}</span></div>
                                     <div>Rendimientos (7%): <span style="color: #b91c1c;">-${{ $formatValue($retRend, 2) }}</span></div>
                                 </div>
@@ -877,7 +877,7 @@
                             @if((string)$mov->gmf_aplicado > 0){{ '-$' . $formatValue((string)$mov->gmf_aplicado, 2) }}@else<span title="Sin GMF registrado: no se registra la exención 4x1000">—</span>@endif
                         </td>
                         <td class="ui-number" style="font-weight: 600;">
-                            $ {{ $formatValue((string) $mov->monto_cop, 2) }}
+                            <span class="ui-amount">$ {{ $formatValue((string) $mov->monto_cop, 2) }}</span>
                         </td>
                         <td>{{ $mov->nota ?? '—' }}</td>
                         <td>
@@ -941,7 +941,7 @@ function enlazarMascaraNumero(input, onUpdate) {
         if (error) { error.textContent = message; error.hidden = !message; }
         if (onUpdate) onUpdate();
     };
-    window.FinanzMoney.bindMoneyGrouping(input);
+    window.FinanzMoney.bindMoneyGrouping(input, { maxDecimals: precision });
     input.addEventListener('input', update); input.addEventListener('blur', update);
     if (input.value) {
         // old() entrega el decimal canónico del último envío.
