@@ -486,7 +486,7 @@
                                 <select name="cuenta_id" data-pago-cuenta>
                                     <option value="">Sin cuenta</option>
                                     @foreach($cuentas as $cuenta)
-                                        <option value="{{ $cuenta->id }}">{{ $cuenta->entidad?->nombre }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>
+                                        <option value="{{ $cuenta->id }}">{{ $cuenta->nombre_banco }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>
                                     @endforeach
                                 </select>
                             </x-ui.field>

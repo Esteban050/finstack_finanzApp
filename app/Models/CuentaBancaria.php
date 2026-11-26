@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Scopes\DelUsuarioAutenticado;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,6 +33,7 @@ class CuentaBancaria extends Model
     protected $fillable = [
         'usuario_id',
         'entidad_financiera_id',
+        'banco_otro',
         'alias',
         'saldo_inicial',
         'es_exenta_gmf',
@@ -56,6 +58,12 @@ class CuentaBancaria extends Model
     public function entidad(): BelongsTo
     {
         return $this->belongsTo(EntidadFinanciera::class, 'entidad_financiera_id');
+    }
+
+    /** Nombre del banco para mostrar: el del catálogo o, si no estaba, el que escribió el usuario. */
+    protected function nombreBanco(): Attribute
+    {
+        return Attribute::get(fn () => $this->entidad?->nombre ?? $this->banco_otro ?? '—');
     }
 
     public function ingresos(): HasMany

@@ -227,12 +227,17 @@
                                 @foreach($errorCuenta->all() as $mensaje)<p>{{ $mensaje }}</p>@endforeach
                             </div>
                         @endif
-                        <div>
+                        <div x-data="{ banco: @js(old('entidad_financiera_id') ?? (old('banco_otro') ? 'OTRO' : '')) }">
                             <x-input-label for="cuenta_banco" value="Banco *" />
-                            <select id="cuenta_banco" name="entidad_financiera_id" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
+                            <select id="cuenta_banco" name="entidad_financiera_id" x-model="banco" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
                                 <option value="">Selecciona un banco</option>
-                                @foreach($bancos as $banco)<option value="{{ $banco->id }}" @selected(old('entidad_financiera_id') === $banco->id)>{{ $banco->nombre }}</option>@endforeach
+                                @foreach($bancos as $banco)<option value="{{ $banco->id }}">{{ $banco->nombre }}</option>@endforeach
+                                <option value="OTRO">Otro banco</option>
                             </select>
+                            <div x-show="banco === 'OTRO'" x-cloak class="mt-2">
+                                <x-input-label for="cuenta_banco_otro" value="Nombre del banco *" />
+                                <x-text-input id="cuenta_banco_otro" type="text" name="banco_otro" maxlength="100" x-bind:required="banco === 'OTRO'" x-bind:disabled="banco !== 'OTRO'" :value="old('banco_otro')" class="w-full mt-1" />
+                            </div>
                         </div>
                         <div>
                             <x-input-label for="cuenta_alias" value="Nombre o alias (opcional)" />
@@ -257,12 +262,17 @@
                                 @foreach($errorTarjeta->all() as $mensaje)<p>{{ $mensaje }}</p>@endforeach
                             </div>
                         @endif
-                        <div>
+                        <div x-data="{ banco: @js(old('entidad_financiera_id') ?? (old('banco_otro') ? 'OTRO' : '')) }">
                             <x-input-label for="tarjeta_banco" value="Banco *" />
-                            <select id="tarjeta_banco" name="entidad_financiera_id" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
+                            <select id="tarjeta_banco" name="entidad_financiera_id" x-model="banco" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
                                 <option value="">Selecciona un banco</option>
-                                @foreach($bancos as $banco)<option value="{{ $banco->id }}" @selected(old('entidad_financiera_id') === $banco->id)>{{ $banco->nombre }}</option>@endforeach
+                                @foreach($bancos as $banco)<option value="{{ $banco->id }}">{{ $banco->nombre }}</option>@endforeach
+                                <option value="OTRO">Otro banco</option>
                             </select>
+                            <div x-show="banco === 'OTRO'" x-cloak class="mt-2">
+                                <x-input-label for="tarjeta_banco_otro" value="Nombre del banco *" />
+                                <x-text-input id="tarjeta_banco_otro" type="text" name="banco_otro" maxlength="80" x-bind:required="banco === 'OTRO'" x-bind:disabled="banco !== 'OTRO'" :value="old('banco_otro')" class="w-full mt-1" />
+                            </div>
                         </div>
                         <div>
                             <x-input-label for="tarjeta_cupo" value="Cupo aprobado (COP, pesos enteros) *" />

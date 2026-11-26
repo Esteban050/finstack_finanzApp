@@ -23,13 +23,17 @@ class CuentaBancariaController extends Controller
     /** Registra una cuenta de débito o ahorro. */
     public function storeCuenta(Request $request): RedirectResponse
     {
+        $this->normalizarBanco($request);
         $validated = $request->validateWithBag('cuenta', [
-            'entidad_financiera_id' => ['required', 'uuid', Rule::exists('entidad_financiera', 'id')],
+            'entidad_financiera_id' => ['required_without:banco_otro', 'nullable', 'uuid', Rule::exists('entidad_financiera', 'id')],
+            'banco_otro' => ['required_without:entidad_financiera_id', 'nullable', 'string', 'max:100'],
             'alias' => ['nullable', 'string', 'max:80'],
             'saldo_inicial' => ['required', 'numeric', 'min:0', 'regex:/^\d{1,13}(\.\d{1,2})?$/'],
             'es_exenta_gmf' => ['nullable', 'boolean'],
         ], [
-            'entidad_financiera_id.required' => 'Elige el banco de la cuenta.',
+            'entidad_financiera_id.required_without' => 'Elige el banco de la cuenta o escribe el nombre en "Otro banco".',
+            'banco_otro.required_without' => 'Escribe el nombre del banco.',
+            'banco_otro.max' => 'El nombre del banco no puede superar los 100 caracteres.',
             'entidad_financiera_id.exists' => 'Elige un banco de la lista.',
             'saldo_inicial.required' => 'Indica el monto o saldo inicial de la cuenta.',
             'saldo_inicial.numeric' => 'El saldo inicial debe ser un número.',
@@ -39,7 +43,8 @@ class CuentaBancariaController extends Controller
 
         $cuenta = CuentaBancaria::create([
             'usuario_id' => Auth::id(),
-            'entidad_financiera_id' => $validated['entidad_financiera_id'],
+            'entidad_financiera_id' => $validated['entidad_financiera_id'] ?? null,
+            'banco_otro' => $validated['banco_otro'] ?? null,
             'alias' => isset($validated['alias']) && trim($validated['alias']) !== '' ? trim($validated['alias']) : null,
             'saldo_inicial' => $validated['saldo_inicial'],
             'es_exenta_gmf' => (bool) ($validated['es_exenta_gmf'] ?? false),
@@ -83,12 +88,17 @@ class CuentaBancariaController extends Controller
      */
     public function storeTarjeta(Request $request): RedirectResponse
     {
+        $this->normalizarBanco($request);
         $validated = $request->validateWithBag('tarjeta', [
-            'entidad_financiera_id' => ['required', 'uuid', Rule::exists('entidad_financiera', 'id')],
+            'entidad_financiera_id' => ['required_without:banco_otro', 'nullable', 'uuid', Rule::exists('entidad_financiera', 'id')],
+            // creditos.banco admite 80 caracteres.
+            'banco_otro' => ['required_without:entidad_financiera_id', 'nullable', 'string', 'max:80'],
             'cupo' => ['required', 'regex:/^\d{1,12}$/', 'not_regex:/^0+$/'],
             'tasa_interes_anual' => ['nullable', 'numeric', 'min:0', 'regex:/^\d{1,4}(\.\d{1,6})?$/'],
         ], [
-            'entidad_financiera_id.required' => 'Elige el banco de la tarjeta.',
+            'entidad_financiera_id.required_without' => 'Elige el banco de la tarjeta o escribe el nombre en "Otro banco".',
+            'banco_otro.required_without' => 'Escribe el nombre del banco.',
+            'banco_otro.max' => 'El nombre del banco no puede superar los 80 caracteres.',
             'entidad_financiera_id.exists' => 'Elige un banco de la lista.',
             'cupo.required' => 'Indica el cupo aprobado de la tarjeta.',
             'cupo.regex' => 'El cupo va en pesos enteros, con hasta 12 dígitos.',
@@ -97,7 +107,9 @@ class CuentaBancariaController extends Controller
             'tasa_interes_anual.regex' => 'La tasa E.A. admite hasta 4 enteros y 6 decimales.',
         ]);
 
-        $banco = EntidadFinanciera::findOrFail($validated['entidad_financiera_id'])->nombre;
+        $banco = isset($validated['entidad_financiera_id'])
+            ? EntidadFinanciera::findOrFail($validated['entidad_financiera_id'])->nombre
+            : $validated['banco_otro'];
         $creditos = app(CreditoController::class);
         $datos = $creditos->validarDatos([
             'tipo_credito' => 'TARJETA_CREDITO',
@@ -117,6 +129,21 @@ class CuentaBancariaController extends Controller
         return redirect()->route('profile.show')->with('status', 'Tarjeta registrada.');
     }
 
+    /**
+     * "Otro banco": el select envía OTRO en lugar de un id. Exactamente uno de los dos
+     * identifica el banco: con un banco de la lista se descarta el texto libre.
+     */
+    private function normalizarBanco(Request $request): void
+    {
+        $id = $request->input('entidad_financiera_id');
+        $otro = trim((string) $request->input('banco_otro', ''));
+        if ($id === 'OTRO' || $id === null || $id === '') {
+            $request->merge(['entidad_financiera_id' => null, 'banco_otro' => $otro === '' ? null : $otro]);
+        } else {
+            $request->merge(['banco_otro' => null]);
+        }
+    }
+
     /** Datos para la sección "Cuentas y tarjetas" del perfil. */
     public static function paraPerfil(): array
     {
@@ -127,7 +154,7 @@ class CuentaBancariaController extends Controller
         return [
             'cuentas' => $cuentas->map(fn (CuentaBancaria $c) => [
                 'id' => $c->id,
-                'banco' => $c->entidad?->nombre ?? '—',
+                'banco' => $c->nombre_banco,
                 'alias' => $c->alias,
                 'exenta' => $c->es_exenta_gmf,
                 'saldo' => $saldos[$c->id] ?? '0.00',

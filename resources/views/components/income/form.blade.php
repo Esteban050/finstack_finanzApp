@@ -14,7 +14,7 @@
                 <x-ui.field name="cuenta_id" :id="$prefix.'-account'" label="Cuenta que recibe el dinero" help="Opcional. Suma el ingreso al saldo de la cuenta.">
                     <select id="{{ $prefix }}-account" name="cuenta_id" data-income-account aria-describedby="{{ $prefix }}-account-error">
                         <option value="">Sin cuenta</option>
-                        @foreach($cuentas as $cuenta)<option value="{{ $cuenta->id }}" @selected(old('cuenta_id', $record['cuenta_id'] ?? '') === $cuenta->id)>{{ $cuenta->entidad?->nombre }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>@endforeach
+                        @foreach($cuentas as $cuenta)<option value="{{ $cuenta->id }}" @selected(old('cuenta_id', $record['cuenta_id'] ?? '') === $cuenta->id)>{{ $cuenta->nombre_banco }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>@endforeach
                     </select>
                 </x-ui.field>
             @endif

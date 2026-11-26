@@ -471,7 +471,7 @@ class DashboardResumenService
 
         $debito = $cuentas->map(fn (CuentaBancaria $c) => [
             'id' => $c->id,
-            'nombre' => trim(($c->entidad?->nombre ?? 'Cuenta').($c->alias ? ' · '.$c->alias : '')),
+            'nombre' => trim($c->nombre_banco.($c->alias ? ' · '.$c->alias : '')),
             'saldo_disponible' => $saldos[$c->id] ?? '0.00',
             'exenta_gmf' => $c->es_exenta_gmf,
         ])->all();
