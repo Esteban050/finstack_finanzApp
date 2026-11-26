@@ -82,6 +82,8 @@ class Gasto extends Model
         'plantilla_recurrencia_id',
         'credito_id',
         'movimiento_gmf_id',
+        'cuenta_id',
+        'gasto_origen_gmf_id',
         'genera_credito',
         'fecha',
         'moneda',
