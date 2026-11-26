@@ -119,3 +119,10 @@ test('Compra a cuotas con tarjeta: cuotas, tasa y fecha de pago respetan sus ran
     assert.ok(validateCreditCard({...base, fecha_pago: '2026-01-01'}).fecha_pago);
     for (const cupo of ['', '0', '-5', '1500000.5', 'abc']) assert.ok(validateCreditCard({...base, cupo_tarjeta: cupo}).cupo_tarjeta);
 });
+
+test('Tarjeta registrada: cuotas opcionales de la compra (vacío = 1) entre 1 y 72', () => {
+    const existente = {...expense, credito_id: 'tarjeta-1'};
+    assert.deepEqual(validateExpense({...existente, numero_cuotas: ''}, catalog), {});
+    assert.deepEqual(validateExpense({...existente, numero_cuotas: '3', sin_intereses: '1'}, catalog), {});
+    for (const cuotas of ['0', '73', '1.5', 'x']) assert.ok(validateExpense({...existente, numero_cuotas: cuotas}, catalog).numero_cuotas);
+});

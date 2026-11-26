@@ -44,6 +44,19 @@ class PagoCreditoService
      */
     public static function crearPlan(Credito $credito, int $version, ?array $compras = null): void
     {
+        // Tarjeta con día de corte y de pago: cada compra se amortiza por su cuenta (cuotas e intereses propios).
+        if ($credito->tipo_credito === 'TARJETA_CREDITO' && CicloTarjetaService::tieneCiclo($credito)) {
+            $porCompra = $compras ?? self::comprasTarjeta($credito);
+            if ($porCompra !== []) {
+                self::insertarCuotas($credito, $version, array_map(
+                    fn (array $fila) => self::filaGuardable($fila),
+                    self::planTarjetaPorCompra($credito, $porCompra)
+                ));
+
+                return;
+            }
+        }
+
         $tabla = CreditoService::tablaAmortizacion(
             (string) $credito->monto,
             (string) $credito->tasa_periodica,
@@ -79,14 +92,15 @@ class PagoCreditoService
      * tienen imputaciones conservan su ID, sus importes y su historial.
      * El llamador debe tener el crédito bloqueado dentro de una transacción.
      */
-    public static function ajustarPlanTarjeta(Credito $credito): void
+    public static function ajustarPlanTarjeta(Credito $credito, bool $forzar = false, ?array $compras = null): void
     {
         $hoy = CarbonImmutable::today();
         $situacion = self::situacion($credito, $hoy);
         $pagado = $situacion['pagado'];
         $capitalPagado = bcadd($pagado['CAPITAL'], $pagado['ABONO_EXTRAORDINARIO'], 0);
         $saldoObjetivo = bcsub(CreditoService::alPeso((string) $credito->monto), $capitalPagado, 0);
-        if (bccomp($saldoObjetivo, $situacion['saldo_capital'], 0) === 0) {
+        // $forzar: cambió una condición de una compra (cuotas, intereses, fecha) sin cambiar el capital.
+        if (! $forzar && bccomp($saldoObjetivo, $situacion['saldo_capital'], 0) === 0) {
             return;
         }
 
@@ -116,16 +130,20 @@ class PagoCreditoService
         }
 
         $ids = array_column($futuras, 'id');
-        if ($futuras === [] && ! self::esCero($nuevoSaldoFuturo)) {
-            $inicioPeriodo = max($inicioPeriodo, $hoy->toDateString());
-            $futuras[] = [
-                'numero' => $protegidas + 1,
-                'fecha' => CreditoService::fechaVencimiento($inicioPeriodo, $credito->periodicidad, 1)->toDateString(),
-            ];
-        }
+        if (CicloTarjetaService::tieneCiclo($credito)) {
+            $plan = self::planFuturoTarjetaPorCompra($credito, $nuevoSaldoFuturo, $protegidas, $protegidas > 0 ? $inicioPeriodo : null, $hoy, $compras ?? self::comprasTarjeta($credito));
+        } else {
+            if ($futuras === [] && ! self::esCero($nuevoSaldoFuturo)) {
+                $inicioPeriodo = max($inicioPeriodo, $hoy->toDateString());
+                $futuras[] = [
+                    'numero' => $protegidas + 1,
+                    'fecha' => CreditoService::fechaVencimiento($inicioPeriodo, $credito->periodicidad, 1)->toDateString(),
+                ];
+            }
 
-        $inicio = CarbonImmutable::parse($inicioPeriodo);
-        $plan = self::regenerar($credito, ['periodo_inicio' => $inicioPeriodo], $futuras, $nuevoSaldoFuturo, 'CUOTA', $inicio);
+            $inicio = CarbonImmutable::parse($inicioPeriodo);
+            $plan = self::regenerar($credito, ['periodo_inicio' => $inicioPeriodo], $futuras, $nuevoSaldoFuturo, 'CUOTA', $inicio);
+        }
         $version = $credito->version_plan_vigente + 1;
 
         CuotaCredito::whereIn('id', $ids)->update(['reemplazada_en_version' => $version]);
@@ -286,8 +304,13 @@ class PagoCreditoService
         $siguiente = array_values(array_filter($filas, $futuras))[0] ?? null;
         // N01: en una tarjeta el interés a la fecha se causa por compra y días reales; las compras
         // posteriores a la fecha aún no causan y las anteriores a la referencia causan desde ella.
+        // Las compras sin intereses no causan: se excluyen de las compras y del saldo que causa.
+        $todasLasCompras = $credito->tipo_credito === 'TARJETA_CREDITO' ? self::comprasTarjeta($credito) : [];
+        $comprasConInteres = array_values(array_filter($todasLasCompras, fn (array $c) => ! $c['sin_intereses']));
+        $exentas = array_reduce($todasLasCompras, fn (string $t, array $c) => $c['sin_intereses'] ? bcadd($t, CreditoService::alPeso($c['monto']), 0) : $t, '0');
+        $capitalCausa = self::noNegativo(bcsub($capitalNoExigible, $exentas, 0));
         $causado = $credito->tipo_credito === 'TARJETA_CREDITO'
-            ? CreditoService::interesComprasPorDias($capitalNoExigible, self::comprasTarjeta($credito), (string) $credito->tasa_ea, $referencia, $fecha)
+            ? CreditoService::interesComprasPorDias($capitalCausa, $comprasConInteres, (string) $credito->tasa_ea, $referencia, $fecha)
             : CreditoService::interesPorDias($capitalNoExigible, (string) $credito->tasa_ea, $diasCausado);
         // Lo que ya se anticipó del interés de la próxima cuota cubre el causado.
         $causadoPendiente = self::noNegativo(bcsub($causado, $siguiente['interes_pagado'] ?? '0', 0));
@@ -970,9 +993,153 @@ class PagoCreditoService
     {
         return Gasto::withoutGlobalScope(DelUsuarioAutenticado::class)
             ->where('credito_id', $credito->id)
-            ->get(['fecha', 'monto_cop'])
-            ->map(fn (Gasto $g) => ['monto' => (string) $g->monto_cop, 'fecha' => $g->fecha->toDateString()])
+            ->get(['fecha', 'monto_cop', 'numero_cuotas', 'sin_intereses'])
+            ->map(fn (Gasto $g) => [
+                'monto' => (string) $g->monto_cop,
+                'fecha' => $g->fecha->toDateString(),
+                'numero_cuotas' => (int) $g->numero_cuotas,
+                'sin_intereses' => (bool) $g->sin_intereses,
+            ])
             ->all();
+    }
+
+    /**
+     * Plan de una tarjeta con ciclo, compra por compra. Cada compra reparte su capital en sus
+     * cuotas iguales (al peso, la última absorbe el redondeo). La compra hasta el día de corte
+     * entra en ese extracto y la posterior en el siguiente; la cuota 1 vence el día de pago que
+     * sigue al corte y las demás, mes a mes. El interés de la cuota 1 es por días reales desde la
+     * compra (como en H07) y el de las siguientes, sobre el saldo de esa compra a la tasa periódica
+     * de la tarjeta; una compra sin intereses no causa ninguno. La cuota de cada fecha de pago es
+     * la suma de lo de todas las compras.
+     *
+     * @param  array<int, array{monto: string, fecha: string, numero_cuotas?: int, sin_intereses?: bool}>  $compras
+     * @return array<int, array<string, mixed>> filas con los campos de tablaAmortizacion()
+     */
+    public static function planTarjetaPorCompra(Credito $credito, array $compras): array
+    {
+        $ea = (string) $credito->tasa_ea;
+        $tasaPeriodica = (string) $credito->tasa_periodica;
+        $diaCorte = (int) $credito->dia_corte;
+        $diaPago = (int) $credito->dia_pago;
+        $porFecha = [];
+        $bruto = '0';
+        $suma = '0';
+
+        foreach ($compras as $compra) {
+            $bruto = bcadd($bruto, (string) $compra['monto'], 2);
+            $monto = CreditoService::alPeso((string) $compra['monto']);
+            if (bccomp($monto, '0', 0) <= 0) {
+                continue;
+            }
+            $suma = bcadd($suma, $monto, 0);
+            $cuotas = max(1, (int) ($compra['numero_cuotas'] ?? 1));
+            $sinIntereses = (bool) ($compra['sin_intereses'] ?? false);
+            $fechaCompra = CarbonImmutable::parse($compra['fecha']);
+            $corte = CicloTarjetaService::corteDeCompra($fechaCompra, $diaCorte);
+            $abono = CreditoService::abonoConstante($monto, $cuotas);
+            $saldo = $monto;
+
+            for ($j = 1; $j <= $cuotas; $j++) {
+                $corteJ = $j === 1 ? $corte : CicloTarjetaService::fechaDelMes($corte->startOfMonth()->addMonths($j - 1), $diaCorte);
+                $pago = CicloTarjetaService::pagoDeCorte($corteJ, $diaPago);
+                $capital = $j === $cuotas || bccomp($abono, $saldo, 0) === 1 ? $saldo : $abono;
+                $interes = match (true) {
+                    $sinIntereses => '0',
+                    $j === 1 => CreditoService::interesPorDias($saldo, $ea, max(0, self::dias($fechaCompra, $pago))),
+                    default => CreditoService::alPeso(bcmul($saldo, $tasaPeriodica, 30)),
+                };
+
+                $clave = $pago->toDateString();
+                $porFecha[$clave]['capital'] = bcadd($porFecha[$clave]['capital'] ?? '0', $capital, 0);
+                $porFecha[$clave]['interes'] = bcadd($porFecha[$clave]['interes'] ?? '0', $interes, 0);
+                $saldo = bcsub($saldo, $capital, 0);
+                if (self::esCero($saldo)) {
+                    break;
+                }
+            }
+        }
+
+        ksort($porFecha);
+        // El capital del plan es el de la tarjeta (suma de compras al peso): el redondeo de cada compra se absorbe en la última cuota.
+        $diferencia = bcsub(CreditoService::alPeso($bruto), $suma, 0);
+        if ($porFecha !== [] && ! self::esCero($diferencia)) {
+            $ultima = array_key_last($porFecha);
+            $porFecha[$ultima]['capital'] = bcadd($porFecha[$ultima]['capital'], $diferencia, 0);
+        }
+
+        $saldo = CreditoService::alPeso($bruto);
+        $tabla = [];
+        $numero = 0;
+        foreach ($porFecha as $fecha => $fila) {
+            $cuota = bcadd($fila['capital'], $fila['interes'], 0);
+            $tabla[] = [
+                'numero' => ++$numero,
+                'fecha' => $fecha,
+                'saldo_inicial' => $saldo,
+                'cuota' => $cuota,
+                'interes' => $fila['interes'],
+                'abono_capital' => $fila['capital'],
+                'saldo_final' => $saldo = bcsub($saldo, $fila['capital'], 0),
+                'seguro' => '0',
+                'cargos' => '0',
+                'cuota_total' => $cuota,
+            ];
+        }
+
+        return $tabla;
+    }
+
+    /**
+     * Cuotas futuras de una tarjeta con ciclo y pagos vigentes: las del plan por compra posteriores
+     * a la última cuota protegida, con el capital limitado al saldo futuro (lo que sobre o falte,
+     * por pagos anticipados o cuotas protegidas, se absorbe en la última).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function planFuturoTarjetaPorCompra(Credito $credito, string $saldoFuturo, int $protegidas, ?string $despuesDe, CarbonImmutable $hoy, array $compras): array
+    {
+        if (self::esCero($saldoFuturo)) {
+            return [];
+        }
+
+        $filas = array_values(array_filter(
+            self::planTarjetaPorCompra($credito, $compras),
+            fn (array $f) => $despuesDe === null || $f['fecha'] > $despuesDe
+        ));
+
+        if ($filas === []) {
+            $base = $despuesDe !== null && $despuesDe > $hoy->toDateString() ? CarbonImmutable::parse($despuesDe) : $hoy;
+            $filas[] = [
+                'fecha' => CicloTarjetaService::pagoDeCorte(CicloTarjetaService::proximaFecha((int) $credito->dia_corte, $base), (int) $credito->dia_pago)->toDateString(),
+                'abono_capital' => $saldoFuturo,
+                'interes' => '0',
+            ];
+        }
+
+        $restante = $saldoFuturo;
+        $plan = [];
+        foreach ($filas as $k => $fila) {
+            $esUltima = $k === array_key_last($filas);
+            $capital = $esUltima || bccomp($fila['abono_capital'], $restante, 0) === 1 ? $restante : $fila['abono_capital'];
+            $cuota = bcadd($capital, $fila['interes'], 0);
+            $plan[] = [
+                'numero' => $protegidas + count($plan) + 1,
+                'fecha' => $fila['fecha'],
+                'saldo_inicial' => $restante,
+                'cuota' => $cuota,
+                'interes' => $fila['interes'],
+                'abono_capital' => $capital,
+                'saldo_final' => $restante = bcsub($restante, $capital, 0),
+                'seguro' => '0',
+                'cargos' => '0',
+                'cuota_total' => $cuota,
+            ];
+            if (self::esCero($restante)) {
+                break;
+            }
+        }
+
+        return $plan;
     }
 
     /** Fila de la tabla de amortización con los nombres de columna de cuotas_credito. */

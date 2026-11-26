@@ -48,6 +48,13 @@
                                 <option value="NUEVA" @selected($seleccion === 'NUEVA')>Registrar tarjeta nueva</option>
                             </select>
                         </x-ui.field>
+                        <fieldset data-card-purchase-fields hidden>
+                            <legend>Cuotas de la compra</legend>
+                            <div class="income-two-fields">
+                                <x-ui.field name="numero_cuotas" :id="$prefix.'-purchase-installments'" label="Número de cuotas" help="Opcional, entre 1 y 72. Si lo dejas vacío es 1 cuota."><input id="{{ $prefix }}-purchase-installments" type="number" name="numero_cuotas" min="1" max="72" step="1" inputmode="numeric" placeholder="1" value="{{ old('numero_cuotas', ($record['numero_cuotas'] ?? 1) > 1 ? $record['numero_cuotas'] : '') }}" disabled></x-ui.field>
+                                <label><input type="checkbox" name="sin_intereses" value="1" @checked(old('sin_intereses', $record['sin_intereses'] ?? false)) disabled> Compra sin intereses</label>
+                            </div>
+                        </fieldset>
                         <fieldset data-credit-card-fields hidden>
                             <legend>Datos de la tarjeta de crédito</legend>
                             <p class="ui-help">Al guardar, la tarjeta queda registrada en Créditos con esta compra y su plan de cuotas. Los próximos gastos con esta tarjeta se suman a ella.</p>

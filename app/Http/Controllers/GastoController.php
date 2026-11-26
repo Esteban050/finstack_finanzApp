@@ -714,6 +714,9 @@ class GastoController extends Controller
                 'subcategoria_id' => $subcategoria->id,
                 'credito_id' => ConsumoTarjetaService::esCreditoNuevo($validated['credito_id'] ?? null) ? null : ($validated['credito_id'] ?? null),
                 'medio_pago' => $validated['medio_pago'],
+                // Compra con tarjeta: cuotas propias (1 por defecto) y si es sin intereses; el plan se arma por compra.
+                'numero_cuotas' => $validated['medio_pago'] === 'TARJETA_CREDITO' ? (int) ($validated['numero_cuotas'] ?? 1) : 1,
+                'sin_intereses' => $validated['medio_pago'] === 'TARJETA_CREDITO' && filter_var($validated['sin_intereses'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 // Solo TARJETA_DEBITO y TRANSFERENCIA salen de una cuenta de débito.
                 'cuenta_id' => in_array($validated['medio_pago'], Gasto::MEDIOS_CON_CUENTA, true) ? ($validated['cuenta_id'] ?? null) : null,
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
@@ -814,7 +817,11 @@ class GastoController extends Controller
 
         return [
             'banco_tarjeta' => [...$condicion, 'string', 'max:80'],
-            'numero_cuotas' => [...$condicion, 'integer', 'min:1', 'max:'.self::MAX_CUOTAS_TARJETA],
+            // Tarjeta registrada: cuotas opcionales (vacío = 1); NUEVA: obligatorias (son las del crédito que se crea).
+            'numero_cuotas' => $compraNueva
+                ? ['required', 'integer', 'min:1', 'max:'.self::MAX_CUOTAS_TARJETA]
+                : ['exclude_unless:medio_pago,TARJETA_CREDITO', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_CUOTAS_TARJETA],
+            'sin_intereses' => $compraNueva ? ['exclude'] : ['exclude_unless:medio_pago,TARJETA_CREDITO', 'nullable', 'boolean'],
             'fecha_corte' => [...$condicion, 'date'],
             'fecha_pago' => [...$condicion, 'date', 'after:fecha'],
             'tasa_interes_anual' => [...$condicion, 'numeric', 'min:0', 'max:100', 'regex:/^\d{1,3}(\.\d{1,6})?$/'],
@@ -895,6 +902,7 @@ class GastoController extends Controller
             'numero_cuotas.integer' => 'El número de cuotas debe ser un número entero.',
             'numero_cuotas.min' => 'El número de cuotas debe ser al menos 1.',
             'numero_cuotas.max' => 'El número de cuotas no puede superar '.self::MAX_CUOTAS_TARJETA.'.',
+            'sin_intereses.boolean' => 'Indique si la compra es sin intereses (sí o no).',
             'fecha_corte.required' => 'Indique la fecha de corte de la tarjeta.',
             'fecha_corte.date' => 'La fecha de corte no tiene un formato válido.',
             'fecha_pago.required' => 'Indique la fecha de pago de la tarjeta.',

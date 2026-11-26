@@ -63,10 +63,17 @@ export function mountExpenses() {
         const cardSelect = cardField?.querySelector('select');
         const payment = editor.querySelector('[name=medio_pago]');
         const newCard = cardField?.querySelector('[data-credit-card-fields]');
+        const purchaseCard = cardField?.querySelector('[data-card-purchase-fields]');
         const updateCard = () => {
             if (!cardField) return;
             cardField.hidden = payment.value !== 'TARJETA_CREDITO';
             if (cardSelect) cardSelect.disabled = cardField.hidden;
+            // Tarjeta registrada: cuotas de la compra y «sin intereses» (opcionales) solo con una tarjeta elegida.
+            if (purchaseCard) {
+                const existing = !cardField.hidden && Boolean(cardSelect?.value) && cardSelect.value !== 'NUEVA';
+                purchaseCard.hidden = !existing;
+                for (const input of purchaseCard.querySelectorAll('input')) input.disabled = !existing;
+            }
             // Compra a cuotas nueva: los campos del crédito se muestran, habilitan y exigen solo con esa opción.
             if (newCard) {
                 const enabled = !cardField.hidden && cardSelect?.value === 'NUEVA';
