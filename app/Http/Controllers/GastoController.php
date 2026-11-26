@@ -473,6 +473,9 @@ class GastoController extends Controller
         if (Gasto::whereIn('id', $validated['ids'])->whereNotNull('movimiento_gmf_id')->exists()) {
             throw ValidationException::withMessages(['gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.']);
         }
+        if (Gasto::whereIn('id', $validated['ids'])->whereNotNull('gasto_origen_gmf_id')->exists()) {
+            throw ValidationException::withMessages(['gasto' => 'El GMF de una cuenta se recalcula solo: corrige el gasto que lo generó.']);
+        }
 
         if (PagoSeguridadSocial::whereIn('gasto_id', $validated['ids'])->exists()) {
             throw ValidationException::withMessages([
@@ -942,6 +945,11 @@ class GastoController extends Controller
         if ($gasto->movimiento_gmf_id !== null) {
             throw ValidationException::withMessages([
                 'gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.',
+            ]);
+        }
+        if ($gasto->gasto_origen_gmf_id !== null) {
+            throw ValidationException::withMessages([
+                'gasto' => 'El GMF de una cuenta se recalcula solo: corrige el gasto que lo generó.',
             ]);
         }
     }

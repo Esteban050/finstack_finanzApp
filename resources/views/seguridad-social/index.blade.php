@@ -481,6 +481,17 @@
                             </select>
                         </x-ui.field>
 
+                        @if(isset($cuentas) && count($cuentas) > 0)
+                            <x-ui.field name="cuenta_id" label="Cuenta de la que sale el pago (opcional)" :required="false" help="Descuenta el pago del saldo de la cuenta; si no es exenta, también se registra el GMF (4x1000).">
+                                <select name="cuenta_id" data-pago-cuenta>
+                                    <option value="">Sin cuenta</option>
+                                    @foreach($cuentas as $cuenta)
+                                        <option value="{{ $cuenta->id }}">{{ $cuenta->entidad?->nombre }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>
+                                    @endforeach
+                                </select>
+                            </x-ui.field>
+                        @endif
+
                         <x-ui.field name="numero_planilla" label="Número de planilla PILA (opcional)" :required="false" help="Identificador del comprobante o planilla emitida por el operador.">
                             <input type="text" name="numero_planilla" placeholder="Ej. 8839201948">
                         </x-ui.field>
