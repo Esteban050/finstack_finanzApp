@@ -27,7 +27,7 @@ Branch `feat/cuentas-bancarias-y-tarjetas`, one work-unit commit per task. Strat
 
 ## Tasks
 - [x] T1 — Migration + `CuentaBancaria` model + `SaldoCuentaService` (derived balance) + feature tests. Route: delegated (writer trigger: 2+ non-trivial files).
-- [ ] T2 — Profile section "Cuentas y tarjetas": button opens Alpine form, type debit (banco, monto, exenta 4x1000) or credit (banco, cupo); list with delete. Routes/controller. Route: delegated.
+- [x] T2 — Profile section "Cuentas y tarjetas": button opens Alpine form, type debit (banco, monto, exenta 4x1000) or credit (banco, cupo); list with delete. Routes/controller. Route: delegated.
 - [ ] T3 — Dashboard: accounts/cards block first (`DashboardResumenService::obtenerDashboard` + `resources/js/planning/workspace.js`). Route: delegated.
 - [ ] T4 — Incomes: optional `cuenta_id` on create/edit (+ recurring if straightforward), validation scoped to user's accounts. Route: delegated.
 - [ ] T5 — Social security payment: account select in confirm modal, `gastos.cuenta_id` via `atributosGastoPila`, GMF gasto generation for non-exempt accounts, sync on update/delete. Route: delegated.
@@ -41,7 +41,8 @@ Branch `feat/cuentas-bancarias-y-tarjetas`, one work-unit commit per task. Strat
 
 ## Progress
 - Created 2026-11-25 after exploration.
-- T1 done (delegated writer). Files: migration 2026_11_26_000001_crear_cuentas_bancarias (cuentas_bancarias + ingresos.cuenta_id + gastos.cuenta_id + gastos.gasto_origen_gmf_id, applied locally), CuentaBancaria model, SaldoCuentaService (balance counts only estado CONFIRMADO ingresos/gastos), fillables, CuentaBancariaSaldoTest. Checks: filtered test 4/4 pass; full suite 441/443 pass, 2 errors both PerfilFinancieroTest (unique violation usuarios CC 1020304050, leftover local data, unrelated).
+- T1 commit 5bcd534. - T1 done (delegated writer). Files: migration 2026_11_26_000001_crear_cuentas_bancarias (cuentas_bancarias + ingresos.cuenta_id + gastos.cuenta_id + gastos.gasto_origen_gmf_id, applied locally), CuentaBancaria model, SaldoCuentaService (balance counts only estado CONFIRMADO ingresos/gastos), fillables, CuentaBancariaSaldoTest. Checks: filtered test 4/4 pass; full suite 441/443 pass, 2 errors both PerfilFinancieroTest (unique violation usuarios CC 1020304050, leftover local data, unrelated).
+- T2 done (delegated). Files: CuentaBancariaController (storeCuenta/destroyCuenta/storeTarjeta/paraPerfil), routes perfil.cuentas.store|destroy + perfil.tarjetas.store, UserProfileController@show, profile/show.blade.php section "Cuentas y tarjetas" (Alpine toggle). Decision: card registered with creditos monto=0 (no purchase), numero_cuotas=1, MENSUAL, tipo_tasa EA, fecha_inicio=today, banco=entidad nombre, proposito="Tarjeta <banco>"; tasa E.A. is an extra OPTIONAL profile field (default 0, correctable in Creditos); fecha_corte left null. Section is unnumbered (placed after section 1, no renumbering). Checks: PerfilCuentasTarjetasTest 6/6; full suite 448/449, 1 error PerfilFinancieroTest (pre-existing unique-violation on usuarios CC 1020304050, flaky leftover data).
 
 ## Next step
 T1.

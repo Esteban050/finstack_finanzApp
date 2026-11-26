@@ -187,6 +187,133 @@
                 </form>
             </div>
 
+            <!-- CUENTAS Y TARJETAS -->
+            <?php
+                $cuentas = $cuentasYTarjetas['cuentas'] ?? collect();
+                $tarjetas = $cuentasYTarjetas['tarjetas'] ?? collect();
+                $bancos = $cuentasYTarjetas['bancos'] ?? collect();
+                $pesos = fn ($v) => '$ '.number_format((float) $v, 0, ',', '.');
+                $errorCuenta = $errors->getBag('cuenta');
+                $errorTarjeta = $errors->getBag('tarjeta');
+                $tipoInicial = $errorTarjeta->any() || old('tipo_cuenta') === 'CREDITO' ? 'CREDITO' : 'DEBITO';
+            ?>
+            <div id="cuentas-section" class="bg-white p-8 shadow sm:rounded-xl"
+                 x-data="{ abierto: {{ ($errorCuenta->any() || $errorTarjeta->any()) ? 'true' : 'false' }}, tipo: '{{ $tipoInicial }}' }">
+                <div class="flex items-center justify-between border-b pb-3 mb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">Cuentas y tarjetas</h3>
+                        <p class="text-xs text-gray-500">Registra tus cuentas de débito/ahorro y tus tarjetas de crédito; aparecen primero en tu resumen.</p>
+                    </div>
+                    <button type="button" x-on:click="abierto = !abierto" data-cuentas-toggle
+                            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow">
+                        <span x-text="abierto ? 'Cerrar' : 'Agregar cuenta o tarjeta'">Agregar cuenta o tarjeta</span>
+                    </button>
+                </div>
+
+                <div x-show="abierto" x-cloak class="mb-6 border rounded-lg p-4 bg-gray-50 space-y-4" @if(! ($errorCuenta->any() || $errorTarjeta->any())) style="display:none" @endif>
+                    <div>
+                        <x-input-label for="tipo_cuenta" value="Tipo *" />
+                        <select id="tipo_cuenta" name="tipo_cuenta" x-model="tipo" class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
+                            <option value="DEBITO">Débito / Ahorro</option>
+                            <option value="CREDITO">Crédito (tarjeta)</option>
+                        </select>
+                    </div>
+
+                    <form x-show="tipo === 'DEBITO'" method="POST" action="{{ route('perfil.cuentas.store') }}" class="space-y-4 max-w-xl">
+                        @csrf
+                        <input type="hidden" name="tipo_cuenta" value="DEBITO">
+                        @if($errorCuenta->any())
+                            <div class="p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg">
+                                @foreach($errorCuenta->all() as $mensaje)<p>{{ $mensaje }}</p>@endforeach
+                            </div>
+                        @endif
+                        <div>
+                            <x-input-label for="cuenta_banco" value="Banco *" />
+                            <select id="cuenta_banco" name="entidad_financiera_id" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
+                                <option value="">Selecciona un banco</option>
+                                @foreach($bancos as $banco)<option value="{{ $banco->id }}" @selected(old('entidad_financiera_id') === $banco->id)>{{ $banco->nombre }}</option>@endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <x-input-label for="cuenta_alias" value="Nombre o alias (opcional)" />
+                            <x-text-input id="cuenta_alias" type="text" name="alias" maxlength="80" :value="old('alias')" class="w-full mt-1" />
+                        </div>
+                        <div>
+                            <x-input-label for="cuenta_saldo" value="Monto o saldo inicial (COP) *" />
+                            <x-text-input id="cuenta_saldo" type="number" step="0.01" min="0" name="saldo_inicial" required :value="old('saldo_inicial')" class="w-full mt-1" />
+                        </div>
+                        <label class="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" name="es_exenta_gmf" value="1" @checked(old('es_exenta_gmf')) class="rounded border-gray-300">
+                            Cuenta exenta de GMF (4x1000)
+                        </label>
+                        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow">Guardar cuenta</button>
+                    </form>
+
+                    <form x-show="tipo === 'CREDITO'" method="POST" action="{{ route('perfil.tarjetas.store') }}" class="space-y-4 max-w-xl">
+                        @csrf
+                        <input type="hidden" name="tipo_cuenta" value="CREDITO">
+                        @if($errorTarjeta->any())
+                            <div class="p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg">
+                                @foreach($errorTarjeta->all() as $mensaje)<p>{{ $mensaje }}</p>@endforeach
+                            </div>
+                        @endif
+                        <div>
+                            <x-input-label for="tarjeta_banco" value="Banco *" />
+                            <select id="tarjeta_banco" name="entidad_financiera_id" required class="w-full mt-1 border-gray-300 rounded-md shadow-sm">
+                                <option value="">Selecciona un banco</option>
+                                @foreach($bancos as $banco)<option value="{{ $banco->id }}" @selected(old('entidad_financiera_id') === $banco->id)>{{ $banco->nombre }}</option>@endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <x-input-label for="tarjeta_cupo" value="Cupo aprobado (COP, pesos enteros) *" />
+                            <x-text-input id="tarjeta_cupo" type="number" step="1" min="1" name="cupo" required :value="old('cupo')" class="w-full mt-1" />
+                        </div>
+                        <div>
+                            <x-input-label for="tarjeta_tasa" value="Tasa de interés E.A. % (opcional)" />
+                            <x-text-input id="tarjeta_tasa" type="number" step="0.01" min="0" name="tasa_interes_anual" :value="old('tasa_interes_anual')" class="w-full mt-1" />
+                            <p class="text-xs text-gray-500 mt-1">Si la dejas vacía se usa 0 %; puedes corregirla en Créditos.</p>
+                        </div>
+                        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow">Guardar tarjeta</button>
+                    </form>
+                </div>
+
+                <h4 class="text-sm font-bold text-gray-800 mb-2">Cuentas de débito / ahorro</h4>
+                <ul class="divide-y mb-6" data-lista-cuentas>
+                    @forelse($cuentas as $cuenta)
+                        <li class="py-2 flex items-center justify-between text-sm">
+                            <span>
+                                <strong>{{ $cuenta['banco'] }}</strong>@if($cuenta['alias']) · {{ $cuenta['alias'] }}@endif
+                                @if($cuenta['exenta'])<span class="text-xs text-emerald-700">· exenta GMF</span>@endif
+                                <span class="text-gray-500">· saldo {{ $pesos($cuenta['saldo']) }}</span>
+                            </span>
+                            <form method="POST" action="{{ route('perfil.cuentas.destroy', $cuenta['id']) }}"
+                                  data-confirm-title="Eliminar cuenta"
+                                  data-confirm-label="Eliminar"
+                                  data-confirm-description="La cuenta dejará de mostrarse; sus movimientos se conservan. ¿Deseas continuar?">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="text-xs font-bold text-red-600 hover:underline">Eliminar</button>
+                            </form>
+                        </li>
+                    @empty
+                        <li class="py-2 text-sm text-gray-500">Aún no registras cuentas de débito o ahorro.</li>
+                    @endforelse
+                </ul>
+
+                <h4 class="text-sm font-bold text-gray-800 mb-2">Tarjetas de crédito</h4>
+                <ul class="divide-y" data-lista-tarjetas>
+                    @forelse($tarjetas as $tarjeta)
+                        <li class="py-2 text-sm">
+                            <strong>{{ $tarjeta->banco }}</strong>
+                            <span class="text-gray-500">· cupo {{ $tarjeta->cupo !== null ? $pesos($tarjeta->cupo) : 'sin definir' }}</span>
+                            <a href="{{ route('creditos.show', $tarjeta->id) }}" class="text-xs text-indigo-600 font-semibold hover:underline ml-2">Ver en Créditos</a>
+                        </li>
+                    @empty
+                        <li class="py-2 text-sm text-gray-500">Aún no registras tarjetas de crédito.</li>
+                    @endforelse
+                </ul>
+            </div>
+
             <!-- 2. CAMBIO DE CONTRASEÑA -->
             <div class="bg-white p-8 shadow sm:rounded-xl">
                 <h3 class="text-lg font-bold text-gray-900 border-b pb-3 mb-6">2. Cambio de Contraseña</h3>
