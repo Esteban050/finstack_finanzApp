@@ -240,7 +240,7 @@
                         </div>
                         <div>
                             <x-input-label for="cuenta_saldo" value="Monto o saldo inicial (COP) *" />
-                            <x-text-input id="cuenta_saldo" type="number" step="0.01" min="0" name="saldo_inicial" required :value="old('saldo_inicial')" class="w-full mt-1" />
+                            <x-text-input id="cuenta_saldo" type="number" step="0.01" min="0" data-value-input data-precision="2" name="saldo_inicial" required :value="old('saldo_inicial')" class="w-full mt-1" />
                         </div>
                         <label class="flex items-center gap-2 text-sm text-gray-700">
                             <input type="checkbox" name="es_exenta_gmf" value="1" @checked(old('es_exenta_gmf')) class="rounded border-gray-300">
@@ -266,11 +266,11 @@
                         </div>
                         <div>
                             <x-input-label for="tarjeta_cupo" value="Cupo aprobado (COP, pesos enteros) *" />
-                            <x-text-input id="tarjeta_cupo" type="number" step="1" min="1" name="cupo" required :value="old('cupo')" class="w-full mt-1" />
+                            <x-text-input id="tarjeta_cupo" type="number" data-value-input data-precision="0" step="1" min="1" name="cupo" required :value="old('cupo')" class="w-full mt-1" />
                         </div>
                         <div>
                             <x-input-label for="tarjeta_tasa" value="Tasa de interés E.A. % (opcional)" />
-                            <x-text-input id="tarjeta_tasa" type="number" step="0.01" min="0" name="tasa_interes_anual" :value="old('tasa_interes_anual')" class="w-full mt-1" />
+                            <x-text-input id="tarjeta_tasa" type="number" step="0.01" min="0" data-value-input data-precision="2" name="tasa_interes_anual" :value="old('tasa_interes_anual')" class="w-full mt-1" />
                             <p class="text-xs text-gray-500 mt-1">Si la dejas vacía se usa 0 %; puedes corregirla en Créditos.</p>
                         </div>
                         <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow">Guardar tarjeta</button>
