@@ -10,11 +10,11 @@
     $moneda = strtoupper($ingreso->moneda ?? 'COP');
     $tasa = $moneda !== 'COP' && (float) ($ingreso->tasa_cambio_usada ?? 0) > 0 ? (string) $ingreso->tasa_cambio_usada : null;
     $enMoneda = fn ($cop) => $tasa ? bcdiv((string) $cop, $tasa, 2) : (string) $cop;
-    $record = ['fuente_id' => $ingreso->fuente_id, 'fecha_recepcion' => \Carbon\Carbon::parse($ingreso->fecha_recepcion)->toDateString(), 'moneda' => $tasa ? $moneda : 'COP', 'tasa_cambio_usada' => $tasa ?? '', 'monto_original' => $tasa ? (string) ($ingreso->monto_original ?? $ingreso->monto_bruto_cop) : (string) $ingreso->monto_bruto_cop, 'retencion_fuente' => $enMoneda($ingreso->retencion_fuente_cop), 'aportes_descontados' => $enMoneda($ingreso->aportes_descontados_cop), 'clasificacion_tributaria' => $ingreso->clasificacion_tributaria, 'descripcion' => $ingreso->descripcion];
+    $record = ['fuente_id' => $ingreso->fuente_id, 'cuenta_id' => $ingreso->cuenta_id, 'fecha_recepcion' => \Carbon\Carbon::parse($ingreso->fecha_recepcion)->toDateString(), 'moneda' => $tasa ? $moneda : 'COP', 'tasa_cambio_usada' => $tasa ?? '', 'monto_original' => $tasa ? (string) ($ingreso->monto_original ?? $ingreso->monto_bruto_cop) : (string) $ingreso->monto_bruto_cop, 'retencion_fuente' => $enMoneda($ingreso->retencion_fuente_cop), 'aportes_descontados' => $enMoneda($ingreso->aportes_descontados_cop), 'clasificacion_tributaria' => $ingreso->clasificacion_tributaria, 'descripcion' => $ingreso->descripcion];
 @endphp
 <form method="POST" action="{{ route('ingresos.update', $ingreso->id) }}" data-income-form data-return-url="{{ route('ingresos.index') }}" novalidate>
     @csrf @method('PUT')
-    <x-income.form :sources="$fuentes" :classifications="$clasificaciones" :record="$record" />
+    <x-income.form :sources="$fuentes" :classifications="$clasificaciones" :record="$record" :cuentas="$cuentas" />
     <x-income.form-status />
     <div class="income-actions"><x-ui.button :href="route('ingresos.index')" variant="secondary">Cancelar</x-ui.button><x-ui.button type="submit">Guardar cambios</x-ui.button></div>
 </form>

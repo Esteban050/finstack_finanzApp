@@ -4,10 +4,9 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 
 // Formato exclusivamente de presentación: no convierte montos a float.
-return static function ($value, int $precision = 0, string $decimalSeparator = ',', string $thousandsSeparator = '.', bool $trimFraction = false): string {
+return static function ($value, int $precision = 0, string $decimalSeparator = ',', string $thousandsSeparator = '.'): string {
     $number = (string) BigDecimal::of($value === null || $value === '' ? '0' : (string) $value)->toScale($precision, RoundingMode::HalfUp);
     [$whole, $fraction] = array_pad(explode('.', $number, 2), 2, '');
     $whole = preg_replace('/\B(?=(\d{3})+(?!\d))/', $thousandsSeparator, $whole);
-    if ($trimFraction) $fraction = rtrim($fraction, '0');
-    return $whole . ($fraction !== '' ? $decimalSeparator . $fraction : '');
+    return $whole . ($precision ? $decimalSeparator . $fraction : '');
 };

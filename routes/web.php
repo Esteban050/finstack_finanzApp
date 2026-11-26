@@ -27,6 +27,7 @@ use App\Http\Controllers\RentabilidadController;
 use App\Http\Controllers\ReporteInversionController;
 use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\ResumenController;
+use App\Http\Controllers\CuentaBancariaController;
 use App\Http\Controllers\SeguridadSocialController;
 use App\Http\Controllers\SimulacionInversionController;
 use App\Http\Controllers\TasaCambioController;
@@ -55,6 +56,11 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     // RF-008: Perfil tributario y personal
     Route::get('/perfil', [UserProfileController::class, 'show'])->name('profile.show');
     Route::patch('/perfil', [UserProfileController::class, 'update'])->name('profile.update');
+
+    // Cuentas de débito/ahorro y tarjetas de crédito registradas desde Mi perfil.
+    Route::post('/perfil/cuentas', [CuentaBancariaController::class, 'storeCuenta'])->name('perfil.cuentas.store');
+    Route::delete('/perfil/cuentas/{id}', [CuentaBancariaController::class, 'destroyCuenta'])->name('perfil.cuentas.destroy');
+    Route::post('/perfil/tarjetas', [CuentaBancariaController::class, 'storeTarjeta'])->name('perfil.tarjetas.store');
 
     // RF-012: MFA (Gestión desde el perfil)
     Route::post('/perfil/mfa/solicitar-codigo', [UserProfileController::class, 'requestMfaActivationCode'])->name('profile.mfa.code');

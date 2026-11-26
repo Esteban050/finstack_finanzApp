@@ -34,7 +34,9 @@ class UserProfileController extends Controller
         $historialPerfiles = $usuario->perfilesTributarios()->orderByDesc('vigente_desde')->get();
         $historialAceptaciones = $usuario->aceptacionesPolitica()->orderByDesc('fecha_aceptacion')->get();
 
-        return view('profile.show', compact('usuario', 'perfilActivo', 'historialPerfiles', 'historialAceptaciones'));
+        $cuentasYTarjetas = CuentaBancariaController::paraPerfil();
+
+        return view('profile.show', compact('usuario', 'perfilActivo', 'historialPerfiles', 'historialAceptaciones', 'cuentasYTarjetas'));
     }
 
     public function update(Request $request): RedirectResponse

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CuentaBancaria;
 use App\Models\Gasto;
 use App\Models\LiquidacionSeguridadSocial;
 use App\Models\PagoSeguridadSocial;
@@ -9,6 +10,8 @@ use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\SoportePagoSeguridadSocial;
 use App\Services\BitacoraService;
 use App\Services\GastoService;
+use App\Services\GmfCuentaService;
+use App\Services\SaldoCuentaService;
 use App\Services\SeguridadSocialService;
 use App\Services\SoporteArchivoService;
 use Carbon\CarbonImmutable;
@@ -180,20 +183,24 @@ class PagoSeguridadSocialController extends Controller
         $validated = $this->calcularAportesDesdePorcentajes($validated);
         $this->validarTotal($validated);
         $this->validarPeriodoLibre($validated);
+        $cuentaId = $this->cuentaPropiaOpcional($validated['cuenta_id'] ?? null);
 
         $archivo = $request->file('soporte');
         $tipoSoporte = $archivo === null ? null : SoporteArchivoService::validar($archivo, 'soporte');
 
         try {
-            $pago = DB::transaction(function () use ($validated, $archivo, $tipoSoporte) {
+            $pago = DB::transaction(function () use ($validated, $archivo, $tipoSoporte, $cuentaId) {
+                SaldoCuentaService::bloquear($cuentaId);
                 $pago = new PagoSeguridadSocial(array_merge($this->atributosPago($validated), [
                     'usuario_id' => Auth::id(),
                 ]));
 
                 $gasto = Gasto::create(array_merge(
                     SeguridadSocialService::atributosGastoPila($pago, $validated['medio_pago'] ?? SeguridadSocialService::MEDIO_PAGO_PILA),
-                    ['usuario_id' => Auth::id(), 'origen' => 'MANUAL', 'estado' => 'CONFIRMADO']
+                    ['usuario_id' => Auth::id(), 'origen' => 'MANUAL', 'estado' => 'CONFIRMADO', 'cuenta_id' => $cuentaId]
                 ));
+                GmfCuentaService::sincronizar($gasto);
+                SaldoCuentaService::validarSalida($gasto);
 
                 $pago->gasto_id = $gasto->id;
                 $pago->save();
@@ -266,18 +273,29 @@ class PagoSeguridadSocialController extends Controller
         $validated = $this->calcularAportesDesdePorcentajes($validated);
         $this->validarTotal($validated);
         $this->validarPeriodoLibre($validated, $pago->id);
+        // Sin `cuenta_id` en la petición se conserva la cuenta actual; vacío la quita.
+        $cuenta = $request->has('cuenta_id')
+            ? ['cuenta_id' => $this->cuentaPropiaOpcional($validated['cuenta_id'] ?? null)]
+            : [];
 
         try {
-            $pago = DB::transaction(function () use ($pago, $validated) {
+            $pago = DB::transaction(function () use ($pago, $validated, $cuenta) {
                 $anterior = $pago->toArray();
-                $pago->update($this->atributosPago($validated));
-
                 $gasto = $pago->gasto_id === null ? null : Gasto::find($pago->gasto_id);
+                // Lo que ya sale de la cuenta se excluye al validar: editar el pago no lo bloquea a sí mismo.
+                $cuentaAnterior = $gasto?->cuenta_id;
+                $requeridoAnterior = $gasto === null ? '0.00' : SaldoCuentaService::requeridoPorSalida($gasto);
+                // Sin `cuenta_id` en la petición, una cuenta eliminada (o ajena) se desvincula en vez de conservarse.
+                if (! array_key_exists('cuenta_id', $cuenta) && SaldoCuentaService::cuentaVigente($cuentaAnterior) === null) {
+                    $cuenta = ['cuenta_id' => null];
+                }
+                SaldoCuentaService::bloquearVarias([$cuentaAnterior, $cuenta['cuenta_id'] ?? null]);
+                $pago->update($this->atributosPago($validated));
                 $medioPago = $validated['medio_pago'] ?? $gasto?->medio_pago ?? SeguridadSocialService::MEDIO_PAGO_PILA;
                 $atributos = SeguridadSocialService::atributosGastoPila($pago, $medioPago);
 
                 if ($gasto === null) {
-                    $gasto = Gasto::create(array_merge($atributos, [
+                    $gasto = Gasto::create(array_merge($atributos, $cuenta, [
                         'usuario_id' => Auth::id(),
                         'origen' => 'MANUAL',
                         'estado' => 'CONFIRMADO',
@@ -285,11 +303,15 @@ class PagoSeguridadSocialController extends Controller
                     $pago->update(['gasto_id' => $gasto->id]);
                     $accionGasto = 'CREAR_GASTO';
                     $gastoAnterior = null;
+                    $fechaGastoAnterior = null;
                 } else {
                     $gastoAnterior = $gasto->toArray();
-                    $gasto->update($atributos);
+                    $fechaGastoAnterior = $gasto->fecha->toDateString();
+                    $gasto->update(array_merge($atributos, $cuenta));
                     $accionGasto = 'EDITAR_GASTO';
                 }
+                GmfCuentaService::sincronizar($gasto->fresh(), $fechaGastoAnterior, $cuentaAnterior);
+                SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
                 BitacoraService::registrar(
                     accion: $accionGasto,
@@ -337,6 +359,7 @@ class PagoSeguridadSocialController extends Controller
             if ($gasto !== null) {
                 $gastoAnterior = $gasto->toArray();
                 $gasto->delete();
+                GmfCuentaService::sincronizar($gasto);
 
                 BitacoraService::registrar(
                     accion: 'ELIMINAR_GASTO',
@@ -648,6 +671,20 @@ class PagoSeguridadSocialController extends Controller
      * validarPeriodoLibre y el índice uq_pago_periodo frena al segundo. Se
      * responde el mismo 422 en lugar de un 500. Otra violación se relanza tal cual.
      */
+    /** La cuenta de la que sale el pago es opcional; si se indica debe ser propia y no eliminada. */
+    private function cuentaPropiaOpcional(?string $cuentaId): ?string
+    {
+        if ($cuentaId === null || $cuentaId === '') {
+            return null;
+        }
+
+        if (CuentaBancaria::find($cuentaId) === null) {
+            throw ValidationException::withMessages(['cuenta_id' => 'La cuenta seleccionada no existe.']);
+        }
+
+        return $cuentaId;
+    }
+
     private function rechazoPorPeriodoOcupado(UniqueConstraintViolationException $e, string $periodo): \Throwable
     {
         return str_contains($e->getMessage(), 'uq_pago_periodo') ? $this->periodoOcupado($periodo) : $e;
@@ -720,6 +757,8 @@ class PagoSeguridadSocialController extends Controller
             'arl' => ['nullable', ...$monto],
             'intereses_mora' => ['nullable', ...$monto],
             'medio_pago' => ['nullable', Rule::in(Gasto::MEDIOS_PAGO)],
+            // Cuenta de débito/ahorro de la que sale el dinero: opcional y propia.
+            'cuenta_id' => ['nullable', 'uuid'],
         ];
     }
 
@@ -739,6 +778,7 @@ class PagoSeguridadSocialController extends Controller
             'porcentaje_fsp.between' => 'El porcentaje de FSP debe estar entre 0 y 100.',
             'porcentaje_arl.between' => 'El porcentaje de ARL debe estar entre 0 y 100.',
             'medio_pago.in' => 'El medio de pago no es válido.',
+            'cuenta_id.uuid' => 'La cuenta seleccionada no es válida.',
             'soporte.required' => 'Adjunte el archivo de soporte (PDF, JPG o PNG).',
             'soporte.file' => 'El soporte debe ser un archivo PDF, JPG o PNG.',
             'soporte.uploaded' => 'El soporte no se pudo subir: puede superar el tamaño que admite el servidor.',

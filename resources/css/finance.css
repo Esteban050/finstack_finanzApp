@@ -134,6 +134,8 @@
 .investment-page .income-two-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1.5rem; }
 .investment-page .income-two-fields > * { min-width: 0; }
 .investment-page .ui-field label { min-height: 2.75rem; display: flex; align-items: end; }
+/* Los botones junto a campos se bajan lo que mide esta etiqueta (design-system.css). */
+.investment-page { --ui-field-label-h: 2.75rem; }
 .investment-page .ui-field :is(input,select) { width: 100%; max-width: 100%; min-width: 0; }
 .investment-page .ui-field .ui-inline input[type="radio"] {
     width: 18px;
@@ -150,6 +152,10 @@
 .investment-page .investment-dividend-row { grid-column: 1 / -1; }
 .social-page .finance-grid > *, .social-page .ui-card { min-width: 0; }
 .social-page .ui-field { margin-bottom: 1.5rem; }
+@media(max-width:1023px) {
+    .investment-page .income-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .investment-page .ui-filter-grid > .ui-filter-actions { grid-column: 1 / -1; margin-block-start: 0; }
+}
 @media(max-width:767px) {
     .investment-page .income-two-fields { grid-template-columns:minmax(0,1fr); }
     .investment-page .ui-field label { min-height: 0; }

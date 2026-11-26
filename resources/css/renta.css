@@ -33,7 +33,7 @@
 .mk-ctrl.invalid { border: 2px solid var(--ui-danger); }
 .mk-ctrl.disabled { background: var(--ui-raised); color: var(--ui-muted); border-style: dashed; }
 .mk-ctrl.area { min-height: 88px; align-items: flex-start; }
-.mk-ctrl.mk-ctrl-sm { min-height: 36px; padding-block: .25rem; min-width: 5rem; }
+.mk-ctrl.mk-ctrl-sm { min-height: 44px; padding-block: .25rem; min-width: 12rem; }
 
 .mk-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1.25rem; }
 .mk-fields.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1.25rem; }

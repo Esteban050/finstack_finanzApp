@@ -1,6 +1,14 @@
 import { decimal, formatCanonicalValue, parseLocalizedValue, MAX_AMOUNT } from '../utils/money.js';
 import { bindMoneyGrouping } from './money-format.js';
 
+// Texto visible de un valor canónico. Con más de 2 decimales posibles se quitan los
+// ceros sobrantes de la parte decimal: "5000000.00000000" → "5.000.000", "0.01250000" → "0,0125".
+export function formatForDisplay(raw, precision = '2') {
+    const text = formatCanonicalValue(raw);
+    if (Number(precision) <= 2 || !text.includes(',')) return text;
+    return text.replace(/0+$/, '').replace(/,$/, '');
+}
+
 // Adaptador de controles existentes. El control original mantiene ID, nombre y
 // decimal canónico para sus manejadores; el visible solo representa ese valor.
 // No se infieren montos a partir de su texto: las vistas los marcan explícitamente.
@@ -44,12 +52,9 @@ export function mountValueInputs(root = document) {
         const sync = () => {
             if (editing) return;
             const raw = descriptor.get.call(canonical);
-            try {
-                const presented = canonical.hasAttribute('data-trim-fraction') && raw.includes('.')
-                    ? raw.replace(/0+$/, '').replace(/\.$/, '')
-                    : raw;
-                visible.value = presented === '' ? '' : formatCanonicalValue(presented);
-            }
+            // Con más de 2 decimales posibles (unidades, precios, tasas) se ocultan los ceros
+            // sobrantes: 5.000.000 y no 5.000.000,00000000. El valor canónico no cambia.
+            try { visible.value = raw === '' ? '' : formatForDisplay(raw, precision); }
             catch { visible.value = raw; }
             if (initialized) validate(false);
         };

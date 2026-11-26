@@ -1,5 +1,7 @@
 @php
     $formatValue = require resource_path('views/components/ui/format-value.php');
+    // Unidades, precios por unidad y dividendos: sin ceros sobrantes (25 y no 25,00000000).
+    $formatQty = require resource_path('views/components/ui/format-quantity.php');
 @endphp
 @extends('layouts.app')
 @section('title', 'Detalle de Inversión – ' . $inversion->nombre)
@@ -61,7 +63,7 @@
         @if($inversion->estaLiquidada())
             <p class="ui-help" style="margin: 0; color: #16a34a; font-weight: 600;">Posición redimida y cerrada</p>
         @elseif($presentacion['unidades_actuales'] !== null)
-            <p class="ui-help" style="margin: 0;">Unidades acumuladas: <strong>{{ $formatValue((string) $presentacion['unidades_actuales'], 8) }}</strong></p>
+            <p class="ui-help" style="margin: 0;">Unidades acumuladas: <strong>{{ $formatQty((string) $presentacion['unidades_actuales'], 8) }}</strong></p>
         @endif
     </x-ui.card>
 
@@ -94,7 +96,7 @@
 
     @if($vnr)
         <x-ui.card>
-            <span class="ui-help">Valorización No Realizada (RF-VAL-02)</span>
+            <span class="ui-help">Valorización no realizada</span>
             <h2 style="margin: 0.25rem 0; color: {{ (string)$vnr['valor'] >= 0 ? '#16a34a' : '#dc2626' }};">
                 {{ (string)$vnr['valor'] >= 0 ? '+' : '' }}$ {{ $formatValue((string)$vnr['valor'], 2) }}
             </h2>
@@ -170,7 +172,7 @@
             </div>
             <div>
                 <span class="ui-help">Costo Promedio Ponderado:</span>
-                <p style="margin: 0.25rem 0; font-weight: 600;">$ {{ $formatValue((string) ($det['costo_promedio_unitario'] ?? '0'), 4) }}</p>
+                <p style="margin: 0.25rem 0; font-weight: 600;">$ {{ $formatQty((string) ($det['costo_promedio_unitario'] ?? '0'), 4, 2) }}</p>
             </div>
             <div>
                 <span class="ui-help">Primera Compra / Antigüedad:</span>
@@ -186,7 +188,7 @@
             <div>
                 <span class="ui-help">Dividendo por Acción Decretado:</span>
                 <p style="margin: 0.25rem 0; font-weight: 600;">
-                    $ {{ $formatValue((string) ($det['valor_dividendo_por_unidad'] ?? '0'), 4) }} {{ $det['moneda_dividendo'] ?? 'COP' }}
+                    $ {{ $formatQty((string) ($det['valor_dividendo_por_unidad'] ?? '0'), 4, 2) }} {{ $det['moneda_dividendo'] ?? 'COP' }}
                     @if(($det['moneda_dividendo'] ?? 'COP') === 'USD')
                         <span class="ui-help">(TRM: {{ $det['trm_dividendo'] ?? 'Auto BD' }})</span>
                     @endif
@@ -615,7 +617,7 @@
 
         <!-- DISTRIBUCIÓN DE ACTIVOS DEL PORTAFOLIO -->
         @if(!empty($datosAdministrados['portafolio']['activos']))
-        <div style="margin-top: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem;">
+        <div class="inv-box" style="margin-top: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
                 <strong style="color: #0f172a; font-size: 0.95rem;">Distribución de Activos del Portafolio: {{ $datosAdministrados['portafolio']['titulo'] }}</strong>
                 <span style="background: {{ $datosAdministrados['portafolio']['rango_ea']['badge_bg'] ?? '#f1f5f9' }}; color: {{ $datosAdministrados['portafolio']['rango_ea']['color'] ?? '#0f172a' }}; border: 1px solid {{ $datosAdministrados['portafolio']['rango_ea']['badge_border'] ?? '#cbd5e1' }}; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700;">
@@ -625,7 +627,7 @@
             <p class="ui-help" style="margin: 0 0 0.75rem 0; font-size: 0.85rem;">{{ $datosAdministrados['portafolio']['enfoque'] }}</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem;">
                 @foreach($datosAdministrados['portafolio']['activos'] as $act)
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem; background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div class="inv-box" style="display: flex; flex-direction: column; gap: 0.25rem; background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
                             <span style="font-weight: 600; color: #334155;">{{ $act['nombre'] }}</span>
                             <span style="font-weight: 700; color: #0f172a;">{{ $act['porcentaje'] }}% <span style="font-weight: normal; color: #64748b; font-size: 0.8125rem;">({{ $act['categoria'] }})</span></span>
@@ -683,7 +685,7 @@
                     $costoBaseUnit = (string) ($det['costo_promedio_unitario'] ?? $det['valor_unidad_compra'] ?? $inversion->precio_unitario_compra ?? 0);
                 @endphp
                 <x-ui.field name="precio_unitario" id="val_precio_unitario" label="Nuevo precio por unidad ({{ $inversion->moneda }})" :required="true" help="Cotización en mercado de UNA sola acción (Tu costo de compra base fue $ {{ $formatValue($costoBaseUnit, 2) }} {{ $inversion->moneda }}).">
-                    <input id="val_precio_unitario" data-localized-value data-precision="8" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? $formatValue($precioActual, 8, trimFraction: true) : '' }}" required placeholder="Ej: {{ $formatValue($costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy('1.05') : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
+                    <input id="val_precio_unitario" data-localized-value data-precision="8" name="precio_unitario" type="text" inputmode="decimal" value="{{ $precioActual > 0 ? $formatQty($precioActual, 8) : '' }}" required placeholder="Ej: {{ $formatValue($costoBaseUnit > 0 ? (string) \Brick\Math\BigDecimal::of($costoBaseUnit)->multipliedBy('1.05') : 105.50, 2, ',', '.') }}" oninput="calcularImpactoValoracion(this.value)">
                 </x-ui.field>
 
                 <div id="val-feedback" style="grid-column: 1 / -1; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;">
@@ -766,7 +768,7 @@
 
             <div id="trx-field-valor-unidad" style="{{ $inversion->tieneUnidades() ? '' : 'display: none;' }}">
                 <x-ui.field name="valor_unidad" label="Valor / Precio de la unidad">
-                    <input id="trx_valor_unidad" data-localized-value data-precision="8" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? $formatValue((string)$det['valor_actual_unidad'], 8, trimFraction: true) : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
+                    <input id="trx_valor_unidad" data-localized-value data-precision="8" name="valor_unidad" type="text" inputmode="decimal" value="{{ old('valor_unidad', !empty($det['valor_actual_unidad']) ? $formatQty((string)$det['valor_actual_unidad'], 8) : '') }}" placeholder="Ej: 105.500,00" autocomplete="off">
                     <div id="trx_precio_preview" class="ui-help" style="margin-top: 0.35rem; font-weight: 600; color: var(--color-primary); font-size: 0.85rem; display: none;"></div>
                 </x-ui.field>
             </div>

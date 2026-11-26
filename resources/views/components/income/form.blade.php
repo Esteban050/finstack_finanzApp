@@ -1,4 +1,4 @@
-@props(['sources', 'classifications', 'record' => [], 'prefix' => 'income', 'recurrent' => false])
+@props(['sources', 'classifications', 'record' => [], 'prefix' => 'income', 'recurrent' => false, 'cuentas' => []])
 <div class="income-editor" data-income-editor data-recurrent="{{ $recurrent ? 'true' : 'false' }}">
     <div class="income-form-main">
         <x-ui.card title="Origen del ingreso">
@@ -10,6 +10,14 @@
                 </select>
             </x-ui.field>
             <x-ui.button :href="route('ingresos.fuentes.index')" variant="secondary"><x-icon name="ui-mas" :size="18" />Nueva fuente</x-ui.button>
+            @if(!$recurrent && count($cuentas) > 0)
+                <x-ui.field name="cuenta_id" :id="$prefix.'-account'" label="Cuenta que recibe el dinero" help="Opcional. Suma el ingreso al saldo de la cuenta.">
+                    <select id="{{ $prefix }}-account" name="cuenta_id" data-income-account aria-describedby="{{ $prefix }}-account-error">
+                        <option value="">Sin cuenta</option>
+                        @foreach($cuentas as $cuenta)<option value="{{ $cuenta->id }}" @selected(old('cuenta_id', $record['cuenta_id'] ?? '') === $cuenta->id)>{{ $cuenta->nombre_banco }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>@endforeach
+                    </select>
+                </x-ui.field>
+            @endif
             @if(!$recurrent)
                 <x-ui.field name="fecha_recepcion" :id="$prefix.'-date'" label="Fecha de recepción" :required="true" help="No puede ser posterior a hoy. Para una fecha futura, crea un ingreso recurrente.">
                     <input id="{{ $prefix }}-date" type="date" name="fecha_recepcion" data-income-date value="{{ old('fecha_recepcion', $record['fecha_recepcion'] ?? '') }}" required aria-describedby="{{ $prefix }}-date-help {{ $prefix }}-date-error">

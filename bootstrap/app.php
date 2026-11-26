@@ -12,6 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Railway (y cualquier hosting con balanceador) recibe el HTTPS y reenvía
+        // la petición por HTTP. Confiar en su proxy hace que Laravel lea los
+        // encabezados X-Forwarded-* y genere URLs, assets y cookies con https.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdminMiddleware::class,
             'politica.check' => \App\Http\Middleware\CheckPoliticaAceptadaMiddleware::class,

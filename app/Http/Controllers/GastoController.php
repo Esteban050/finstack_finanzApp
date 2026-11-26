@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Credito;
+use App\Models\CuentaBancaria;
 use App\Models\Gasto;
 use App\Models\PagoCredito;
 use App\Models\PagoSeguridadSocial;
@@ -12,6 +13,8 @@ use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
 use App\Services\ConsumoTarjetaService;
 use App\Services\GastoService;
+use App\Services\GmfCuentaService;
+use App\Services\SaldoCuentaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -133,7 +136,7 @@ class GastoController extends Controller
             ]);
         }
 
-        return view('gastos.create', $datos + ['tarjetas' => $this->tarjetas()]);
+        return view('gastos.create', $datos + ['tarjetas' => $this->tarjetas(), 'cuentas' => $this->cuentas()]);
     }
 
     /**
@@ -149,6 +152,7 @@ class GastoController extends Controller
         $datosCredito = $this->esCompraNueva($validated) ? $this->datosCredito($validated, $atributos) : null;
 
         $gasto = DB::transaction(function () use ($atributos, $validated, $datosCredito) {
+            SaldoCuentaService::bloquear($atributos['cuenta_id']);
             if ($datosCredito !== null) {
                 // El monto del crédito ya es la compra: no se suma de nuevo a su capital.
                 $atributos['credito_id'] = $this->registrarCredito($datosCredito, $validated)->id;
@@ -157,7 +161,7 @@ class GastoController extends Controller
                 $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos, $validated['fecha']);
             }
 
-            return Gasto::create(array_merge($atributos, [
+            $gasto = Gasto::create(array_merge($atributos, [
                 'usuario_id' => Auth::id(),
                 'fecha' => $validated['fecha'],
                 'origen' => 'MANUAL',
@@ -165,6 +169,11 @@ class GastoController extends Controller
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
+            // GMF (4x1000) de la salida de la cuenta de débito.
+            GmfCuentaService::sincronizar($gasto);
+            SaldoCuentaService::validarSalida($gasto);
+
+            return $gasto;
         });
 
         BitacoraService::registrar(
@@ -215,6 +224,7 @@ class GastoController extends Controller
         return view('gastos.edit', [
             'gasto' => $gasto,
             'tarjetas' => $this->tarjetas(),
+            'cuentas' => $this->cuentas(),
             'categorias' => CategoriaGastoService::catalogo(Auth::id(), soloActivas: true),
             'dimensiones' => $this->dimensiones(),
             'etiquetasUsadas' => GastoService::etiquetasUsadas(),
@@ -233,10 +243,21 @@ class GastoController extends Controller
         $validated = $request->validate($this->reglas($nueva), $this->mensajes());
         $atributos = $this->prepararAtributos($validated);
         $datosCredito = $nueva ? $this->datosCredito($validated, $atributos) : null;
-        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated, $datosCredito) {
+        // Sin `cuenta_id` en la petición se conserva la cuenta actual (si el medio la admite); vacío la quita.
+        $conservaCuenta = ! $request->has('cuenta_id') && in_array($atributos['medio_pago'], Gasto::MEDIOS_CON_CUENTA, true);
+        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated, $datosCredito, $conservaCuenta) {
             $gasto = $this->gastoPropio($id, bloquear: true);
             $this->rechazarSiEsAutomatico($gasto);
             $anterior = $gasto->toArray();
+            $fechaAnterior = $gasto->fecha->toDateString();
+            if ($conservaCuenta) {
+                // Una cuenta eliminada (o ajena) no se conserva: el gasto queda sin cuenta ni GMF.
+                $atributos['cuenta_id'] = SaldoCuentaService::cuentaVigente($gasto->cuenta_id);
+            }
+            // Lo que ya sale de la cuenta se excluye al validar: editar un gasto no lo bloquea a sí mismo.
+            $cuentaAnterior = $gasto->cuenta_id;
+            $requeridoAnterior = SaldoCuentaService::requeridoPorSalida($gasto);
+            SaldoCuentaService::bloquearVarias([$cuentaAnterior, $atributos['cuenta_id']]);
 
             if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
                 $atributos['credito_id'] = $gasto->credito_id;
@@ -255,6 +276,8 @@ class GastoController extends Controller
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
+            GmfCuentaService::sincronizar($gasto->fresh(), $fechaAnterior, $cuentaAnterior);
+            SaldoCuentaService::validarSalida($gasto, $requeridoAnterior, $cuentaAnterior);
 
             return [$gasto, $anterior];
         });
@@ -330,6 +353,7 @@ class GastoController extends Controller
             ConsumoTarjetaService::aplicar(Auth::id(), $gasto, []);
             $anterior = $gasto->toArray();
             $gasto->delete();
+            GmfCuentaService::sincronizar($gasto);
 
             return $anterior;
         });
@@ -388,7 +412,13 @@ class GastoController extends Controller
         }
 
         $anterior = $gasto->toArray();
-        $gasto->update($cambios);
+        DB::transaction(function () use ($gasto, $cambios) {
+            SaldoCuentaService::bloquear($gasto->cuenta_id);
+            $gasto->update($cambios);
+            // Al confirmarse, la salida de una cuenta de débito genera su GMF y debe caber en el saldo.
+            GmfCuentaService::sincronizar($gasto->fresh());
+            SaldoCuentaService::validarSalida($gasto);
+        });
 
         BitacoraService::registrar(
             accion: 'CONFIRMAR_GASTO_RECURRENTE',
@@ -472,6 +502,9 @@ class GastoController extends Controller
         // la operación completa en lugar de omitirlos sin avisar.
         if (Gasto::whereIn('id', $validated['ids'])->whereNotNull('movimiento_gmf_id')->exists()) {
             throw ValidationException::withMessages(['gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.']);
+        }
+        if (Gasto::whereIn('id', $validated['ids'])->whereNotNull('gasto_origen_gmf_id')->exists()) {
+            throw ValidationException::withMessages(['gasto' => 'El GMF de una cuenta se recalcula solo: corrige el gasto que lo generó.']);
         }
 
         if (PagoSeguridadSocial::whereIn('gasto_id', $validated['ids'])->exists()) {
@@ -681,6 +714,8 @@ class GastoController extends Controller
                 'subcategoria_id' => $subcategoria->id,
                 'credito_id' => ConsumoTarjetaService::esCreditoNuevo($validated['credito_id'] ?? null) ? null : ($validated['credito_id'] ?? null),
                 'medio_pago' => $validated['medio_pago'],
+                // Solo TARJETA_DEBITO y TRANSFERENCIA salen de una cuenta de débito.
+                'cuenta_id' => in_array($validated['medio_pago'], Gasto::MEDIOS_CON_CUENTA, true) ? ($validated['cuenta_id'] ?? null) : null,
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
             ]
         );
@@ -799,6 +834,12 @@ class GastoController extends Controller
                     $fallar('Seleccione una tarjeta válida.');
                 }
             }],
+            // Cuenta de débito de la que sale el dinero: opcional, propia y no eliminada.
+            'cuenta_id' => ['exclude_unless:medio_pago,'.implode(',', Gasto::MEDIOS_CON_CUENTA), 'nullable', 'uuid', function (string $atributo, mixed $valor, \Closure $fallar) {
+                if ($valor !== null && $valor !== '' && CuentaBancaria::find($valor) === null) {
+                    $fallar('La cuenta seleccionada no existe.');
+                }
+            }],
             // RN-026.1 (4): medio de pago, obligatorio.
             'medio_pago' => ['required', Rule::in(Gasto::MEDIOS_PAGO)],
             // RN-026.1 (2) y (3): si no se envían, se toma la sugerencia de la
@@ -843,6 +884,7 @@ class GastoController extends Controller
             'subcategoria_id.required' => 'Seleccione la subcategoría del gasto.',
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
             'credito_id.string' => 'Seleccione una tarjeta válida.',
+            'cuenta_id.uuid' => 'La cuenta seleccionada no es válida.',
             'banco_tarjeta.required' => 'Indique el banco de la tarjeta de crédito.',
             'cupo_tarjeta.required' => 'Indique el cupo de la tarjeta de crédito.',
             'cupo_tarjeta.regex' => 'El cupo va en pesos enteros, con hasta 12 dígitos.',
@@ -924,16 +966,23 @@ class GastoController extends Controller
         abort(404);
     }
 
+    /** Cuentas de débito/ahorro del usuario para el selector "Cuenta de la que sale el dinero". */
+    private function cuentas()
+    {
+        return CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get();
+    }
+
+    private function tarjetas()
+    {
+        return ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito']);
+    }
+
     /**
      * RN-035.3: el gasto que creó un pago PILA se edita o elimina desde su pago
      * (/seguridad-social/pagos), para que los dos no queden con montos distintos.
      *
      * @throws ValidationException
      */
-    private function tarjetas()
-    {
-        return ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito']);
-    }
 
     private function rechazarSiEsAutomatico(Gasto $gasto): void
     {
@@ -942,6 +991,11 @@ class GastoController extends Controller
         if ($gasto->movimiento_gmf_id !== null) {
             throw ValidationException::withMessages([
                 'gasto' => 'El GMF se corrige desde el movimiento de inversión que generó el gasto.',
+            ]);
+        }
+        if ($gasto->gasto_origen_gmf_id !== null) {
+            throw ValidationException::withMessages([
+                'gasto' => 'El GMF de una cuenta se recalcula solo: corrige el gasto que lo generó.',
             ]);
         }
     }

@@ -276,3 +276,122 @@ summary { min-height: 44px; align-content: center; }
 .dashboard-deficit .planning-detail-link { display: inline-flex; align-items: center; min-height: 44px; }
 /* CP-DIS-002: en pantallas anchas el texto corrido no pasa de ~80 caracteres por línea. */
 :where(.ui-content p) { max-width: 80ch; }
+
+/* Filas que mezclan campos y botones (filtros, "Consultar", "Ir"…): el botón queda a la
+   altura del control del campo, sin importar la etiqueta, la ayuda ni el margen inferior.
+   Antes se alineaba con el margen (28 px más abajo) o con el centro de etiqueta + control. */
+:root { --ui-field-label-h: calc(var(--ui-text-small) * 1.65); }
+.ui-field > label { line-height: 1.65; }
+:is(.ui-inline, .income-filters):not(.ui-filter-grid):has(> .ui-field) { align-items: flex-start; }
+:is(.ui-inline, .income-filters):not(.ui-filter-grid):has(> .ui-field) > :not(.ui-field) { margin-top: calc(var(--ui-field-label-h) + .625rem); align-self: flex-start; }
+/* Alias de colores que usan algunas vistas (inversiones) y no existían: sin ellos se
+   veían los respaldos fijos (#f9fafb, #ccc), blancos en tema oscuro. */
+:root { --color-primary: var(--accent); --color-border: var(--ui-border); --color-surface-subtle: var(--ui-raised); }
+/* Cuadros informativos de inversiones con fondo claro fijo en línea (el JS a veces lo
+   reescribe en rgb()): siempre con los colores del tema para que el texto se lea. */
+.inv-box { background: var(--ui-raised) !important; border-color: var(--ui-border-strong) !important; color: var(--ui-text) !important; }
+input[readonly].ui-input, .ui-field input[readonly] { background: var(--ui-raised); color: var(--ui-text); }
+/* Clases de Tailwind que faltaban en el mapeo al tema: al pasar el mouse por las opciones
+   de ocupación del perfil el fondo se volvía blanco con texto claro, y el panel de
+   salario integral / ARL salía gris claro en tema oscuro. */
+.scfp-theme :is(.hover\:bg-gray-50, .hover\:bg-gray-100):hover,
+.scfp-theme :is(.focus\:bg-gray-50, .focus\:bg-gray-100, .focus\:bg-indigo-100):focus { background-color: var(--ui-raised); }
+.scfp-theme :is(.bg-indigo-50\/50, .bg-indigo-50\/30, .bg-yellow-100, .bg-purple-100) { background: var(--ui-raised); }
+.scfp-theme .text-yellow-800 { color: var(--ui-warning); }
+.scfp-theme .text-purple-800 { color: var(--ui-text); }
+
+/* Colores de texto fijos en línea (style="color: #…") que no cambiaban con el tema: en
+ * tema oscuro quedaban con contraste bajo (grises, rojos y verdes oscuros sobre fondo oscuro).
+ * Se cambian por los colores del tema según su significado. Solo "color:", no "background-color:". */
+.scfp-theme [style^="color: #16a34a"],
+.scfp-theme [style*="; color: #16a34a"],
+.scfp-theme [style*=";color: #16a34a"],
+.scfp-theme [style^="color:#16a34a"],
+.scfp-theme [style^="color: #166534"],
+.scfp-theme [style*="; color: #166534"],
+.scfp-theme [style*=";color: #166534"],
+.scfp-theme [style^="color:#166534"],
+.scfp-theme [style^="color: #15803d"],
+.scfp-theme [style*="; color: #15803d"],
+.scfp-theme [style*=";color: #15803d"],
+.scfp-theme [style^="color:#15803d"],
+.scfp-theme [style^="color: #047857"],
+.scfp-theme [style*="; color: #047857"],
+.scfp-theme [style*=";color: #047857"],
+.scfp-theme [style^="color:#047857"] { color: var(--ui-success) !important; }
+.scfp-theme [style^="color: #dc2626"],
+.scfp-theme [style*="; color: #dc2626"],
+.scfp-theme [style*=";color: #dc2626"],
+.scfp-theme [style^="color:#dc2626"],
+.scfp-theme [style^="color: #b91c1c"],
+.scfp-theme [style*="; color: #b91c1c"],
+.scfp-theme [style*=";color: #b91c1c"],
+.scfp-theme [style^="color:#b91c1c"],
+.scfp-theme [style^="color: #991b1b"],
+.scfp-theme [style*="; color: #991b1b"],
+.scfp-theme [style*=";color: #991b1b"],
+.scfp-theme [style^="color:#991b1b"],
+.scfp-theme [style^="color: #ef4444"],
+.scfp-theme [style*="; color: #ef4444"],
+.scfp-theme [style*=";color: #ef4444"],
+.scfp-theme [style^="color:#ef4444"] { color: var(--ui-danger) !important; }
+.scfp-theme [style^="color: #d97706"],
+.scfp-theme [style*="; color: #d97706"],
+.scfp-theme [style*=";color: #d97706"],
+.scfp-theme [style^="color:#d97706"],
+.scfp-theme [style^="color: #b45309"],
+.scfp-theme [style*="; color: #b45309"],
+.scfp-theme [style*=";color: #b45309"],
+.scfp-theme [style^="color:#b45309"],
+.scfp-theme [style^="color: #92400e"],
+.scfp-theme [style*="; color: #92400e"],
+.scfp-theme [style*=";color: #92400e"],
+.scfp-theme [style^="color:#92400e"] { color: var(--ui-warning) !important; }
+.scfp-theme [style^="color: #0f172a"],
+.scfp-theme [style*="; color: #0f172a"],
+.scfp-theme [style*=";color: #0f172a"],
+.scfp-theme [style^="color:#0f172a"],
+.scfp-theme [style^="color: #1e293b"],
+.scfp-theme [style*="; color: #1e293b"],
+.scfp-theme [style*=";color: #1e293b"],
+.scfp-theme [style^="color:#1e293b"],
+.scfp-theme [style^="color: #111827"],
+.scfp-theme [style*="; color: #111827"],
+.scfp-theme [style*=";color: #111827"],
+.scfp-theme [style^="color:#111827"],
+.scfp-theme [style^="color: #334155"],
+.scfp-theme [style*="; color: #334155"],
+.scfp-theme [style*=";color: #334155"],
+.scfp-theme [style^="color:#334155"] { color: var(--ui-text) !important; }
+.scfp-theme [style^="color: #64748b"],
+.scfp-theme [style*="; color: #64748b"],
+.scfp-theme [style*=";color: #64748b"],
+.scfp-theme [style^="color:#64748b"],
+.scfp-theme [style^="color: #4b5563"],
+.scfp-theme [style*="; color: #4b5563"],
+.scfp-theme [style*=";color: #4b5563"],
+.scfp-theme [style^="color:#4b5563"],
+.scfp-theme [style^="color: #555"],
+.scfp-theme [style*="; color: #555"],
+.scfp-theme [style*=";color: #555"],
+.scfp-theme [style^="color:#555"],
+.scfp-theme [style^="color: #666"],
+.scfp-theme [style*="; color: #666"],
+.scfp-theme [style*=";color: #666"],
+.scfp-theme [style^="color:#666"],
+.scfp-theme [style^="color: #475569"],
+.scfp-theme [style*="; color: #475569"],
+.scfp-theme [style*=";color: #475569"],
+.scfp-theme [style^="color:#475569"],
+.scfp-theme [style^="color: #6b7280"],
+.scfp-theme [style*="; color: #6b7280"],
+.scfp-theme [style*=";color: #6b7280"],
+.scfp-theme [style^="color:#6b7280"] { color: var(--ui-muted) !important; }
+.scfp-theme [style^="color: #2563eb"],
+.scfp-theme [style*="; color: #2563eb"],
+.scfp-theme [style*=";color: #2563eb"],
+.scfp-theme [style^="color:#2563eb"],
+.scfp-theme [style^="color: #1e40af"],
+.scfp-theme [style*="; color: #1e40af"],
+.scfp-theme [style*=";color: #1e40af"],
+.scfp-theme [style^="color:#1e40af"] { color: var(--accent) !important; }

@@ -14,10 +14,10 @@
 <label class="ui-check"><input type="checkbox" name="es_correccion" value="1" @checked((string) old('es_correccion', $payment['es_correccion'] ?? false) === '1')> Planilla de corrección</label><p class="ui-help">La corrección registra la diferencia frente al pago original del periodo.</p>
 <div class="pila-autofill-box" data-pila-autofill-container>
     <div class="income-two-fields" style="align-items: start;">
-        <x-ui.field name="tipo_servicio" :id="$prefix.'-tipo-servicio'" label="Tipo de cotizante / servicio" help="Selecciona si cotizas por honorarios o como rentista de capital.">
+        <x-ui.field name="tipo_servicio" :id="$prefix.'-tipo-servicio'" label="Tipo de cotizante / servicio" help="Contratista o independiente: honorarios y prestación de servicios. Rentista de capital: arrendamientos, dividendos, intereses.">
             <select id="{{ $prefix }}-tipo-servicio" name="tipo_servicio" data-pila-service-select data-target-prefix="{{ $prefix }}">
-                <option value="PRESTACION_SERVICIOS" @selected($tipoServicioInicial === 'PRESTACION_SERVICIOS')>Prestación de servicios (Contratista / Independiente)</option>
-                <option value="RENTISTA_CAPITAL" @selected($tipoServicioInicial === 'RENTISTA_CAPITAL')>Rentista de capital (Arrendamientos, dividendos, etc.)</option>
+                <option value="PRESTACION_SERVICIOS" @selected($tipoServicioInicial === 'PRESTACION_SERVICIOS')>Contratista o independiente</option>
+                <option value="RENTISTA_CAPITAL" @selected($tipoServicioInicial === 'RENTISTA_CAPITAL')>Rentista de capital</option>
             </select>
         </x-ui.field>
 

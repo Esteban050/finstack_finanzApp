@@ -97,6 +97,11 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Laravel guarda las fechas sin zona horaria ("Y-m-d H:i:s") en la hora
+            // de la app. La conexión usa la misma zona para que PostgreSQL no las
+            // interprete en la de su servidor (Railway viene en UTC: las fechas
+            // quedaban corridas 5 horas y la sesión expiraba al entrar).
+            'timezone' => env('DB_TIMEZONE', 'America/Bogota'),
         ],
 
         'sqlsrv' => [
