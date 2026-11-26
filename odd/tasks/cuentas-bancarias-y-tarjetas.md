@@ -50,3 +50,6 @@ Branch `feat/cuentas-bancarias-y-tarjetas`, one work-unit commit per task. Strat
 
 ## Next step
 Feature complete; push/PR are the user decision (delivery strategy ask-on-risk).
+
+## Review
+- 2026-11-25: native review (medium, 1 lens reliability, base main, committed-only, untracked excluded) approved and acknowledged (lineage review-0f93e47e32d0e2d8). Non-blocking follow-ups: R3-001 stale GMF on later same-month exempt outflows after edit/delete; R3-002 exempt-over-tope test may be order-nondeterministic and asserts a range, not an exact amount; R3-003 PILA modal account select not pre-selected (modal appears create-only, so no live edit path found); R3-004 no JS test for dashboard accounts block.
