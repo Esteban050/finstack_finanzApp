@@ -33,6 +33,7 @@ Branch `feat/cuentas-bancarias-y-tarjetas`, one work-unit commit per task. Strat
 - [x] T5 — Social security payment: account select in confirm modal, `gastos.cuenta_id` via `atributosGastoPila`, GMF gasto generation for non-exempt accounts, sync on update/delete. Route: delegated.
 - [x] T6 — Verify cards created from Profile appear in the expense form card selector (test). Route: delegated.
 - [x] T7 — Fix review follow-ups R3-001 and R3-002. Route: delegated.
+- [x] T8 — Browser QA found the frontend payload whitelist (`resources/js/api/index.js` `contractPayload`) dropped `cuenta_id` for incomes and PILA payments, so the UI never linked the account (PHP tests post directly and missed it). Route: inline (one mechanical file + test). TDD: RED 1 failing in `api.test.js`; GREEN `npm test` 108/108. Recurring incomes keep excluding `cuenta_id`. Browser re-check: income +500.000 to Bancolombia, PILA 570.000 + GMF 2.280 from Bancolombia, card purchase 200.000 lowers cupo to 2.800.000; dashboard and console OK.
 
 ## Acceptance criteria
 - Profile can register debit accounts and credit cards; both listed on Dashboard first with correct available amounts.

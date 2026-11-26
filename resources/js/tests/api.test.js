@@ -26,3 +26,11 @@ test('QA-009: respuesta 500 no filtra message/trace y 419 exige recarga',async()
         }
     } finally {Object.assign(globalThis,previous);}
 });
+
+test('Cuentas: el payload de ingresos y pagos PILA conserva la cuenta de débito', () => {
+    const cuenta = '01a215b0-3d5f-7272-8e5d-c7541c312469';
+    assert.equal(contractPayload('/ingresos', 'POST', { fuente_id: 'f', monto_original: '10', cuenta_id: cuenta }).cuenta_id, cuenta);
+    assert.equal(contractPayload('/ingresos/abc', 'PUT', { monto_original: '10', cuenta_id: '' }).cuenta_id, '');
+    assert.equal(contractPayload('/seguridad-social/pagos', 'POST', { periodo: '2026-11', salud: '1', cuenta_id: cuenta }).cuenta_id, cuenta);
+    assert.equal(Object.hasOwn(contractPayload('/ingresos/recurrentes', 'POST', { monto_original: '10', cuenta_id: cuenta }), 'cuenta_id'), false);
+});
