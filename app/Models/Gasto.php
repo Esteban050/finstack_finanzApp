@@ -53,6 +53,9 @@ class Gasto extends Model
         'OTRO',
     ];
 
+    /** Medios de pago cuyo dinero sale de una cuenta de débito/ahorro del usuario. */
+    public const MEDIOS_CON_CUENTA = ['TARJETA_DEBITO', 'TRANSFERENCIA'];
+
     /** RN-026.1 (5): Relevancia tributaria. Por defecto "No deducible". */
     public const RELEVANCIAS = ['NO_DEDUCIBLE', 'POTENCIALMENTE_DEDUCIBLE'];
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Credito;
+use App\Models\CuentaBancaria;
 use App\Models\Gasto;
 use App\Models\PagoCredito;
 use App\Models\PagoSeguridadSocial;
@@ -12,6 +13,7 @@ use App\Services\BitacoraService;
 use App\Services\CategoriaGastoService;
 use App\Services\ConsumoTarjetaService;
 use App\Services\GastoService;
+use App\Services\GmfCuentaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -133,7 +135,7 @@ class GastoController extends Controller
             ]);
         }
 
-        return view('gastos.create', $datos + ['tarjetas' => $this->tarjetas()]);
+        return view('gastos.create', $datos + ['tarjetas' => $this->tarjetas(), 'cuentas' => $this->cuentas()]);
     }
 
     /**
@@ -157,7 +159,7 @@ class GastoController extends Controller
                 $atributos['credito_id'] = ConsumoTarjetaService::aplicar(Auth::id(), null, $atributos, $validated['fecha']);
             }
 
-            return Gasto::create(array_merge($atributos, [
+            $gasto = Gasto::create(array_merge($atributos, [
                 'usuario_id' => Auth::id(),
                 'fecha' => $validated['fecha'],
                 'origen' => 'MANUAL',
@@ -165,6 +167,10 @@ class GastoController extends Controller
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
+            // GMF (4x1000) de la salida de la cuenta de débito.
+            GmfCuentaService::sincronizar($gasto);
+
+            return $gasto;
         });
 
         BitacoraService::registrar(
@@ -215,6 +221,7 @@ class GastoController extends Controller
         return view('gastos.edit', [
             'gasto' => $gasto,
             'tarjetas' => $this->tarjetas(),
+            'cuentas' => $this->cuentas(),
             'categorias' => CategoriaGastoService::catalogo(Auth::id(), soloActivas: true),
             'dimensiones' => $this->dimensiones(),
             'etiquetasUsadas' => GastoService::etiquetasUsadas(),
@@ -233,10 +240,16 @@ class GastoController extends Controller
         $validated = $request->validate($this->reglas($nueva), $this->mensajes());
         $atributos = $this->prepararAtributos($validated);
         $datosCredito = $nueva ? $this->datosCredito($validated, $atributos) : null;
-        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated, $datosCredito) {
+        // Sin `cuenta_id` en la petición se conserva la cuenta actual (si el medio la admite); vacío la quita.
+        $conservaCuenta = ! $request->has('cuenta_id') && in_array($atributos['medio_pago'], Gasto::MEDIOS_CON_CUENTA, true);
+        [$gasto, $anterior] = DB::transaction(function () use ($id, $atributos, $validated, $datosCredito, $conservaCuenta) {
             $gasto = $this->gastoPropio($id, bloquear: true);
             $this->rechazarSiEsAutomatico($gasto);
             $anterior = $gasto->toArray();
+            $fechaAnterior = $gasto->fecha->toDateString();
+            if ($conservaCuenta) {
+                $atributos['cuenta_id'] = $gasto->cuenta_id;
+            }
 
             if ($atributos['medio_pago'] === 'TARJETA_CREDITO' && ! array_key_exists('credito_id', $validated)) {
                 $atributos['credito_id'] = $gasto->credito_id;
@@ -255,6 +268,7 @@ class GastoController extends Controller
                 'comercio_beneficiario' => $validated['comercio_beneficiario'] ?? null,
                 'descripcion' => $validated['descripcion'] ?? null,
             ]));
+            GmfCuentaService::sincronizar($gasto->fresh(), $fechaAnterior);
 
             return [$gasto, $anterior];
         });
@@ -330,6 +344,7 @@ class GastoController extends Controller
             ConsumoTarjetaService::aplicar(Auth::id(), $gasto, []);
             $anterior = $gasto->toArray();
             $gasto->delete();
+            GmfCuentaService::sincronizar($gasto);
 
             return $anterior;
         });
@@ -388,7 +403,11 @@ class GastoController extends Controller
         }
 
         $anterior = $gasto->toArray();
-        $gasto->update($cambios);
+        DB::transaction(function () use ($gasto, $cambios) {
+            $gasto->update($cambios);
+            // Al confirmarse, la salida de una cuenta de débito genera su GMF.
+            GmfCuentaService::sincronizar($gasto->fresh());
+        });
 
         BitacoraService::registrar(
             accion: 'CONFIRMAR_GASTO_RECURRENTE',
@@ -684,6 +703,8 @@ class GastoController extends Controller
                 'subcategoria_id' => $subcategoria->id,
                 'credito_id' => ConsumoTarjetaService::esCreditoNuevo($validated['credito_id'] ?? null) ? null : ($validated['credito_id'] ?? null),
                 'medio_pago' => $validated['medio_pago'],
+                // Solo TARJETA_DEBITO y TRANSFERENCIA salen de una cuenta de débito.
+                'cuenta_id' => in_array($validated['medio_pago'], Gasto::MEDIOS_CON_CUENTA, true) ? ($validated['cuenta_id'] ?? null) : null,
                 'etiquetas' => GastoService::normalizarEtiquetas($validated['etiquetas'] ?? null),
             ]
         );
@@ -802,6 +823,12 @@ class GastoController extends Controller
                     $fallar('Seleccione una tarjeta válida.');
                 }
             }],
+            // Cuenta de débito de la que sale el dinero: opcional, propia y no eliminada.
+            'cuenta_id' => ['exclude_unless:medio_pago,'.implode(',', Gasto::MEDIOS_CON_CUENTA), 'nullable', 'uuid', function (string $atributo, mixed $valor, \Closure $fallar) {
+                if ($valor !== null && $valor !== '' && CuentaBancaria::find($valor) === null) {
+                    $fallar('La cuenta seleccionada no existe.');
+                }
+            }],
             // RN-026.1 (4): medio de pago, obligatorio.
             'medio_pago' => ['required', Rule::in(Gasto::MEDIOS_PAGO)],
             // RN-026.1 (2) y (3): si no se envían, se toma la sugerencia de la
@@ -846,6 +873,7 @@ class GastoController extends Controller
             'subcategoria_id.required' => 'Seleccione la subcategoría del gasto.',
             'subcategoria_id.uuid' => 'La subcategoría seleccionada no es válida.',
             'credito_id.string' => 'Seleccione una tarjeta válida.',
+            'cuenta_id.uuid' => 'La cuenta seleccionada no es válida.',
             'banco_tarjeta.required' => 'Indique el banco de la tarjeta de crédito.',
             'cupo_tarjeta.required' => 'Indique el cupo de la tarjeta de crédito.',
             'cupo_tarjeta.regex' => 'El cupo va en pesos enteros, con hasta 12 dígitos.',
@@ -933,6 +961,12 @@ class GastoController extends Controller
      *
      * @throws ValidationException
      */
+    /** Cuentas de débito/ahorro del usuario para el selector "Cuenta de la que sale el dinero". */
+    private function cuentas()
+    {
+        return CuentaBancaria::with('entidad:id,nombre')->orderBy('creado_en')->get();
+    }
+
     private function tarjetas()
     {
         return ConsumoTarjetaService::tarjetas(Auth::id())->orderBy('banco')->get(['id', 'banco', 'proposito']);

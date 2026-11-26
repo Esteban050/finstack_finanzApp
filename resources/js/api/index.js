@@ -53,7 +53,7 @@ export function contractPayload(path, method, values) {
     const isUsd = values?.moneda === 'USD';
     const recurring = ['periodicidad','fecha_inicio','fecha_fin','max_ocurrencias','modo_confirmacion'];
     const income = ['fuente_id','fecha_recepcion','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'retencion_fuente','aportes_descontados','descripcion','clasificacion_tributaria','cuenta_id'];
-    const expense = ['fecha','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'categoria_id','subcategoria_id','medio_pago',...(values?.medio_pago === 'TARJETA_CREDITO' ? ['credito_id'] : []),'naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
+    const expense = ['fecha','monto_original','moneda',...(isUsd ? ['tasa_cambio_usada'] : []),'categoria_id','subcategoria_id','medio_pago',...(values?.medio_pago === 'TARJETA_CREDITO' ? ['credito_id'] : []),...(['TARJETA_DEBITO','TRANSFERENCIA'].includes(values?.medio_pago) ? ['cuenta_id'] : []),'naturaleza','necesidad','relevancia_tributaria','subtipo_deduccion','etiquetas','comercio_beneficiario','descripcion'];
     let allowed;
     if (path.startsWith('/creditos')) {
         allowed = method === 'GET' ? ['page','por_pagina','fecha'] : path.endsWith('/reversar') ? ['motivo'] : path.includes('/pagos') ? ['fecha','valor','medio','referencia','aplicacion_excedente','reducir'] : ['banco','proposito','tipo_credito','monto','tasa','tipo_tasa','capitalizacion','tasa_mora','plazo_meses','numero_cuotas','periodicidad','sistema_amortizacion','fecha_inicio','fecha_primer_pago','seguro_porc_mensual','cargo_fijo','valor_inmueble','es_vis','cupo'];
@@ -69,7 +69,7 @@ export function contractPayload(path, method, values) {
     else if (path.startsWith('/ingresos/fuentes')) allowed = ['nombre','tipo_fuente_id','clasificacion_tributaria','pagador_entidad'];
     else if (path.startsWith('/gastos/categorias')) allowed = path.endsWith('/fusionar') ? ['destino_id'] : ['nombre','categoria_padre_id','naturaleza_sugerida','necesidad_sugerida','icono','color_hex'];
     else if (path.startsWith('/ingresos')) allowed = path.includes('/recurrentes') ? [...income.filter(k=>k!=='fecha_recepcion' && k!=='cuenta_id'),...recurring] : income;
-    else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
+    else if (path.startsWith('/gastos')) allowed = path.includes('/recurrentes') ? [...expense.filter(k=>k!=='fecha' && k!=='cuenta_id'),...recurring,'es_monto_estimado'] : path.endsWith('/confirmar') ? ['monto_original'] : path.endsWith('/edicion-masiva') ? ['ids','categoria_id','subcategoria_id','naturaleza','necesidad','etiquetas'] : expense;
     else return values;
     if (method === 'DELETE') allowed = [];
     const result = Object.fromEntries(allowed.filter(k=>Object.hasOwn(values,k)).map(k=>[k,k==='moneda'?(['COP','USD'].includes(values[k])?values[k]:'COP'):values[k]]));

@@ -1,4 +1,4 @@
-@props(['categories', 'prefix' => 'expense', 'record' => [], 'recurrent' => false, 'cards' => []])
+@props(['categories', 'prefix' => 'expense', 'record' => [], 'recurrent' => false, 'cards' => [], 'cuentas' => []])
 @php($eraConsumoSinVinculo = ($record['medio_pago'] ?? null) === 'TARJETA_CREDITO' && empty($record['credito_id']))
 <div class="income-editor expense-editor" data-expense-editor>
     <div class="income-form-main">
@@ -22,6 +22,16 @@
             <x-ui.money-input name="monto_original" :id="$prefix.'-amount'" label="Monto" :value="(string) ($record['monto_original'] ?? '')" :currency="old('moneda', $record['moneda'] ?? 'COP')" />
             @if(!$recurrent)<x-ui.field name="fecha" :id="$prefix.'-date'" label="Fecha" :required="true" help="No puede ser posterior a hoy."><input type="date" name="fecha" id="{{ $prefix }}-date" data-expense-date value="{{ old('fecha', $record['fecha'] ?? '') }}" required aria-describedby="{{ $prefix }}-date-help {{ $prefix }}-date-error"></x-ui.field>@endif
             <x-expense.select name="medio_pago" label="Medio de pago" :prefix="$prefix" :options="['EFECTIVO', 'TARJETA_DEBITO', 'TARJETA_CREDITO', 'TRANSFERENCIA', 'BILLETERA_DIGITAL', 'OTRO']" :value="$record['medio_pago'] ?? ''" :required="true" />
+            @if(!$recurrent && count($cuentas) > 0)
+                <div data-expense-account @if(!in_array(old('medio_pago', $record['medio_pago'] ?? ''), \App\Models\Gasto::MEDIOS_CON_CUENTA, true)) hidden @endif>
+                    <x-ui.field name="cuenta_id" :id="$prefix.'-account'" label="Cuenta de la que sale el dinero" help="Opcional. Resta el gasto de lo disponible en la cuenta; si no es exenta, también se registra el GMF (4x1000).">
+                        <select id="{{ $prefix }}-account" name="cuenta_id" data-expense-account-select aria-describedby="{{ $prefix }}-account-help {{ $prefix }}-account-error">
+                            <option value="">Sin cuenta</option>
+                            @foreach($cuentas as $cuenta)<option value="{{ $cuenta->id }}" @selected(old('cuenta_id', $record['cuenta_id'] ?? '') === $cuenta->id)>{{ $cuenta->nombre_banco }}@if($cuenta->alias) · {{ $cuenta->alias }}@endif</option>@endforeach
+                        </select>
+                    </x-ui.field>
+                </div>
+            @endif
             @unless($recurrent)
                 @php($creditoVinculado = ($record['genera_credito'] ?? false) ? ($record['credito'] ?? null) : null)
                 <div data-expense-card @if(old('medio_pago', $record['medio_pago'] ?? '') !== 'TARJETA_CREDITO') hidden @endif>

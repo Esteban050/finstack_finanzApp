@@ -34,3 +34,12 @@ test('Cuentas: el payload de ingresos y pagos PILA conserva la cuenta de débito
     assert.equal(contractPayload('/seguridad-social/pagos', 'POST', { periodo: '2026-11', salud: '1', cuenta_id: cuenta }).cuenta_id, cuenta);
     assert.equal(Object.hasOwn(contractPayload('/ingresos/recurrentes', 'POST', { monto_original: '10', cuenta_id: cuenta }), 'cuenta_id'), false);
 });
+
+test('Cuentas: el payload de gastos envia cuenta_id solo con TARJETA_DEBITO o TRANSFERENCIA', () => {
+    const cuenta = '01a215b0-3d5f-7272-8e5d-c7541c312469';
+    const base = { fecha: '2026-11-20', monto_original: '10', cuenta_id: cuenta };
+    assert.equal(contractPayload('/gastos', 'POST', { ...base, medio_pago: 'TARJETA_DEBITO' }).cuenta_id, cuenta);
+    assert.equal(contractPayload('/gastos/abc', 'PUT', { ...base, medio_pago: 'TRANSFERENCIA', cuenta_id: '' }).cuenta_id, '');
+    assert.equal(Object.hasOwn(contractPayload('/gastos', 'POST', { ...base, medio_pago: 'EFECTIVO' }), 'cuenta_id'), false);
+    assert.equal(Object.hasOwn(contractPayload('/gastos/recurrentes', 'POST', { ...base, medio_pago: 'TRANSFERENCIA' }), 'cuenta_id'), false);
+});

@@ -5,7 +5,7 @@
 @php($record = array_merge($gasto->toArray(), ['fecha' => $gasto->fecha->format('Y-m-d'), 'monto_original' => (string) $gasto->monto_original]))
 <form method="POST" action="{{ route('gastos.update', $gasto->id) }}" data-expense-form data-return-url="{{ route('gastos.index') }}" novalidate>
     @csrf @method('PUT')
-    <x-expense.form :categories="$categorias" :record="$record" :cards="$tarjetas ?? []" />
+    <x-expense.form :categories="$categorias" :record="$record" :cards="$tarjetas ?? []" :cuentas="$cuentas ?? []" />
     <x-expense.status /><div class="income-actions"><x-ui.button :href="route('gastos.index')" variant="secondary">Cancelar</x-ui.button><x-ui.button type="submit">Guardar cambios</x-ui.button></div>
 </form>
 @endsection

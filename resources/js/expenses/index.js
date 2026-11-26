@@ -74,6 +74,17 @@ export function mountExpenses() {
                 for (const input of newCard.querySelectorAll('input')) { input.disabled = !enabled; input.required = enabled; }
             }
         };
+        // Cuenta de débito: solo con TARJETA_DEBITO o TRANSFERENCIA; al cambiar a otro medio se desvincula.
+        const accountField = editor.querySelector('[data-expense-account]');
+        const accountSelect = accountField?.querySelector('select');
+        const updateAccount = () => {
+            if (!accountField) return;
+            accountField.hidden = !['TARJETA_DEBITO', 'TRANSFERENCIA'].includes(payment.value);
+            if (accountField.hidden) accountSelect.value = '';
+            accountSelect.disabled = accountField.hidden;
+        };
+        payment.addEventListener('change', updateAccount);
+        updateAccount();
         payment.addEventListener('change', updateCard);
         cardSelect?.addEventListener('change', updateCard);
         updateCard();
