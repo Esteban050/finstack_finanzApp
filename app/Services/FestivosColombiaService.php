@@ -56,8 +56,7 @@ class FestivosColombiaService
         }
 
         // 3. Festivos móviles calculados a partir del Domingo de Pascua
-        $diasDespues21Marzo = easter_days($anio);
-        $domingoPascua = CarbonImmutable::create($anio, 3, 21)->addDays($diasDespues21Marzo);
+        $domingoPascua = self::domingoPascua($anio);
 
         // Jueves Santo (-3 días) y Viernes Santo (-2 días)
         $festivos[] = $domingoPascua->subDays(3)->toDateString();
@@ -77,6 +76,31 @@ class FestivosColombiaService
         self::$cache[$anio] = $festivos;
 
         return $festivos;
+    }
+
+    /**
+     * Domingo de Pascua del calendario gregoriano (algoritmo de Meeus/Jones/Butcher).
+     * Se calcula en PHP puro: easter_days() depende de la extensión calendar,
+     * que no está instalada en todos los servidores (por ejemplo, Railway).
+     */
+    public static function domingoPascua(int $anio): CarbonImmutable
+    {
+        $a = $anio % 19;
+        $b = intdiv($anio, 100);
+        $c = $anio % 100;
+        $d = intdiv($b, 4);
+        $e = $b % 4;
+        $f = intdiv($b + 8, 25);
+        $g = intdiv($b - $f + 1, 3);
+        $h = (19 * $a + $b - $d - $g + 15) % 30;
+        $i = intdiv($c, 4);
+        $k = $c % 4;
+        $l = (32 + 2 * $e + 2 * $i - $h - $k) % 7;
+        $m = intdiv($a + 11 * $h + 22 * $l, 451);
+        $mes = intdiv($h + $l - 7 * $m + 114, 31);
+        $dia = (($h + $l - 7 * $m + 114) % 31) + 1;
+
+        return CarbonImmutable::create($anio, $mes, $dia);
     }
 
     /**
@@ -124,4 +148,3 @@ class FestivosColombiaService
         return $ultimoHabil;
     }
 }
-
