@@ -1,7 +1,5 @@
 import { passwordChecks, validateAuth, secondsRemaining, nameFieldError, documentFieldError } from './rules.js';
-
-const cookie = (name) => document.cookie.split('; ').find((item) => item.startsWith(name + '='))?.slice(name.length + 1);
-const setCookie = (name, value, age = 86400) => { document.cookie = `${name}=${value}; Path=/; Max-Age=${age}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`; };
+import { readCookie, setCookie } from '../utils/cookies.js';
 function showClientErrors(form, errors) {
     // Los errores del servidor se conservan literalmente en su propio elemento.
     for (const message of form.querySelectorAll('[data-auth-client-error]')) {
@@ -12,24 +10,6 @@ function showClientErrors(form, errors) {
     }
 }
 export function mountAuth() {
-    const themeButtons = document.querySelectorAll('[data-theme-choice]');
-    const syncTheme = () => {
-        const dark = document.documentElement.dataset.theme === 'dark';
-        for (const button of themeButtons) {
-            button.setAttribute('aria-pressed', String(dark));
-            button.title = dark ? 'Activar modo claro' : 'Activar modo oscuro';
-            button.hidden = false;
-        }
-    };
-    syncTheme();
-    for (const button of themeButtons) {
-        button.addEventListener('click', () => {
-            const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-            document.documentElement.dataset.theme = theme;
-            setCookie('finanzapp_theme', theme, 31536000);
-            syncTheme();
-        });
-    }
     document.querySelectorAll('[data-password-toggle]').forEach((button) => button.addEventListener('click', () => {
         const input = document.getElementById(button.getAttribute('aria-controls')), show = input.type === 'password';
         input.type = show ? 'text' : 'password'; button.setAttribute('aria-pressed', String(show)); button.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
@@ -85,7 +65,7 @@ export function mountAuth() {
     });
     document.querySelectorAll('[data-resend-key]').forEach((form) => {
         const key = 'fa_resend_' + form.dataset.resendKey;
-        let deadline = Number(cookie(key) || 0);
+        let deadline = Number(readCookie(key) || 0);
         if (!deadline && form.dataset.resendInitial === 'true') { deadline = Date.now() + 60000; setCookie(key, deadline); }
         // El servidor manda la espera real cuando rechaza un reenvío por los 60 s.
         if (form.dataset.resendWait) { deadline = Date.now() + Number(form.dataset.resendWait) * 1000; setCookie(key, deadline); }

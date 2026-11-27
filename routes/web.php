@@ -56,6 +56,7 @@ Route::middleware(['auth', 'politica.check'])->group(function () {
     // RF-008: Perfil tributario y personal
     Route::get('/perfil', [UserProfileController::class, 'show'])->name('profile.show');
     Route::patch('/perfil', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::view('/perfil/temas', 'profile.themes')->name('profile.themes');
 
     // Cuentas de débito/ahorro y tarjetas de crédito registradas desde Mi perfil.
     Route::post('/perfil/cuentas', [CuentaBancariaController::class, 'storeCuenta'])->name('perfil.cuentas.store');

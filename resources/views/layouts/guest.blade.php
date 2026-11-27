@@ -18,7 +18,7 @@
             <x-ui.policy-link />
         </div>
         @if(!isset($minimal))<aside class="auth-brand-panel auth-panel-bg" aria-label="FinanzApp">
-            <div><img src="{{ asset('favicon.svg') }}" alt="" width="160" height="160"><p class="auth-brand-name">FinanzApp</p><p>Controla tus ingresos y gastos en pesos colombianos.</p></div>
+            <div><x-application-logo /><p class="auth-brand-name">FinanzApp</p><p>Controla tus ingresos y gastos en pesos colombianos.</p></div>
         </aside>@endif
     </div>
 </body>

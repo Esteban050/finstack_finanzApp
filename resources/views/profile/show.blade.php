@@ -20,7 +20,10 @@
                 </div>
             @endif
 
-            <div class="ui-inline"><a class="ui-button ui-button--secondary" href="{{ route('perfil.alertas.index') }}">Alertas y notificaciones</a></div>
+            <div class="ui-inline">
+                <a class="ui-button ui-button--secondary" href="{{ route('perfil.alertas.index') }}">Alertas y notificaciones</a>
+                <a class="ui-button ui-button--secondary" href="{{ route('profile.themes') }}">Temas</a>
+            </div>
 
             <!-- Resumen de Cuenta e Identidad -->
             <div class="bg-white p-6 shadow sm:rounded-xl">

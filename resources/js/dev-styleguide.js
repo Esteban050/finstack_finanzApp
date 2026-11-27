@@ -52,7 +52,7 @@ function renderContrastReport() {
 }
 function renderThemeTokens() { renderTokenSwatches(); renderContrastReport(); }
 renderThemeTokens();
-new MutationObserver(renderThemeTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+new MutationObserver(renderThemeTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] });
 
 function toast(message) {
     document.querySelector('[data-toast-message]').textContent = message;

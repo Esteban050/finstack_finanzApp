@@ -151,6 +151,6 @@ export function mountProjectionViews() {
         end.addEventListener('change',render);
         host.querySelector('[data-projection-previous]').addEventListener('click',()=>{if(page>0){page--;table();}});
         host.querySelector('[data-projection-next]').addEventListener('click',()=>{if((page+1)*20<result.rows.length){page++;table();}});
-        new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});render();
+        new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-palette']});render();
     });
 }

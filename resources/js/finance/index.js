@@ -300,7 +300,7 @@ export function mountFinance() {
         chart.data.datasets[0].borderColor=style.getPropertyValue('--accent').trim();
         for(const axis of ['x','y'])chart.options.scales[axis].ticks.color=style.getPropertyValue('--ui-muted').trim();
         chart.update('none');
-    })).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    })).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-palette']});
     document.querySelectorAll('[data-add-alternative]').forEach(button=>button.addEventListener('click',()=>{
         const host=document.querySelector('[data-alternatives]');
         const panels=[...host.querySelectorAll('[data-alternative]')];

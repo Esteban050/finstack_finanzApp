@@ -1,4 +1,5 @@
-:root {
+:root,
+:is(.theme-preview, .theme-swatches)[data-theme=dark] {
     color-scheme: dark;
     --accent: #FB923C;
     --accent-contrast: #1F2937;
@@ -17,6 +18,8 @@
     --ui-warning: var(--cat-amber);
     --ui-overlay: #17120FCC;
     --ui-brand-filter: hue-rotate(225deg);
+}
+:root {
     --ui-font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
     --ui-text-base: 1rem;
     --ui-text-small: .875rem;
@@ -76,9 +79,9 @@
 .scfp-theme :is(input, select, textarea):disabled { background: var(--ui-raised); color: var(--ui-muted); border-style: dashed; }
 .scfp-theme input[type=checkbox], .scfp-theme input[type=radio] { accent-color: var(--accent); width: 18px; height: 18px; }
 .ui-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--ui-sidebar-width); padding: 1.5rem 1.25rem; overflow: hidden; background: var(--ui-surface); border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; }
-.ui-brand { flex-shrink: 0; display: flex; align-items: center; gap: .75rem; font-size: 1.5rem; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }
-.ui-brand-mark { width: 36px; height: 36px; flex-shrink: 0; filter: var(--ui-brand-filter); }
-.ui-brand-name > span { display: block; margin-top: .375rem; color: var(--ui-muted); font-size: var(--ui-text-meta); font-weight: 400; letter-spacing: 0; }
+.scfp-theme .ui-brand { flex-shrink: 0; display: flex; align-items: center; gap: .75rem; color: var(--ui-text); font-size: 1.5rem; line-height: 1.15; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }
+.ui-brand-mark { display: block; width: 48px; height: 48px; flex-shrink: 0; }
+.ui-brand-name > span { display: block; margin-top: .375rem; color: var(--ui-muted); font-size: var(--ui-text-meta); line-height: 1.35; font-weight: 400; letter-spacing: 0; }
 .ui-icon-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .5rem; }
 .ui-icon-picker > input { grid-column: 1 / -1; }
 .ui-icon-picker fieldset { min-inline-size: 0; margin: 0; padding: .5rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
