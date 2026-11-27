@@ -143,7 +143,8 @@ class ReglaAlertaService
 
             $nuevas[$tipo] = [
                 'activa' => $activa,
-                'enviar_correo' => array_key_exists('enviar_correo', $cambio) ? (bool) $cambio['enviar_correo'] : $vigentes[$tipo]['enviar_correo'],
+                // Una alerta inactiva no se evalúa, así que su correo nunca saldría: se guarda apagado.
+                'enviar_correo' => $activa && (array_key_exists('enviar_correo', $cambio) ? (bool) $cambio['enviar_correo'] : $vigentes[$tipo]['enviar_correo']),
                 'parametros' => $parametros,
             ];
         }
