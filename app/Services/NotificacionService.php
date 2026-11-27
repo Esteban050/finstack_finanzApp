@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\NotificacionCorreo;
 use App\Models\Notificacion;
 use App\Models\Scopes\DelUsuarioAutenticado;
 use App\Models\Usuario;
@@ -148,10 +149,8 @@ class NotificacionService
             return;
         }
 
-        [$asunto, $cuerpo] = self::textoCorreo($usuario, $notificacion);
-
         try {
-            Mail::raw($cuerpo, fn ($mensaje) => $mensaje->to($usuario->correo)->subject($asunto));
+            Mail::to($usuario->correo)->send(self::mensaje($usuario, $notificacion));
         } catch (\Throwable $e) {
             Log::warning("No se pudo enviar la notificación por correo (RN-059.1): {$e->getMessage()}", [
                 'usuario_id' => $usuario->id,
@@ -164,13 +163,134 @@ class NotificacionService
         $notificacion->update(['correo_enviado_en' => now()]);
     }
 
-    /** @return array{0: string, 1: string} asunto y cuerpo */
-    private static function textoCorreo(Usuario $usuario, Notificacion $notificacion): array
+    private const NOMBRES_ALERTA = [
+        ReglaAlertaService::UMBRAL_LINEA => 'Umbral de una categoría',
+        ReglaAlertaService::PRESUPUESTO_TOTAL => 'Presupuesto total',
+        ReglaAlertaService::PROYECCION_LINEA => 'Vas a pasarte',
+        ReglaAlertaService::INGRESOS_VS_GASTOS => 'Gastas más de lo que ganas',
+        ReglaAlertaService::GASTO_PROYECTADO_ALTO => 'Gasto proyectado alto',
+        ReglaAlertaService::LIMITE_GASTO_MENSUAL => 'Límite de gasto mensual',
+        ReglaAlertaService::GASTO_INUSUAL => 'Gasto inusual',
+        ReglaAlertaService::GASTOS_HORMIGA => 'Gastos hormiga',
+        ReglaAlertaService::GASTO_DISCRECIONAL_ALTO => 'Gasto discrecional alto',
+        ReglaAlertaService::TOPE_DIAN_TARJETA => 'Tope DIAN: consumos con tarjeta de crédito',
+        ReglaAlertaService::TOPE_DIAN_COMPRAS => 'Compras y consumos totales',
+        ReglaAlertaService::USO_CUPO_TARJETA => 'Uso del cupo de la tarjeta',
+        ReglaAlertaService::ENDEUDAMIENTO => 'Endeudamiento cambia de color',
+        ReglaAlertaService::VENCIMIENTOS => 'Cuotas vencidas y recurrentes por confirmar',
+    ];
+
+    /** RN-059.1: arma el correo con la marca: saludo, título, detalle, cifras clave y enlace. */
+    private static function mensaje(Usuario $usuario, Notificacion $notificacion): NotificacionCorreo
+    {
+        [$asunto, $detalle] = self::asuntoYDetalle($notificacion);
+        $d = $notificacion->datos;
+        $seguridad = $notificacion->tipo === ReglaAlertaService::SEGURIDAD_CUENTA;
+
+        return new NotificacionCorreo(
+            asunto: $asunto,
+            nombre: trim((string) $usuario->nombres),
+            titulo: preg_replace('/^SCFP - /', '', $asunto),
+            detalle: $detalle,
+            prioridad: (string) $notificacion->prioridad,
+            cifras: self::cifras($notificacion->tipo, $d),
+            barra: self::barra($notificacion->tipo, $d),
+            url: route('notificaciones.index'),
+            urlAlertas: route('perfil.alertas.index'),
+            motivo: $seguridad
+                ? 'Los avisos de seguridad de la cuenta siempre llegan por correo.'
+                : 'Recibes este correo porque activaste el aviso por correo de «'.(self::NOMBRES_ALERTA[$notificacion->tipo] ?? 'esta alerta').'».',
+            fecha: now()->locale('es')->translatedFormat('j \\d\\e F \\d\\e Y, g:i a'),
+        );
+    }
+
+    /** @return array<int, array{etiqueta: string, valor: string, tono?: string}> cifras destacadas del correo */
+    private static function cifras(string $tipo, array $d): array
+    {
+        return match ($tipo) {
+            ReglaAlertaService::LIMITE_GASTO_MENSUAL => [
+                ['etiqueta' => 'Gastado', 'valor' => self::pesos((string) $d['gastado'])],
+                ['etiqueta' => 'Tu tope', 'valor' => self::pesos((string) $d['monto'])],
+                ['etiqueta' => 'Te pasaste por', 'valor' => self::pesos(bcsub((string) $d['gastado'], (string) $d['monto'], 2)), 'tono' => 'danger'],
+            ],
+            ReglaAlertaService::UMBRAL_LINEA, ReglaAlertaService::PRESUPUESTO_TOTAL => [
+                ['etiqueta' => 'Gastado', 'valor' => self::pesos((string) $d['gastado'])],
+                ['etiqueta' => 'Asignado', 'valor' => self::pesos((string) $d['asignado'])],
+                ['etiqueta' => 'Ejecución', 'valor' => self::porcentaje((string) $d['ejecucion_porc']), 'tono' => 'warning'],
+            ],
+            ReglaAlertaService::PROYECCION_LINEA => [
+                ['etiqueta' => 'Cierre proyectado', 'valor' => self::pesos((string) $d['proyeccion']), 'tono' => 'warning'],
+                ['etiqueta' => 'Asignado', 'valor' => self::pesos((string) $d['asignado'])],
+                ['etiqueta' => 'Te quedan', 'valor' => self::pesos((string) $d['disponible'])],
+            ],
+            ReglaAlertaService::INGRESOS_VS_GASTOS => [
+                ['etiqueta' => 'Gastos', 'valor' => self::pesos((string) $d['gastos'])],
+                ['etiqueta' => 'Ingresos', 'valor' => self::pesos((string) $d['ingresos_recibidos'])],
+                ['etiqueta' => 'Diferencia', 'valor' => self::pesos((string) $d['diferencia']), 'tono' => 'danger'],
+            ],
+            ReglaAlertaService::GASTO_PROYECTADO_ALTO => [
+                ['etiqueta' => 'Cierre proyectado', 'valor' => self::pesos((string) $d['proyeccion'])],
+                ['etiqueta' => 'Ingreso promedio', 'valor' => self::pesos((string) $d['ingreso_promedio'])],
+                ['etiqueta' => 'Del ingreso', 'valor' => self::porcentaje((string) $d['porcentaje']), 'tono' => 'warning'],
+            ],
+            ReglaAlertaService::GASTO_INUSUAL => [
+                ['etiqueta' => 'Este gasto', 'valor' => self::pesos((string) $d['monto']), 'tono' => 'warning'],
+                ['etiqueta' => 'Tu promedio', 'valor' => self::pesos((string) $d['promedio'])],
+            ],
+            ReglaAlertaService::GASTOS_HORMIGA => [
+                ['etiqueta' => 'Suman', 'valor' => self::pesos((string) $d['total']), 'tono' => 'warning'],
+                ['etiqueta' => 'Gastos pequeños', 'valor' => (string) $d['cantidad']],
+            ],
+            ReglaAlertaService::TOPE_DIAN_TARJETA, ReglaAlertaService::TOPE_DIAN_COMPRAS => [
+                ['etiqueta' => 'Acumulado '.$d['anio'], 'valor' => self::pesos((string) $d['acumulado'])],
+                ['etiqueta' => 'Tope', 'valor' => self::pesos((string) $d['tope'])],
+            ],
+            ReglaAlertaService::USO_CUPO_TARJETA => [
+                ['etiqueta' => 'Usado', 'valor' => self::pesos((string) $d['saldo']), 'tono' => 'warning'],
+                ['etiqueta' => 'Cupo', 'valor' => self::pesos((string) $d['cupo'])],
+                ['etiqueta' => 'Disponible', 'valor' => self::pesos((string) $d['disponible'])],
+            ],
+            ReglaAlertaService::VENCIMIENTOS => isset($d['pendiente']) ? [
+                ['etiqueta' => 'Por pagar', 'valor' => self::pesos((string) $d['pendiente']), 'tono' => 'warning'],
+                ['etiqueta' => 'Fecha', 'valor' => CarbonImmutable::parse($d['fecha'])->format('d/m/Y')],
+            ] : [],
+            default => [],
+        };
+    }
+
+    /** @return array{porcentaje: string, ancho: int, tono: string, texto: string}|null barra de avance frente al límite */
+    private static function barra(string $tipo, array $d): ?array
+    {
+        [$valor, $limite, $texto] = match ($tipo) {
+            ReglaAlertaService::LIMITE_GASTO_MENSUAL => [(string) $d['gastado'], (string) $d['monto'], 'de tu tope del mes'],
+            ReglaAlertaService::UMBRAL_LINEA, ReglaAlertaService::PRESUPUESTO_TOTAL => [(string) $d['gastado'], (string) $d['asignado'], 'de lo asignado'],
+            ReglaAlertaService::USO_CUPO_TARJETA => [(string) $d['saldo'], (string) $d['cupo'], 'del cupo de la tarjeta'],
+            ReglaAlertaService::TOPE_DIAN_TARJETA, ReglaAlertaService::TOPE_DIAN_COMPRAS => [(string) $d['acumulado'], (string) $d['tope'], 'del tope para declarar renta'],
+            default => [null, null, null],
+        };
+
+        if ($valor === null || bccomp($limite, '0', 2) <= 0) {
+            return null;
+        }
+
+        $porcentaje = bcdiv(bcmul($valor, '100', 4), $limite, 2);
+        $tono = bccomp($porcentaje, '100', 2) >= 0 ? 'danger' : (bccomp($porcentaje, '80', 2) >= 0 ? 'warning' : 'success');
+
+        return [
+            'porcentaje' => $porcentaje,
+            'ancho' => (int) min(100, (float) $porcentaje),
+            'tono' => $tono,
+            'texto' => self::porcentaje($porcentaje).' '.$texto,
+        ];
+    }
+
+    /** @return array{0: string, 1: string} asunto y detalle de la notificación */
+    private static function asuntoYDetalle(Notificacion $notificacion): array
     {
         $d = $notificacion->datos;
         $mes = isset($d['mes']) ? self::nombreMes($d['mes']) : '';
 
-        [$asunto, $detalle] = match ($notificacion->tipo) {
+        return match ($notificacion->tipo) {
             ReglaAlertaService::UMBRAL_LINEA => [
                 "SCFP - {$d['nombre']} llegó al {$d['umbral']} % de su presupuesto",
                 "{$d['nombre']} lleva ".self::pesos($d['gastado']).' de '.self::pesos($d['asignado'])." en {$mes}: el ".self::porcentaje($d['ejecucion_porc']).' de lo asignado.',
@@ -229,8 +349,6 @@ class NotificacionService
             ReglaAlertaService::SEGURIDAD_CUENTA => self::textoSeguridad($d),
             default => ['SCFP - Tienes una notificación nueva', 'Tienes una notificación nueva en el centro de notificaciones.'],
         };
-
-        return [$asunto, "Hola {$usuario->nombres},\n\n{$detalle}\n\nPuedes ver el detalle en el centro de notificaciones de FinanzApp."];
     }
 
     /** @return array{0: string, 1: string} */
