@@ -1,7 +1,6 @@
 .planning-page [data-workspace-content], .planning-page form { display: grid; gap: 1.5rem; min-width: 0; }
 .planning-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,24rem),1fr)); gap: 1.5rem; min-width: 0; }
 .planning-kpis { grid-template-columns: repeat(auto-fit,minmax(min(100%,16rem),1fr)); }
-.planning-kpis .ui-card:first-child { border-top: 3px solid var(--accent); }
 .planning-page .planning-filters { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; padding: 1.25rem; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .planning-filters .ui-field { flex: 0 1 17rem; min-width: min(100%,13rem); margin: 0; }
 .planning-filters .ui-field > label, .planning-budget-line .ui-field > label { min-height: 1.5rem; }
@@ -10,7 +9,6 @@
 .planning-filters [data-form-status] { flex-basis: 100%; }
 .planning-page input:not([type=checkbox]), .planning-page select { min-width: 0; height: 3.25rem; min-height: 48px; padding: .75rem; background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
 .planning-page input[type=checkbox] { width: 1.5rem; height: 1.5rem; accent-color: var(--accent); }
-.planning-page input[type=checkbox]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .planning-value { font-size: clamp(1rem,calc(140cqi / var(--value-length,16)),2.5rem); font-weight: 650; font-variant-numeric: tabular-nums; margin: .5rem 0; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 .planning-detail-link { display: inline-block; padding: .75rem 0; color: var(--accent); }
 .planning-page .ui-card { display: grid; align-content: start; gap: 1rem; container-type: inline-size; }
@@ -159,11 +157,12 @@
 .notification-time { color:var(--ui-muted); font-size:var(--ui-text-meta); white-space:nowrap; }
 .notification-actions { gap:.75rem; }.notification-actions .ui-button { min-height:44px; padding:.375rem .5rem; font-size:var(--ui-text-meta); }.notification-actions .planning-detail-link { padding:0; font-size:var(--ui-text-meta); }
 .planning-kpis { grid-template-columns:repeat(12,minmax(0,1fr)); gap:1rem; }
-.planning-kpis > .planning-kpi { grid-column:span 3; padding:1.125rem 1.25rem; gap:.375rem; color:inherit; text-decoration:none; border-top:1px solid var(--ui-border); }
+.planning-kpis > .planning-kpi { grid-column:span 3; padding:1.125rem 1.25rem; gap:.375rem; color:inherit; text-decoration:none; }
 .planning-kpis > .planning-kpi:nth-child(n+5) { grid-column:span 4; }
 .planning-page .planning-kpi h2 { font-size:var(--ui-text-small); color:var(--ui-muted); font-weight:400; }
 .planning-kpi .planning-value { font-size:1.375rem; margin:.25rem 0; }
-.planning-kpi:hover { border-color:var(--accent); }
+a.planning-kpi:hover { border-color:var(--accent); }
+.scfp-theme a.planning-kpi:focus-visible { outline:2px solid var(--ui-text); outline-offset:2px; }
 .upcoming-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
 .upcoming-item { color:inherit; text-decoration:none; display:grid; gap:.375rem; padding-left:1rem; border-left:1px solid var(--ui-border); }
 .upcoming-item:first-child { border-left:0; padding-left:0; }.upcoming-item strong,.upcoming-item b { font-size:var(--ui-text-small); }
@@ -210,7 +209,6 @@
 .indicator-zone--success { background:color-mix(in srgb,var(--ui-success) 55%,var(--ui-surface)); }.indicator-zone--warning { background:color-mix(in srgb,var(--ui-warning) 70%,var(--ui-surface)); }.indicator-zone--danger { background:color-mix(in srgb,var(--ui-danger) 50%,var(--ui-surface)); }
 .indicator-budget-fill { display:block; height:100%; border-radius:inherit; background:var(--accent); }.indicator-scale-marker { position:absolute; width:2px; height:24px; top:-5px; background:var(--ui-text); }
 
-.planning-page .planning-kpis > .planning-kpi { border-top:1px solid var(--ui-border); }
 .dashboard-deficit { display:grid; gap:.5rem; padding:1rem 1.25rem; border:1px solid var(--ui-border-strong); border-left:4px solid var(--ui-danger); border-radius:var(--ui-radius); background:var(--ui-surface); font-size:var(--ui-text-small); }
 .dashboard-deficit p,.dashboard-deficit .planning-detail-link { margin:0; padding:0; }
 .report-ranked-list { list-style:none; margin:0; padding:0; display:grid; gap:1rem; }

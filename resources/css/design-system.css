@@ -53,10 +53,27 @@
     background: var(--ui-bg); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); min-height: 48px; padding: .75rem .875rem; max-width: 100%; min-width: 0; transition: border-color var(--ui-duration), background var(--ui-duration);
 }
 .scfp-theme input::placeholder, .scfp-theme textarea::placeholder { color: var(--ui-muted); opacity: 1; }
-.scfp-theme :is(input, select, textarea):focus { --tw-ring-color: var(--accent); --tw-ring-offset-color: var(--ui-bg); border-color: var(--accent); }
-.scfp-theme input:-webkit-autofill { -webkit-text-fill-color: var(--ui-text); caret-color: var(--ui-text); -webkit-box-shadow: 0 0 0 1000px var(--ui-bg) inset; }
+.scfp-theme :is(input, select, textarea):focus {
+    box-shadow: var(--ui-field-focus-mark, 0 0 transparent), var(--ui-field-autofill, 0 0 transparent);
+}
+.scfp-theme :is(input, select, textarea):focus-visible { outline: var(--ui-field-focus-outline, 2px solid var(--ui-text)); outline-offset: 2px; }
+.scfp-theme :is(input:not(:where([type=checkbox], [type=radio], [type=range], [type=color], [type=button], [type=submit], [type=reset], [type=image])), select, textarea):focus {
+    --ui-field-focus-mark: inset 2px 0 var(--ui-text);
+    --ui-field-focus-outline: var(--ui-pointer-field-outline);
+}
+@media (forced-colors: none) {
+    :root[data-pointer-focus] { --ui-pointer-field-outline: none; }
+}
+@media (forced-colors: active) {
+    .scfp-theme :is(input, select, textarea):focus { outline: 2px solid Highlight; outline-offset: 2px; }
+}
+.scfp-theme input:-webkit-autofill {
+    --ui-field-autofill: inset 0 0 0 1000px var(--ui-bg);
+    -webkit-text-fill-color: var(--ui-text);
+    caret-color: var(--ui-text);
+    box-shadow: var(--ui-field-focus-mark, 0 0 transparent), var(--ui-field-autofill);
+}
 .scfp-theme :is(input, select, textarea):disabled { background: var(--ui-raised); color: var(--ui-muted); border-style: dashed; }
-.scfp-theme :is(input, select, textarea):focus-visible { border-color: var(--accent); }
 .scfp-theme input[type=checkbox], .scfp-theme input[type=radio] { accent-color: var(--accent); width: 18px; height: 18px; }
 .ui-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--ui-sidebar-width); padding: 1.5rem 1.25rem; overflow: hidden; background: var(--ui-surface); border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; }
 .ui-brand { flex-shrink: 0; display: flex; align-items: center; gap: .75rem; font-size: 1.5rem; font-weight: 700; text-decoration: none; letter-spacing: -.035em; }

@@ -96,6 +96,12 @@ export function registerFoundation(Alpine) {
 }
 
 export function mountFoundation() {
+    const root = document.documentElement;
+    // Text fields can match :focus-visible even when clicked.
+    document.addEventListener('pointerdown', () => root.setAttribute('data-pointer-focus', ''), true);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab') root.removeAttribute('data-pointer-focus');
+    }, true);
     mountHelpTips();
     for (const link of document.querySelectorAll('a[href]')) {
         const url = new URL(link.href, window.location.origin);
